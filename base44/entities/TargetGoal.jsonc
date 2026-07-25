@@ -1,0 +1,122 @@
+{
+  "name": "TargetGoal",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "description": "اسم الهدف"
+    },
+    "target_amount": {
+      "type": "number",
+      "description": "المبلغ المستهدف"
+    },
+    "month": {
+      "type": "string",
+      "description": "الشهر بصيغة YYYY-MM"
+    },
+    "branch": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي",
+        "الفرعين"
+      ],
+      "description": "نطاق الهدف"
+    },
+    "cycle_start": {
+      "type": "string",
+      "format": "date",
+      "description": "بداية دورة الهدف"
+    },
+    "cycle_end": {
+      "type": "string",
+      "format": "date",
+      "description": "نهاية دورة الهدف"
+    },
+    "target_type": {
+      "type": "string",
+      "enum": [
+        "sales",
+        "invoices",
+        "average_invoice",
+        "gross_profit"
+      ],
+      "default": "sales",
+      "description": "نوع الهدف"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "معتمد الهدف"
+    },
+    "change_reason": {
+      "type": "string",
+      "description": "سبب تعديل الهدف"
+    }
+  },
+  "required": [
+    "target_amount"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    }
+  }
+}

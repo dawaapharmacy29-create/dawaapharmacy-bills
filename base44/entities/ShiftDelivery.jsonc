@@ -1,0 +1,155 @@
+{
+  "name": "ShiftDelivery",
+  "type": "object",
+  "properties": {
+    "branch": {
+      "type": "string",
+      "enum": [
+        "\u062f\u0648\u0627\u0621 \u0634\u0643\u0631\u064a",
+        "\u062f\u0648\u0627\u0621 \u0627\u0644\u0634\u0627\u0645\u064a"
+      ],
+      "description": "\u0627\u0644\u0641\u0631\u0639"
+    },
+    "shift_type": {
+      "type": "string",
+      "enum": [
+        "\u0635\u0628\u0627\u062d\u064a",
+        "\u0645\u0633\u0627\u0626\u064a",
+        "\u0644\u064a\u0644\u064a"
+      ],
+      "description": "\u0646\u0648\u0639 \u0627\u0644\u0634\u064a\u0641\u062a"
+    },
+    "shift_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0634\u064a\u0641\u062a"
+    },
+    "submitted_by": {
+      "type": "string",
+      "description": "\u0627\u0644\u0645\u0648\u0638\u0641 \u0627\u0644\u0645\u0633\u0624\u0648\u0644"
+    },
+    "total_sales": {
+      "type": "number",
+      "default": 0,
+      "description": "\u0625\u062c\u0645\u0627\u0644\u064a \u0645\u0628\u064a\u0639\u0627\u062a \u0627\u0644\u0634\u064a\u0641\u062a"
+    },
+    "expenses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "category": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "\u0628\u0646\u0648\u062f \u0627\u0644\u0645\u0635\u0631\u0648\u0641\u0627\u062a"
+    },
+    "total_expenses": {
+      "type": "number",
+      "default": 0,
+      "description": "\u0625\u062c\u0645\u0627\u0644\u064a \u0627\u0644\u0645\u0635\u0631\u0648\u0641\u0627\u062a"
+    },
+    "net_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "\u0635\u0627\u0641\u064a \u0627\u0644\u062a\u0633\u0644\u064a\u0645"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "\u0645\u0624\u0643\u062f",
+        "\u0645\u0631\u0627\u062c\u0639\u0629"
+      ],
+      "default": "\u0645\u0624\u0643\u062f",
+      "description": "\u062d\u0627\u0644\u0629 \u0627\u0644\u062a\u0633\u0644\u064a\u0645"
+    },
+    "notes": {
+      "type": "string",
+      "description": "\u0645\u0644\u0627\u062d\u0638\u0627\u062a"
+    }
+  },
+  "required": [
+    "branch",
+    "shift_type",
+    "shift_date",
+    "total_sales"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "created_by_id": "{{user.id}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    }
+  }
+}

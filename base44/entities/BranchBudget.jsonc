@@ -1,0 +1,85 @@
+{
+  "name": "BranchBudget",
+  "type": "object",
+  "properties": {
+    "branch": {
+      "type": "string",
+      "enum": [
+        "\u062f\u0648\u0627\u0621 \u0634\u0643\u0631\u064a",
+        "\u062f\u0648\u0627\u0621 \u0627\u0644\u0634\u0627\u0645\u064a"
+      ],
+      "description": "\u0627\u0644\u0641\u0631\u0639"
+    },
+    "budget_limit": {
+      "type": "number",
+      "description": "\u0627\u0644\u062d\u062f \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0644\u0645\u0634\u062a\u0631\u064a\u0627\u062a"
+    }
+  },
+  "required": [
+    "branch",
+    "budget_limit"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    }
+  }
+}

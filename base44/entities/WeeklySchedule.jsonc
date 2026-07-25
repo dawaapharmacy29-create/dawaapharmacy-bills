@@ -1,0 +1,102 @@
+{
+  "name": "WeeklySchedule",
+  "type": "object",
+  "properties": {
+    "branch": {
+      "type": "string",
+      "enum": [
+        "\u0641\u0631\u0639 \u0632\u0643\u0631\u064a\u0627",
+        "\u0641\u0631\u0639 \u0628\u0633\u064a\u0633\u0629",
+        "\u0641\u0631\u0639 \u0627\u0644\u0645\u0646\u0634\u064a\u0629"
+      ],
+      "description": "\u0627\u0644\u0641\u0631\u0639"
+    },
+    "assignments": {
+      "type": "array",
+      "description": "\u062a\u0648\u0632\u064a\u0639 \u0627\u0644\u0645\u0648\u0638\u0641\u064a\u0646 \u0639\u0644\u0649 \u0627\u0644\u062a\u0648\u0627\u0631\u064a\u062e",
+      "items": {
+        "type": "object",
+        "properties": {
+          "employee_name": {
+            "type": "string"
+          },
+          "scheduled_date": {
+            "type": "string",
+            "format": "date"
+          }
+        }
+      }
+    },
+    "items_per_day": {
+      "type": "number",
+      "default": 20,
+      "description": "\u0639\u062f\u062f \u0627\u0644\u0623\u0635\u0646\u0627\u0641 \u0627\u0644\u064a\u0648\u0645\u064a"
+    }
+  },
+  "required": [
+    "branch"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    }
+  }
+}

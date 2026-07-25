@@ -1,0 +1,184 @@
+{
+  "name": "SupplierPayment",
+  "type": "object",
+  "properties": {
+    "supplier_name": {
+      "type": "string",
+      "description": "اسم المورد"
+    },
+    "invoice_id": {
+      "type": "string",
+      "description": "معرف الفاتورة المرتبطة"
+    },
+    "invoice_number": {
+      "type": "string",
+      "description": "رقم الفاتورة"
+    },
+    "amount": {
+      "type": "number",
+      "description": "مبلغ الدفعة"
+    },
+    "payment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "تاريخ السداد"
+    },
+    "notes": {
+      "type": "string",
+      "description": "ملاحظات"
+    },
+    "branch": {
+      "type": "string",
+      "description": "الفرع المسدد عليه"
+    },
+    "payment_kind": {
+      "type": "string",
+      "enum": [
+        "supplier_payment",
+        "branch_settlement"
+      ],
+      "default": "supplier_payment",
+      "description": "نوع الحركة المالية"
+    },
+    "transaction_type": {
+      "type": "string",
+      "enum": [
+        "supplier_payment",
+        "invoice_allocation",
+        "branch_settlement",
+        "opening_balance_adjustment"
+      ],
+      "default": "supplier_payment",
+      "description": "تصنيف الحركة"
+    },
+    "source_branch": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي"
+      ],
+      "description": "الفرع المرسل في التسوية الداخلية"
+    },
+    "destination_branch": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي"
+      ],
+      "description": "الفرع المستلم في التسوية الداخلية"
+    },
+    "payment_method": {
+      "type": "string",
+      "enum": [
+        "كاش",
+        "تحويل بنكي",
+        "إنستا باي",
+        "فودافون كاش",
+        "شيك",
+        "تسوية داخلية",
+        "أخرى"
+      ],
+      "description": "وسيلة الدفع أو التحويل"
+    },
+    "reference_number": {
+      "type": "string",
+      "description": "رقم مرجع التحويل أو الإيصال"
+    },
+    "source_payment_id": {
+      "type": "string",
+      "description": "معرف الدفعة العامة الأصلية عند التوزيع"
+    },
+    "allocation_summary": {
+      "type": "string",
+      "description": "ملخص توزيع الدفعة على الفواتير"
+    },
+    "unallocated_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "المبلغ المتبقي غير الموزع"
+    }
+  },
+  "required": [
+    "supplier_name",
+    "amount",
+    "payment_date"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "can_save_invoice": true
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "can_save_invoice": true
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "can_save_invoice": true
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "can_save_invoice": true
+          }
+        }
+      ]
+    }
+  }
+}

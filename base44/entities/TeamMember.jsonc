@@ -1,0 +1,143 @@
+{
+  "name": "TeamMember",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "اسم العضو"
+    },
+    "branches": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "دواء شكري",
+          "دواء الشامي"
+        ]
+      },
+      "description": "الفروع"
+    },
+    "role": {
+      "type": "string",
+      "description": "الدور / المنصب"
+    },
+    "phone": {
+      "type": "string",
+      "description": "رقم الهاتف"
+    },
+    "primary_branch": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي"
+      ],
+      "description": "الفرع الأساسي"
+    },
+    "employment_status": {
+      "type": "string",
+      "enum": [
+        "نشط",
+        "إجازة",
+        "موقوف مؤقتًا",
+        "ترك العمل",
+        "مؤرشف"
+      ],
+      "default": "نشط",
+      "description": "حالة الموظف"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "هل الموظف نشط"
+    },
+    "joined_at": {
+      "type": "string",
+      "format": "date",
+      "description": "تاريخ التعيين"
+    },
+    "notes": {
+      "type": "string",
+      "description": "ملاحظات إدارية"
+    },
+    "merged_into_id": {
+      "type": "string",
+      "description": "معرف السجل الأساسي بعد الدمج"
+    },
+    "merged_into_name": {
+      "type": "string",
+      "description": "اسم السجل الأساسي بعد الدمج"
+    },
+    "merged_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "وقت الدمج"
+    }
+  },
+  "required": [
+    "name",
+    "branches"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    }
+  }
+}

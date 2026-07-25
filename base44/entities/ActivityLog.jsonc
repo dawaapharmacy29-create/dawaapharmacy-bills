@@ -1,0 +1,153 @@
+{
+  "name": "ActivityLog",
+  "type": "object",
+  "properties": {
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "create",
+        "update",
+        "delete",
+        "payment",
+        "bulk_update",
+        "import",
+        "export",
+        "permission_change",
+        "status_change",
+        "exclusion_change",
+        "category_change",
+        "role_change"
+      ],
+      "description": "\u0646\u0648\u0639 \u0627\u0644\u0639\u0645\u0644\u064a\u0629"
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": [
+        "invoice",
+        "expense",
+        "supplier",
+        "payment",
+        "return",
+        "order",
+        "team_member",
+        "inventory",
+        "shift",
+        "user",
+        "system"
+      ],
+      "description": "\u0646\u0648\u0639 \u0627\u0644\u0633\u062c\u0644"
+    },
+    "entity_id": {
+      "type": "string",
+      "description": "\u0645\u0639\u0631\u0641 \u0627\u0644\u0633\u062c\u0644"
+    },
+    "record_id": {
+      "type": "string",
+      "description": "\u0645\u0639\u0631\u0641 \u0627\u0644\u0633\u062c\u0644 \u0627\u0644\u0645\u0633\u062a\u0647\u062f\u0641 (\u0645\u0641\u0635\u0644)"
+    },
+    "entity_label": {
+      "type": "string",
+      "description": "\u0648\u0635\u0641 \u0627\u0644\u0633\u062c\u0644 (\u0631\u0642\u0645 \u0627\u0644\u0641\u0627\u062a\u0648\u0631\u0629 \u0623\u0648 \u0627\u0633\u0645 \u0627\u0644\u0645\u0648\u0631\u062f...)"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "\u0627\u0644\u0628\u0631\u064a\u062f \u0627\u0644\u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a \u0644\u0644\u0645\u0633\u062a\u062e\u062f\u0645"
+    },
+    "user_name": {
+      "type": "string",
+      "description": "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645"
+    },
+    "user_role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "manager",
+        "viewer"
+      ],
+      "description": "\u062f\u0648\u0631 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645 \u0648\u0642\u062a \u0627\u0644\u0639\u0645\u0644\u064a\u0629"
+    },
+    "user_branch": {
+      "type": "string",
+      "description": "\u0641\u0631\u0639 \u0627\u0644\u0645\u0633\u062a\u062e\u062f\u0645 \u0648\u0642\u062a \u0627\u0644\u0639\u0645\u0644\u064a\u0629"
+    },
+    "old_value": {
+      "type": "string",
+      "description": "\u0627\u0644\u0642\u064a\u0645\u0629 \u0627\u0644\u0642\u062f\u064a\u0645\u0629 \u0642\u0628\u0644 \u0627\u0644\u062a\u0639\u062f\u064a\u0644"
+    },
+    "new_value": {
+      "type": "string",
+      "description": "\u0627\u0644\u0642\u064a\u0645\u0629 \u0627\u0644\u062c\u062f\u064a\u062f\u0629 \u0628\u0639\u062f \u0627\u0644\u062a\u0639\u062f\u064a\u0644"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "\u0645\u0639\u0631\u0641 \u0627\u0644\u062f\u0641\u0639\u0629 \u0644\u0644\u0639\u0645\u0644\u064a\u0627\u062a \u0627\u0644\u062c\u0645\u0627\u0639\u064a\u0629"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed"
+      ],
+      "default": "success",
+      "description": "\u0646\u062c\u0627\u062d \u0623\u0648 \u0641\u0634\u0644 \u0627\u0644\u0639\u0645\u0644\u064a\u0629"
+    },
+    "reason": {
+      "type": "string",
+      "description": "\u0633\u0628\u0628 \u0627\u0644\u0639\u0645\u0644\u064a\u0629"
+    },
+    "details": {
+      "type": "string",
+      "description": "\u062a\u0641\u0627\u0635\u064a\u0644 \u0625\u0636\u0627\u0641\u064a\u0629"
+    }
+  },
+  "required": [
+    "action_type",
+    "entity_type",
+    "user_email"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

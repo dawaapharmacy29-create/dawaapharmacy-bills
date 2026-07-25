@@ -1,0 +1,284 @@
+{
+  "name": "PurchaseInvoice",
+  "type": "object",
+  "properties": {
+    "system_invoice_number": {
+      "type": "string",
+      "description": "رقم الفاتورة على البرنامج"
+    },
+    "supplier_invoice_number": {
+      "type": "string",
+      "description": "رقم الفاتورة من المورد أو الشركة"
+    },
+    "supplier_name": {
+      "type": "string",
+      "description": "اسم المورد"
+    },
+    "supplier_id": {
+      "type": "string",
+      "description": "معرف المورد المرتبط (ربط مباشر بسجل المورد)"
+    },
+    "branch": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي"
+      ],
+      "description": "الفرع"
+    },
+    "entered_by": {
+      "type": "string",
+      "description": "اسم مدخل الفاتورة"
+    },
+    "invoice_date": {
+      "type": "string",
+      "format": "date",
+      "description": "تاريخ الفاتورة"
+    },
+    "total_value": {
+      "type": "number",
+      "description": "القيمة الإجمالية"
+    },
+    "returned_value": {
+      "type": "number",
+      "description": "المرتجع",
+      "default": 0
+    },
+    "paid_value": {
+      "type": "number",
+      "description": "المدفوع",
+      "default": 0
+    },
+    "payment_type": {
+      "type": "string",
+      "enum": [
+        "كاش",
+        "آجل",
+        "انستا",
+        "فودافون",
+        "مختلط"
+      ],
+      "description": "طريقة الدفع"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "انتظار المراجعة",
+        "يتم الحفظ",
+        "تعلق تحت التصريف",
+        "مسودة",
+        "معتمدة",
+        "مدفوعة جزئيًا",
+        "مدفوعة",
+        "مستبعدة"
+      ],
+      "default": "انتظار المراجعة",
+      "description": "حالة الفاتورة"
+    },
+    "notes": {
+      "type": "string",
+      "description": "ملاحظات"
+    },
+    "purchase_category": {
+      "type": "string",
+      "enum": [
+        "medicines",
+        "supplies_accessories",
+        "unclassified"
+      ],
+      "default": "unclassified",
+      "description": "تصنيف المشتريات: أدوية / مستلزمات وإكسسوار / غير مصنفة"
+    },
+    "purchase_category_source": {
+      "type": "string",
+      "enum": [
+        "supplier_default",
+        "supplier_backfill",
+        "supplier_bulk_apply",
+        "manual",
+        "bulk_update",
+        "legacy_backfill"
+      ],
+      "description": "مصدر تصنيف الفاتورة: تلقائي من المورد / تطبيق رجعي / تطبيق إعداد المورد / استثناء يدوي / تعديل جماعي / تصحيح بيانات قديمة"
+    },
+    "transaction_type": {
+      "type": "string",
+      "enum": [
+        "external_purchase",
+        "internal_transfer"
+      ],
+      "default": "external_purchase",
+      "description": "نوع العملية: شراء خارجي / تحويل داخلي"
+    },
+    "transaction_type_source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "supplier_auto",
+        "legacy_backfill"
+      ],
+      "description": "مصدر نوع العملية: يدوي / تلقائي من المورد / تصحيح بيانات قديمة"
+    },
+    "net_purchase_mode": {
+      "type": "string",
+      "enum": [
+        "inherit",
+        "include",
+        "exclude"
+      ],
+      "default": "inherit",
+      "description": "طريقة احتساب الفاتورة في صافي المشتريات: اتباع إعداد المورد / محتسبة / مستثناة"
+    },
+    "exclusion_reason": {
+      "type": "string",
+      "enum": [
+        "internal_transfer",
+        "not_actual_purchase",
+        "tracking_only",
+        "excluded_supplier",
+        "settlement",
+        "duplicate_review",
+        "other"
+      ],
+      "description": "سبب الاستثناء من صافي المشتريات"
+    },
+    "exclusion_note": {
+      "type": "string",
+      "description": "ملاحظات الاستثناء"
+    },
+    "excluded_by": {
+      "type": "string",
+      "description": "المستخدم الذي نفذ الاستثناء"
+    },
+    "excluded_at": {
+      "type": "string",
+      "description": "تاريخ ووقت الاستثناء"
+    },
+    "source_branch": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي"
+      ],
+      "description": "الفرع المصدر (للتحويلات الداخلية)"
+    },
+    "destination_branch": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي"
+      ],
+      "description": "الفرع المستلم (للتحويلات الداخلية)"
+    },
+    "cash_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "المبلغ المدفوع كاش (للفواتير المختلطة)"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "مسؤول المراجعة"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "وقت المراجعة"
+    },
+    "duplicate_review_status": {
+      "type": "string",
+      "enum": [
+        "unreviewed",
+        "confirmed_unique",
+        "merged",
+        "excluded"
+      ],
+      "default": "unreviewed",
+      "description": "حالة مراجعة التكرار"
+    }
+  },
+  "required": [
+    "system_invoice_number",
+    "total_value",
+    "payment_type",
+    "status",
+    "branch"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "can_save_invoice": true
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "can_save_invoice": true
+          }
+        },
+        {
+          "user_condition": {
+            "can_delete_invoice": true
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "can_save_invoice": true
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "can_delete_invoice": true
+          }
+        }
+      ]
+    }
+  }
+}

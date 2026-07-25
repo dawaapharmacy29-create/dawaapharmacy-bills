@@ -1,0 +1,242 @@
+{
+  "name": "Return",
+  "type": "object",
+  "properties": {
+    "return_number": {
+      "type": "string",
+      "description": "رقم المرتجع التلقائي"
+    },
+    "invoice_number": {
+      "type": "string",
+      "description": "رقم الفاتورة"
+    },
+    "supplier_name": {
+      "type": "string",
+      "description": "اسم المورد أو المخزن"
+    },
+    "branch_name": {
+      "type": "string",
+      "enum": [
+        "دواء شكري",
+        "دواء الشامي"
+      ],
+      "description": "اسم الفرع"
+    },
+    "employee_name": {
+      "type": "string",
+      "description": "اسم الموظف"
+    },
+    "return_reason": {
+      "type": "string",
+      "enum": [
+        "عدم الحاجة",
+        "انتهاء الصلاحية",
+        "تلف",
+        "لم يصل"
+      ],
+      "description": "سبب المرتجع الرئيسي"
+    },
+    "notes": {
+      "type": "string",
+      "description": "ملاحظات"
+    },
+    "internal_notes": {
+      "type": "string",
+      "description": "ملاحظات داخلية للإدارة فقط"
+    },
+    "invoice_images": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "روابط صور الفاتورة"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_name": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "batch_number": {
+            "type": "string"
+          },
+          "expiry_date": {
+            "type": "string"
+          },
+          "item_reason": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "الأصناف المرتجعة"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Pending",
+        "Under Review",
+        "Approved",
+        "Returned",
+        "Rejected"
+      ],
+      "default": "Pending",
+      "description": "حالة المرتجع"
+    },
+    "status_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "changed_by": {
+            "type": "string"
+          },
+          "changed_at": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "سجل تغييرات الحالة"
+    },
+    "approved_by": {
+      "type": "string",
+      "description": "اسم معتمد المرتجع"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "اسم المراجع"
+    },
+    "returned_at": {
+      "type": "string",
+      "description": "تاريخ تنفيذ المرتجع"
+    },
+    "credit_note_number": {
+      "type": "string",
+      "description": "رقم إشعار الخصم"
+    },
+    "credit_note_amount": {
+      "type": "number",
+      "description": "قيمة إشعار الخصم"
+    },
+    "credit_note_date": {
+      "type": "string",
+      "format": "date",
+      "description": "تاريخ إشعار الخصم"
+    },
+    "credit_note_notes": {
+      "type": "string",
+      "description": "ملاحظات إشعار الخصم"
+    },
+    "credit_note_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "recorded",
+        "verified"
+      ],
+      "default": "pending",
+      "description": "حالة الإغلاق المالي للمرتجع"
+    },
+    "credit_note_recorded_by": {
+      "type": "string",
+      "description": "مسؤول تسجيل إشعار الخصم"
+    },
+    "credit_note_recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "وقت تسجيل إشعار الخصم"
+    }
+  },
+  "required": [
+    "invoice_number",
+    "supplier_name",
+    "branch_name",
+    "employee_name"
+  ],
+  "rls": {
+    "create": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "viewer"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        },
+        {
+          "record_condition": {
+            "created_by": "{{user.email}}"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "manager"
+          }
+        }
+      ]
+    }
+  }
+}
