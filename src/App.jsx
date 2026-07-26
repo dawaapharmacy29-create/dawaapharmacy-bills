@@ -10,6 +10,7 @@ import AppErrorBoundary from './components/system/AppErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
 import QuickInvoiceEntry from './pages/QuickInvoiceEntry';
+import InvoiceQualityCenter from './pages/InvoiceQualityCenter';
 import Suppliers from './pages/Suppliers.jsx';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
@@ -57,6 +58,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<Dashboard />} />
         <Route path="/system-status" element={<SystemStatus />} />
         <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
+        <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
         <Route path="/invoices" element={<PurchaseInvoices />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/expenses" element={<Expenses />} />
