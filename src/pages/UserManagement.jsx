@@ -1,251 +1,206 @@
-import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ShieldCheck, UserPlus, Mail, Check, X, Lock } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
-import { useUserRole } from "@/lib/useUserRole";
-import { logActivity } from "@/lib/activityLogger";
-import { useTableSorting } from "@/hooks/useTableSorting";
-import { SortControls } from "@/components/table/SortControls";
-import { USER_ROLE_ORDER } from "@/lib/sortUtils";
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
+import { useUserRole } from '@/lib/useUserRole';
+import { staffAccountsApi } from '@/api/base44Client';
+import { KeyRound, Lock, RefreshCw, Search, ShieldCheck, UserPlus, UsersRound } from 'lucide-react';
 
-const USER_SORT_COLUMNS = [
-  { field: "full_name", label: "الاسم", type: "text" },
-  { field: "email", label: "البريد", type: "text" },
-  { field: "role", label: "الدور", type: "status", statusMap: USER_ROLE_ORDER },
-  { field: "created_date", label: "تاريخ الإضافة", type: "date" },
-];
-
+const BRANCHES = ['دواء الشامي', 'دواء شكري'];
 const ROLE_CONFIG = {
-  admin: { label: "مدير", color: "bg-red-100 text-red-700", desc: "صلاحيات كاملة تلقائياً" },
-  manager: { label: "محاسب / مشرف", color: "bg-blue-100 text-blue-700", desc: "إضافة وتعديل وعرض" },
-  viewer: { label: "مشاهد", color: "bg-gray-100 text-gray-700", desc: "عرض فقط (يمكن تخصيص صلاحيات إضافية)" },
+  general_manager: { label: 'المدير العام', className: 'bg-red-100 text-red-700' },
+  branch_manager: { label: 'مدير فرع', className: 'bg-blue-100 text-blue-700' },
+  purchases: { label: 'مسؤول مشتريات', className: 'bg-teal-100 text-teal-700' },
+  accountant: { label: 'محاسب', className: 'bg-violet-100 text-violet-700' },
+  reviewer: { label: 'مراجع', className: 'bg-amber-100 text-amber-700' },
+  viewer: { label: 'مشاهد', className: 'bg-gray-100 text-gray-700' },
 };
 
-const PERMISSIONS = [
-  { key: "can_save_invoice", label: "إضافة وتعديل الفواتير" },
-  { key: "can_delete_invoice", label: "حذف الفواتير" },
-  { key: "can_manage_team", label: "إدارة فريق العمل" },
-  { key: "can_set_budget", label: "تحديد الحد الأقصى للمشتريات" },
-];
+const EMPTY_FORM = {
+  username: '',
+  display_name: '',
+  pin: '9493',
+  role: 'viewer',
+  branch_ids: [],
+};
+
+const ERROR_MESSAGES = {
+  invalid_username: 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل ويحتوي على حروف إنجليزية أو أرقام أو نقطة فقط.',
+  invalid_display_name: 'اكتب الاسم الظاهر بصورة صحيحة.',
+  invalid_pin: 'الرقم السري يجب أن يكون من 4 إلى 12 رقمًا.',
+  invalid_role: 'الدور المختار غير صحيح.',
+  username_exists: 'اسم المستخدم موجود بالفعل.',
+  cannot_disable_self: 'لا يمكن تعطيل حسابك الحالي.',
+  cannot_demote_self: 'لا يمكن إزالة صلاحية المدير العام من حسابك الحالي.',
+  forbidden: 'هذه العملية متاحة للمدير العام فقط.',
+};
+
+function BranchPicker({ value, onChange }) {
+  const toggle = (branch) => onChange(value.includes(branch) ? value.filter((item) => item !== branch) : [...value, branch]);
+  return (
+    <div className="flex flex-wrap gap-2">
+      {BRANCHES.map((branch) => (
+        <button key={branch} type="button" onClick={() => toggle(branch)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${value.includes(branch) ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-gray-200 bg-white text-gray-500'}`}>
+          {branch}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function UserManagement() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { isAdmin, user: currentUser } = useUserRole();
-  const [inviteDialog, setInviteDialog] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: "", role: "viewer" });
+  const [search, setSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editAccount, setEditAccount] = useState(null);
+  const [pinAccount, setPinAccount] = useState(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [newPin, setNewPin] = useState('9493');
 
-  const { data: users = [], isLoading } = useQuery({
-    queryKey: ["users"],
-    queryFn: () => base44.entities.User.list(),
-  });
-  const { sortField, sortDirection, toggleSort, setSort, resetSort, sortData } = useTableSorting({
-    columns: USER_SORT_COLUMNS,
-    defaultSort: { field: "full_name", direction: "asc" },
-    paramPrefix: "usr",
-  });
-  const sortedUsers = useMemo(() => sortData(users), [users, sortData]);
-
-  const updateRole = useMutation({
-    mutationFn: async ({ id, role, oldRole, userEmail }) => {
-      await base44.entities.User.update(id, { role });
-      await logActivity({
-        action_type: "role_change",
-        entity_type: "user",
-        entity_id: id,
-        record_id: id,
-        entity_label: userEmail,
-        old_value: oldRole,
-        new_value: role,
-        reason: "تغيير دور المستخدم",
-        details: `تغيير دور ${userEmail} من ${oldRole} إلى ${role}`,
-      });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  const accountsQuery = useQuery({
+    queryKey: ['staff-accounts'],
+    queryFn: staffAccountsApi.list,
+    enabled: isAdmin,
+    staleTime: 15000,
+    retry: 1,
   });
 
-  const updatePerm = useMutation({
-    mutationFn: async ({ id, perm, value, oldValue, userEmail }) => {
-      await base44.entities.User.update(id, { [perm]: value });
-      await logActivity({
-        action_type: "permission_change",
-        entity_type: "user",
-        entity_id: id,
-        record_id: id,
-        entity_label: userEmail,
-        old_value: `${perm}: ${oldValue}`,
-        new_value: `${perm}: ${value}`,
-        reason: "تغيير صلاحية",
-        details: `تغيير صلاحية ${perm} لـ ${userEmail}: ${oldValue} → ${value}`,
-      });
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  const accounts = accountsQuery.data || [];
+  const filteredAccounts = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return accounts;
+    return accounts.filter((account) => [account.username, account.display_name, ROLE_CONFIG[account.role]?.label, ...(account.branch_ids || [])].some((value) => String(value || '').toLowerCase().includes(term)));
+  }, [accounts, search]);
+
+  const showResult = (title) => {
+    qc.invalidateQueries({ queryKey: ['staff-accounts'] });
+    toast({ title });
+  };
+  const showError = (error) => toast({ title: 'تعذر تنفيذ العملية', description: ERROR_MESSAGES[error?.message] || error?.message || 'حدث خطأ غير متوقع.', variant: 'destructive' });
+
+  const createMutation = useMutation({
+    mutationFn: staffAccountsApi.create,
+    onSuccess: () => { showResult('تم إنشاء الحساب بنجاح'); setCreateOpen(false); setForm(EMPTY_FORM); },
+    onError: showError,
+  });
+  const updateMutation = useMutation({
+    mutationFn: staffAccountsApi.update,
+    onSuccess: () => { showResult('تم تحديث الحساب'); setEditAccount(null); },
+    onError: showError,
+  });
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }) => staffAccountsApi.setStatus(id, status),
+    onSuccess: () => showResult('تم تحديث حالة الحساب'),
+    onError: showError,
+  });
+  const pinMutation = useMutation({
+    mutationFn: ({ id, pin }) => staffAccountsApi.resetPin(id, pin),
+    onSuccess: () => { showResult('تم تغيير الرقم السري وإغلاق الجلسات القديمة'); setPinAccount(null); setNewPin('9493'); },
+    onError: showError,
   });
 
   if (!isAdmin) {
-    return (
-      <div dir="rtl" className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-gray-400">
-        <Lock className="w-12 h-12" />
-        <p className="text-lg font-medium">هذه الصفحة للمدير فقط</p>
-      </div>
-    );
+    return <div dir="rtl" className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-gray-400"><Lock className="h-12 w-12" /><p className="text-lg font-medium">هذه الصفحة للمدير العام فقط</p></div>;
   }
 
-  const handleInvite = async () => {
-    await base44.users.inviteUser(inviteForm.email, inviteForm.role === "admin" ? "admin" : "user");
-    toast({ title: "تم إرسال الدعوة", description: `تم إرسال دعوة إلى ${inviteForm.email}` });
-    setInviteDialog(false);
-    setInviteForm({ email: "", role: "viewer" });
-    qc.invalidateQueries({ queryKey: ["users"] });
+  const openEdit = (account) => {
+    setEditAccount(account);
+    setForm({ username: account.username, display_name: account.display_name, pin: '', role: account.role, branch_ids: account.branch_ids || [] });
   };
 
   return (
-    <div dir="rtl" className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div dir="rtl" className="space-y-5 p-4 md:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <ShieldCheck className="w-6 h-6 text-teal-600" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">إدارة المستخدمين والصلاحيات</h1>
-            <p className="text-gray-500 text-sm mt-0.5">تحديد أدوار وصلاحيات المستخدمين</p>
-          </div>
+          <div className="rounded-xl bg-teal-50 p-3"><ShieldCheck className="h-6 w-6 text-teal-700" /></div>
+          <div><h1 className="text-2xl font-bold text-gray-900">إدارة الحسابات والصلاحيات</h1><p className="mt-1 text-sm text-gray-500">حسابات باسم مستخدم وPIN بدون بريد إلكتروني.</p></div>
         </div>
-        <div className="flex items-center gap-2">
-          <SortControls
-            columns={USER_SORT_COLUMNS}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onToggle={toggleSort}
-            onSet={setSort}
-            onReset={resetSort}
-            cardMode
-          />
-          <Button onClick={() => setInviteDialog(true)} className="bg-teal-600 hover:bg-teal-700 gap-2">
-            <UserPlus className="w-4 h-4" /> دعوة مستخدم
-          </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => accountsQuery.refetch()} disabled={accountsQuery.isFetching} className="gap-2"><RefreshCw className={`h-4 w-4 ${accountsQuery.isFetching ? 'animate-spin' : ''}`} /> تحديث</Button>
+          <Button onClick={() => { setForm(EMPTY_FORM); setCreateOpen(true); }} className="gap-2 bg-teal-600 hover:bg-teal-700"><UserPlus className="h-4 w-4" /> حساب جديد</Button>
         </div>
       </div>
 
-      {/* Roles Legend */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {Object.entries(ROLE_CONFIG).map(([key, cfg]) => (
-          <Card key={key} className="p-4 border-r-4 border-r-gray-300">
-            <div className="flex items-center gap-2 mb-1">
-              <Badge className={`${cfg.color} border-0`}>{cfg.label}</Badge>
-            </div>
-            <p className="text-xs text-gray-500">{cfg.desc}</p>
-          </Card>
-        ))}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="p-4"><p className="text-xs text-gray-500">إجمالي الحسابات</p><p className="mt-2 text-3xl font-bold">{accounts.length}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">الحسابات النشطة</p><p className="mt-2 text-3xl font-bold text-emerald-700">{accounts.filter((a) => a.status === 'active').length}</p></Card>
+        <Card className="p-4"><p className="text-xs text-gray-500">الحسابات المتوقفة أو المقفولة</p><p className="mt-2 text-3xl font-bold text-red-700">{accounts.filter((a) => a.status !== 'active').length}</p></Card>
       </div>
 
-      {/* Users List */}
-      {isLoading ? (
-        <Card className="p-8 text-center text-gray-400">
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-teal-600 rounded-full animate-spin mx-auto mb-3" />
-        </Card>
+      <Card className="p-4">
+        <div className="relative max-w-md"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث بالاسم أو اسم المستخدم أو الفرع..." className="pr-10" /></div>
+      </Card>
+
+      {accountsQuery.isLoading ? (
+        <Card className="p-10 text-center"><div className="mx-auto h-9 w-9 animate-spin rounded-full border-4 border-gray-200 border-t-teal-600" /><p className="mt-3 text-sm text-gray-500">جاري تحميل الحسابات...</p></Card>
+      ) : accountsQuery.isError ? (
+        <Card className="border-red-200 p-6 text-center text-red-700">{accountsQuery.error?.message}</Card>
       ) : (
-        <div className="space-y-2">
-          {sortedUsers.map((user) => {
-            const role = user.role || "viewer";
-            const cfg = ROLE_CONFIG[role] || ROLE_CONFIG.viewer;
+        <div className="space-y-3">
+          {filteredAccounts.map((account) => {
+            const role = ROLE_CONFIG[account.role] || ROLE_CONFIG.viewer;
+            const isSelf = account.id === currentUser?.id;
+            const active = account.status === 'active';
             return (
-              <Card key={user.id} className="p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-bold text-sm shrink-0">
-                    {(user.full_name || user.email || "?").charAt(0).toUpperCase()}
+              <Card key={account.id} className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-100 font-bold text-teal-800">{(account.display_name || account.username || '?').charAt(0)}</div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2"><p className="font-bold text-gray-900">{account.display_name}</p>{isSelf && <Badge variant="outline">حسابك</Badge>}<Badge className={`${role.className} border-0`}>{role.label}</Badge></div>
+                      <p dir="ltr" className="mt-1 text-left text-sm font-semibold text-gray-600">{account.username}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">{(account.branch_ids || []).length ? account.branch_ids.map((branch) => <Badge key={branch} variant="secondary">{branch}</Badge>) : <span className="text-xs text-gray-400">بدون فرع محدد</span>}</div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-800 text-sm">{user.full_name || "—"}</p>
-                    <p className="text-xs text-gray-500 flex items-center gap-1"><Mail className="w-3 h-3" />{user.email}</p>
+                  <div className="text-left text-xs text-gray-500">
+                    <p className={active ? 'font-semibold text-emerald-700' : 'font-semibold text-red-700'}>{active ? 'نشط' : account.status === 'locked' ? 'مقفل' : 'متوقف'}</p>
+                    <p className="mt-1">آخر دخول: {account.last_login_at ? new Date(account.last_login_at).toLocaleString('ar-EG') : 'لم يسجل دخولًا'}</p>
+                    {account.failed_attempts > 0 && <p className="mt-1 text-amber-700">محاولات خاطئة: {account.failed_attempts}</p>}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                  <Badge className={`${cfg.color} border-0 hidden sm:inline-flex`}>{cfg.label}</Badge>
-                  <Select
-                    value={role}
-                    disabled={user.id === currentUser?.id}
-                    onValueChange={(v) => updateRole.mutate({ id: user.id, role: v, oldRole: role, userEmail: user.email })}
-                  >
-                    <SelectTrigger className="w-36 h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">مدير</SelectItem>
-                      <SelectItem value="manager">محاسب / مشرف</SelectItem>
-                      <SelectItem value="viewer">مشاهد</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {user.id === currentUser?.id && (
-                    <span className="text-[10px] text-gray-400">لا يمكن تغيير دورك</span>
-                  )}
+                <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+                  <Button size="sm" variant="outline" onClick={() => openEdit(account)}>تعديل الحساب</Button>
+                  <Button size="sm" variant="outline" className="gap-1" onClick={() => { setPinAccount(account); setNewPin('9493'); }}><KeyRound className="h-3.5 w-3.5" /> تغيير PIN</Button>
+                  <Button size="sm" variant={active ? 'destructive' : 'default'} disabled={isSelf || statusMutation.isPending} onClick={() => statusMutation.mutate({ id: account.id, status: active ? 'disabled' : 'active' })}>{active ? 'تعطيل الحساب' : 'تفعيل الحساب'}</Button>
                 </div>
-                {/* Permissions row - only show for non-admin */}
-                {role !== "admin" && (
-                  <div className="mt-3 pt-3 border-t flex flex-wrap gap-2">
-                    {PERMISSIONS.map((p) => {
-                      const val = !!user[p.key];
-                      return (
-                        <button
-                          key={p.key}
-                          disabled={user.id === currentUser?.id}
-                          onClick={() => updatePerm.mutate({ id: user.id, perm: p.key, value: !val, oldValue: val, userEmail: user.email })}
-                          className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                            val ? "bg-teal-50 border-teal-300 text-teal-700" : "bg-gray-50 border-gray-200 text-gray-500 hover:border-teal-200"
-                          }`}
-                        >
-                          {val ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                          {p.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
               </Card>
             );
           })}
+          {!filteredAccounts.length && <Card className="p-10 text-center text-gray-400"><UsersRound className="mx-auto mb-3 h-10 w-10" />لا توجد حسابات مطابقة للبحث.</Card>}
         </div>
       )}
 
-      {/* Invite Dialog */}
-      <Dialog open={inviteDialog} onOpenChange={setInviteDialog}>
-        <DialogContent dir="rtl" className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>دعوة مستخدم جديد</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>البريد الإلكتروني</Label>
-              <Input type="email" placeholder="example@email.com" value={inviteForm.email} onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label>الدور</Label>
-              <Select value={inviteForm.role} onValueChange={(v) => setInviteForm((f) => ({ ...f, role: v }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">مدير</SelectItem>
-                  <SelectItem value="manager">محاسب / مشرف</SelectItem>
-                  <SelectItem value="viewer">مشاهد</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setInviteDialog(false)}>إلغاء</Button>
-            <Button disabled={!inviteForm.email} onClick={handleInvite} className="bg-teal-600 hover:bg-teal-700">
-              إرسال الدعوة
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent dir="rtl" className="max-w-md"><DialogHeader><DialogTitle>إنشاء حساب جديد</DialogTitle></DialogHeader><AccountForm form={form} setForm={setForm} showUsername showPin /><DialogFooter className="gap-2"><Button variant="outline" onClick={() => setCreateOpen(false)}>إلغاء</Button><Button className="bg-teal-600 hover:bg-teal-700" disabled={createMutation.isPending} onClick={() => createMutation.mutate(form)}>{createMutation.isPending ? 'جاري الإنشاء...' : 'إنشاء الحساب'}</Button></DialogFooter></DialogContent>
       </Dialog>
+
+      <Dialog open={!!editAccount} onOpenChange={(open) => !open && setEditAccount(null)}>
+        <DialogContent dir="rtl" className="max-w-md"><DialogHeader><DialogTitle>تعديل حساب {editAccount?.username}</DialogTitle></DialogHeader><AccountForm form={form} setForm={setForm} /><DialogFooter className="gap-2"><Button variant="outline" onClick={() => setEditAccount(null)}>إلغاء</Button><Button className="bg-teal-600 hover:bg-teal-700" disabled={updateMutation.isPending} onClick={() => updateMutation.mutate({ id: editAccount.id, display_name: form.display_name, role: form.role, branch_ids: form.branch_ids })}>حفظ التعديلات</Button></DialogFooter></DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pinAccount} onOpenChange={(open) => !open && setPinAccount(null)}>
+        <DialogContent dir="rtl" className="max-w-sm"><DialogHeader><DialogTitle>تغيير الرقم السري</DialogTitle></DialogHeader><div className="space-y-2"><Label>PIN جديد لحساب {pinAccount?.username}</Label><Input value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 12))} inputMode="numeric" dir="ltr" className="text-center text-lg tracking-[0.35em]" /><p className="text-xs text-gray-500">سيتم إغلاق كل جلسات الحساب القديمة بعد التغيير.</p></div><DialogFooter className="gap-2"><Button variant="outline" onClick={() => setPinAccount(null)}>إلغاء</Button><Button disabled={pinMutation.isPending || newPin.length < 4} onClick={() => pinMutation.mutate({ id: pinAccount.id, pin: newPin })}>تغيير PIN</Button></DialogFooter></DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function AccountForm({ form, setForm, showUsername = false, showPin = false }) {
+  return (
+    <div className="space-y-4 py-2">
+      {showUsername && <div className="space-y-1.5"><Label>اسم المستخدم</Label><Input dir="ltr" value={form.username} onChange={(e) => setForm((current) => ({ ...current, username: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} placeholder="dr.eslam" /></div>}
+      <div className="space-y-1.5"><Label>الاسم الظاهر</Label><Input value={form.display_name} onChange={(e) => setForm((current) => ({ ...current, display_name: e.target.value }))} placeholder="د/ إسلام" /></div>
+      {showPin && <div className="space-y-1.5"><Label>الرقم السري الافتراضي</Label><Input dir="ltr" inputMode="numeric" value={form.pin} onChange={(e) => setForm((current) => ({ ...current, pin: e.target.value.replace(/\D/g, '').slice(0, 12) }))} className="text-center tracking-[0.35em]" /></div>}
+      <div className="space-y-1.5"><Label>الدور</Label><Select value={form.role} onValueChange={(role) => setForm((current) => ({ ...current, role }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(ROLE_CONFIG).map(([key, value]) => <SelectItem key={key} value={key}>{value.label}</SelectItem>)}</SelectContent></Select></div>
+      <div className="space-y-2"><Label>الفروع المسموح بها</Label><BranchPicker value={form.branch_ids} onChange={(branch_ids) => setForm((current) => ({ ...current, branch_ids }))} /></div>
     </div>
   );
 }
