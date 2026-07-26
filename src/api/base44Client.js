@@ -78,6 +78,14 @@ export const staffAccountsApi = {
   resetPin: (id, pin) => callDataApi({ action: 'adminAccounts', admin_action: 'reset_pin', payload: { id, pin } }),
 };
 
+export const invoiceWorkflowApi = {
+  submit: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'submit', note }),
+  review: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'review', note }),
+  approve: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'approve', note }),
+  returnForCorrection: (invoiceId, note) => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'return', note }),
+  reopen: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'reopen', note }),
+};
+
 export const base44 = {
   entities,
   auth: {
