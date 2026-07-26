@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -15,6 +15,7 @@ const navItems = [
   { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2, teal: true },
   { path: "/purchase-workflow", label: "مركز دورة المشتريات", icon: GitBranch, emerald: true },
   { path: "/invoices", label: "فواتير الشراء", icon: FileText },
+  { path: "/invoices/quality", label: "جودة الفواتير", icon: ListChecks, amber: true },
   { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badge: true },
   { path: "/medicine-list", label: "أدوية اللسته", icon: FlaskConical, gold: true },
   { path: "/expenses", label: "المصروفات", icon: Receipt },
