@@ -1,14 +1,19 @@
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
+const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
+const ENV_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_KEY = ENV_KEY?.startsWith('eyJ') ? ENV_KEY : LEGACY_ANON_KEY;
 const SESSION_KEY = 'dawaa_staff_session';
-const ACCOUNT_KEY = 'dawaa_staff_account';
+
+function readSession() {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
 
 function getSessionToken() {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || '{}')?.token || '';
-  } catch {
-    return '';
-  }
+  return readSession()?.session_token || '';
 }
 
 async function callDataApi(payload) {
@@ -31,10 +36,9 @@ async function callDataApi(payload) {
   if (!response.ok || body?.ok === false) {
     if (response.status === 401 || body?.error === 'invalid_session') {
       localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem(ACCOUNT_KEY);
       window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
     }
-    throw new Error(body?.error || `Data request failed (${response.status})`);
+    throw new Error(body?.error || body?.message || `Data request failed (${response.status})`);
   }
   return body.data;
 }
@@ -57,11 +61,7 @@ const entities = new Proxy({}, {
 });
 
 function currentAccount() {
-  try {
-    return JSON.parse(localStorage.getItem(ACCOUNT_KEY) || 'null');
-  } catch {
-    return null;
-  }
+  return readSession()?.account || null;
 }
 
 export const base44 = {
@@ -73,12 +73,16 @@ export const base44 = {
       return {
         ...account,
         full_name: account.display_name,
+        name: account.display_name,
+        email: '',
+        branches: Array.isArray(account.branch_ids) ? account.branch_ids : [],
+        branch: Array.isArray(account.branch_ids) ? account.branch_ids[0] || '' : '',
+        original_role: account.role,
         role: account.role === 'general_manager' ? 'admin' : account.role,
       };
     },
     logout: () => {
       localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem(ACCOUNT_KEY);
     },
     redirectToLogin: () => window.location.assign('/'),
   },
