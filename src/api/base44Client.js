@@ -10,6 +10,14 @@ function readSession() {
   catch { return null; }
 }
 function getSessionToken() { return readSession()?.session_token || ''; }
+function errorText(value, fallback = 'حدث خطأ غير متوقع') {
+  if (!value) return fallback;
+  if (typeof value === 'string') return value;
+  if (value?.message) return String(value.message);
+  if (value?.details) return String(value.details);
+  if (value?.hint) return String(value.hint);
+  try { return JSON.stringify(value); } catch { return fallback; }
+}
 
 async function executeRequest(payload) {
   const token = getSessionToken();
@@ -19,22 +27,16 @@ async function executeRequest(payload) {
   try {
     const response = await fetch(`${SUPABASE_URL}/functions/v1/app-data`, {
       method: 'POST',
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        'x-staff-session': token,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'x-staff-session': token },
+      body: JSON.stringify(payload), signal: controller.signal,
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body?.ok === false) {
-      if (response.status === 401 || body?.error === 'invalid_session') {
-        localStorage.removeItem(SESSION_KEY);
+      const message = errorText(body?.error || body?.message, `Data request failed (${response.status})`);
+      if (response.status === 401 || message === 'invalid_session') {
         window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
       }
-      throw new Error(body?.error || body?.message || `Data request failed (${response.status})`);
+      throw new Error(message);
     }
     return body.data;
   } catch (error) {
@@ -52,6 +54,31 @@ async function callDataApi(payload) {
     await new Promise((resolve) => window.setTimeout(resolve, 450));
     return executeRequest(payload);
   }
+}
+
+async function callSecureRpc(functionName, params = {}) {
+  const token = getSessionToken();
+  if (!token) throw new Error('invalid_session');
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_session_token: token, ...params }),
+      signal: controller.signal,
+    });
+    const result = await response.json().catch(() => ({}));
+    const message = errorText(result?.error || result?.message || result?.details, `تعذر تنفيذ الاستعلام (${response.status})`);
+    if (!response.ok || result?.ok === false) {
+      if (result?.error === 'invalid_session') window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
+      throw new Error(message);
+    }
+    return result.data;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.');
+    throw error;
+  } finally { window.clearTimeout(timeout); }
 }
 
 function entityClient(entity) {
@@ -87,8 +114,18 @@ export const invoiceWorkflowApi = {
 };
 
 export const performanceApi = {
-  invoices: (params = {}) => callDataApi({ action: 'pagedInvoices', ...params }),
-  dashboard: (params = {}) => callDataApi({ action: 'dashboardSummary', ...params }),
+  dashboard: (params = {}) => callSecureRpc('app_dashboard_summary', {
+    p_branch: params.branch || 'all', p_date_from: params.date_from || null,
+    p_date_to: params.date_to || null, p_month: params.month || null,
+  }),
+  invoices: (params = {}) => callSecureRpc('app_paged_purchase_invoices', {
+    p_branch: params.branch || 'all', p_date_from: params.date_from || null, p_date_to: params.date_to || null,
+    p_search: params.search || null, p_payment_type: params.payment_type === 'all' ? null : params.payment_type || null,
+    p_purchase_category: params.purchase_category === 'all' ? null : params.purchase_category || null,
+    p_workflow_status: params.workflow_status === 'all' ? null : params.workflow_status || null,
+    p_sort_field: params.sort_by || 'invoice_date', p_sort_direction: params.sort_direction || 'desc',
+    p_page: params.page || 1, p_page_size: params.page_size || 50,
+  }),
 };
 
 export const base44 = {
@@ -97,34 +134,16 @@ export const base44 = {
     me: async () => {
       const account = currentAccount();
       if (!account) throw new Error('Authentication required');
-      return {
-        ...account,
-        full_name: account.display_name,
-        name: account.display_name,
-        email: '',
-        branches: Array.isArray(account.branch_ids) ? account.branch_ids : [],
-        branch: Array.isArray(account.branch_ids) ? account.branch_ids[0] || '' : '',
-        original_role: account.role,
-        role: account.role === 'general_manager' ? 'admin' : account.role,
-      };
+      return { ...account, full_name: account.display_name, name: account.display_name, email: '', branches: Array.isArray(account.branch_ids) ? account.branch_ids : [], branch: Array.isArray(account.branch_ids) ? account.branch_ids[0] || '' : '', original_role: account.role, role: account.role === 'general_manager' ? 'admin' : account.role };
     },
     logout: () => localStorage.removeItem(SESSION_KEY),
     redirectToLogin: () => window.location.assign('/'),
   },
-  integrations: {
-    Core: {
-      UploadFile: async ({ file }) => {
-        if (!file) throw new Error('File is required');
-        const file_url = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(reader.error || new Error('Unable to read file'));
-          reader.readAsDataURL(file);
-        });
-        return { file_url };
-      },
-    },
-  },
+  integrations: { Core: { UploadFile: async ({ file }) => {
+    if (!file) throw new Error('File is required');
+    const file_url = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error || new Error('Unable to read file')); reader.readAsDataURL(file); });
+    return { file_url };
+  } } },
   functions: { invoke: async (name, payload) => ({ data: { ok: true, migrated: true, function: name, payload } }) },
   asServiceRole: { entities },
 };
