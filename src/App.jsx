@@ -11,6 +11,7 @@ import Dashboard from './pages/Dashboard';
 import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
 import QuickInvoiceEntry from './pages/QuickInvoiceEntry';
 import InvoiceQualityCenter from './pages/InvoiceQualityCenter';
+import DoctorAccountCoverage from './pages/DoctorAccountCoverage';
 import Suppliers from './pages/Suppliers.jsx';
 import Expenses from './pages/Expenses';
 import Reports from './pages/Reports';
@@ -66,6 +67,7 @@ const AuthenticatedApp = () => {
         <Route path="/supplier-balances" element={<SupplierBalances />} />
         <Route path="/activity-log" element={<ActivityLog />} />
         <Route path="/user-management" element={<UserManagement />} />
+        <Route path="/doctor-account-coverage" element={<DoctorAccountCoverage />} />
         <Route path="/team-members" element={<TeamMembers />} />
         <Route path="/team-merge" element={<TeamMergeCenter />} />
         <Route path="/pending-invoices" element={<PendingInvoices />} />
@@ -106,4 +108,4 @@ function App() {
   )
 }
 
-export default App
+export default App;
