@@ -3,6 +3,7 @@ const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const ENV_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const SUPABASE_KEY = ENV_KEY?.startsWith('eyJ') ? ENV_KEY : LEGACY_ANON_KEY;
 const SESSION_KEY = 'dawaa_staff_session';
+const REQUEST_TIMEOUT_MS = 20000;
 
 function readSession() {
   try {
@@ -16,31 +17,52 @@ function getSessionToken() {
   return readSession()?.session_token || '';
 }
 
-async function callDataApi(payload) {
-  if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase configuration is missing');
+async function executeRequest(payload) {
   const token = getSessionToken();
   if (!token) throw new Error('invalid_session');
 
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/app-data`, {
-    method: 'POST',
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-      'x-staff-session': token,
-    },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/app-data`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'x-staff-session': token,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
 
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || body?.ok === false) {
-    if (response.status === 401 || body?.error === 'invalid_session') {
-      localStorage.removeItem(SESSION_KEY);
-      window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || body?.ok === false) {
+      if (response.status === 401 || body?.error === 'invalid_session') {
+        localStorage.removeItem(SESSION_KEY);
+        window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
+      }
+      throw new Error(body?.error || body?.message || `Data request failed (${response.status})`);
     }
-    throw new Error(body?.error || body?.message || `Data request failed (${response.status})`);
+    return body.data;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return body.data;
+}
+
+async function callDataApi(payload) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('إعدادات Supabase غير مكتملة.');
+  try {
+    return await executeRequest(payload);
+  } catch (error) {
+    const retryable = !['invalid_session', 'Authentication required'].includes(error?.message);
+    if (!retryable) throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 450));
+    return executeRequest(payload);
+  }
 }
 
 function entityClient(entity) {
@@ -53,7 +75,6 @@ function entityClient(entity) {
     delete: (id) => callDataApi({ action: 'delete', entity, id }),
     bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }),
     bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }),
-    // Base44 realtime compatibility. Supabase polling/query invalidation will be added later.
     subscribe: () => () => {},
   };
 }
@@ -83,9 +104,7 @@ export const base44 = {
         role: account.role === 'general_manager' ? 'admin' : account.role,
       };
     },
-    logout: () => {
-      localStorage.removeItem(SESSION_KEY);
-    },
+    logout: () => localStorage.removeItem(SESSION_KEY),
     redirectToLogin: () => window.location.assign('/'),
   },
   integrations: {
