@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 140" role="img" aria-labelledby="title desc">
+  <title id="title">صيدليات دواء</title>
+  <desc id="desc">شعار صيدليات دواء</desc>
+  <rect width="420" height="140" rx="28" fill="#ffffff"/>
+  <g transform="translate(28 24)">
+    <rect x="0" y="0" width="92" height="92" rx="24" fill="#0f9d8f"/>
+    <rect x="21" y="21" width="50" height="50" rx="12" fill="#ffffff"/>
+    <path d="M46 31v30M31 46h30" stroke="#0f9d8f" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <text x="390" y="66" text-anchor="end" direction="rtl" font-family="Arial, Tahoma, sans-serif" font-size="43" font-weight="700" fill="#0f766e">صيدليات دواء</text>
+  <text x="390" y="105" text-anchor="end" direction="rtl" font-family="Arial, Tahoma, sans-serif" font-size="22" fill="#64748b">رعاية تثق بها</text>
+</svg>
