@@ -3,46 +3,64 @@ import {
   loginWithUsernamePin,
   logoutUsernameSession,
   normalizeAccountForLegacyCode,
+  readStoredSession,
   validateStoredSession,
 } from '@/lib/supabaseAuth';
 
 const AuthContext = createContext(null);
 
+function getInitialAuth() {
+  const session = readStoredSession();
+  if (!session?.session_token || !session?.account) {
+    return { user: null, authenticated: false };
+  }
+  return { user: normalizeAccountForLegacyCode(session.account), authenticated: true };
+}
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const initial = getInitialAuth();
+  const [user, setUser] = useState(initial.user);
+  const [isAuthenticated, setIsAuthenticated] = useState(initial.authenticated);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(!initial.authenticated);
   const [authError, setAuthError] = useState(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const checkUserAuth = useCallback(async () => {
-    setIsLoadingAuth(true);
+  const checkUserAuth = useCallback(async ({ silent = false } = {}) => {
+    const cached = readStoredSession();
+    if (!silent && !cached?.account) setIsLoadingAuth(true);
+
     const result = await validateStoredSession();
     if (result?.ok) {
       setUser(normalizeAccountForLegacyCode(result.account));
       setIsAuthenticated(true);
       setAuthError(null);
+    } else if (result?.error === 'network_error' && cached?.account && cached?.session_token) {
+      // Keep the cached authenticated state during temporary network or Supabase delays.
+      setUser(normalizeAccountForLegacyCode(cached.account));
+      setIsAuthenticated(true);
+      setAuthError(result);
     } else {
       setUser(null);
       setIsAuthenticated(false);
-      if (result?.error === 'network_error') setAuthError(result);
+      setAuthError(result?.error === 'network_error' ? result : null);
     }
+
     setIsLoadingAuth(false);
     return result;
   }, []);
 
   useEffect(() => {
-    checkUserAuth();
-  }, [checkUserAuth]);
+    checkUserAuth({ silent: initial.authenticated });
+  }, [checkUserAuth, initial.authenticated]);
 
   useEffect(() => {
     const handleExpired = () => {
-      setUser(null);
-      setIsAuthenticated(false);
+      // A single failed API request must not immediately eject the user.
+      checkUserAuth({ silent: true });
     };
     window.addEventListener('dawaa-session-expired', handleExpired);
     return () => window.removeEventListener('dawaa-session-expired', handleExpired);
-  }, []);
+  }, [checkUserAuth]);
 
   const login = async (username, pin) => {
     try {
