@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -14,6 +14,7 @@ const navItems = [
   { path: "/system-status", label: "حالة النظام", icon: Activity, adminOnly: true },
   { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2, teal: true },
   { path: "/smart-purchase-orders", label: "طلبيات المشتريات الذكية", icon: BrainCircuit, emerald: true },
+  { path: "/smart-purchase-receiving", label: "استلام ومطابقة الطلبيات", icon: PackageCheck, cyan: true },
   { path: "/purchase-workflow", label: "مركز دورة المشتريات", icon: GitBranch, emerald: true },
   { path: "/invoices", label: "فواتير الشراء", icon: FileText },
   { path: "/invoices/quality", label: "جودة الفواتير", icon: ListChecks, amber: true },
