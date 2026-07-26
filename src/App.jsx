@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
 import AppErrorBoundary from './components/system/AppErrorBoundary';
+import FastDashboard from './pages/FastDashboard';
 import Dashboard from './pages/Dashboard';
 import FastPurchaseInvoices from './pages/FastPurchaseInvoices';
 import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
@@ -57,7 +58,8 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<FastDashboard />} />
+        <Route path="/dashboard/advanced" element={<Dashboard />} />
         <Route path="/system-status" element={<SystemStatus />} />
         <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
         <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
