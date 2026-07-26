@@ -6,21 +6,14 @@ const SESSION_KEY = 'dawaa_staff_session';
 const REQUEST_TIMEOUT_MS = 20000;
 
 function readSession() {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
+  catch { return null; }
 }
-
-function getSessionToken() {
-  return readSession()?.session_token || '';
-}
+function getSessionToken() { return readSession()?.session_token || ''; }
 
 async function executeRequest(payload) {
   const token = getSessionToken();
   if (!token) throw new Error('invalid_session');
-
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
@@ -35,7 +28,6 @@ async function executeRequest(payload) {
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body?.ok === false) {
       if (response.status === 401 || body?.error === 'invalid_session') {
@@ -48,17 +40,14 @@ async function executeRequest(payload) {
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.');
     throw error;
-  } finally {
-    window.clearTimeout(timeout);
-  }
+  } finally { window.clearTimeout(timeout); }
 }
 
 async function callDataApi(payload) {
   if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('إعدادات Supabase غير مكتملة.');
-  try {
-    return await executeRequest(payload);
-  } catch (error) {
-    const retryable = !['invalid_session', 'Authentication required'].includes(error?.message);
+  try { return await executeRequest(payload); }
+  catch (error) {
+    const retryable = !['invalid_session', 'Authentication required', 'forbidden'].includes(error?.message);
     if (!retryable) throw error;
     await new Promise((resolve) => window.setTimeout(resolve, 450));
     return executeRequest(payload);
@@ -78,14 +67,16 @@ function entityClient(entity) {
     subscribe: () => () => {},
   };
 }
+const entities = new Proxy({}, { get: (_target, entity) => entityClient(String(entity)) });
+function currentAccount() { return readSession()?.account || null; }
 
-const entities = new Proxy({}, {
-  get: (_target, entity) => entityClient(String(entity)),
-});
-
-function currentAccount() {
-  return readSession()?.account || null;
-}
+export const staffAccountsApi = {
+  list: () => callDataApi({ action: 'adminAccounts', admin_action: 'list' }),
+  create: (payload) => callDataApi({ action: 'adminAccounts', admin_action: 'create', payload }),
+  update: (payload) => callDataApi({ action: 'adminAccounts', admin_action: 'update', payload }),
+  setStatus: (id, status) => callDataApi({ action: 'adminAccounts', admin_action: 'set_status', payload: { id, status } }),
+  resetPin: (id, pin) => callDataApi({ action: 'adminAccounts', admin_action: 'reset_pin', payload: { id, pin } }),
+};
 
 export const base44 = {
   entities,
@@ -121,12 +112,7 @@ export const base44 = {
       },
     },
   },
-  functions: {
-    invoke: async (name, payload) => {
-      console.warn(`Legacy function ${name} is not required after Supabase migration`, payload);
-      return { data: { ok: true, migrated: true, function: name } };
-    },
-  },
+  functions: { invoke: async (name, payload) => ({ data: { ok: true, migrated: true, function: name, payload } }) },
   asServiceRole: { entities },
 };
 
