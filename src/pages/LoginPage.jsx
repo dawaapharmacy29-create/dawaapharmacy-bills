@@ -6,7 +6,7 @@ const ERROR_MESSAGES = {
   invalid_credentials: 'اسم المستخدم أو الرقم السري غير صحيح.',
   account_disabled: 'الحساب موقوف. راجع المدير العام.',
   account_locked: 'تم إيقاف المحاولات مؤقتًا. جرّب بعد 15 دقيقة.',
-  network_error: 'تعذر الاتصال بالخادم. راجع الإنترنت وحاول مرة أخرى.',
+  network_error: 'تعذر الوصول إلى Supabase. أعد المحاولة بعد تحديث الصفحة.',
 };
 
 export default function LoginPage() {
@@ -27,19 +27,20 @@ export default function LoginPage() {
     setLoading(true);
     const result = await login(username, pin);
     setLoading(false);
-    if (!result?.ok) setError(ERROR_MESSAGES[result?.error] || result?.message || 'تعذر تسجيل الدخول.');
+    if (!result?.ok) {
+      setError(result?.message || ERROR_MESSAGES[result?.error] || 'تعذر تسجيل الدخول.');
+    }
   };
 
   return (
     <div dir="rtl" className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-emerald-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-3xl shadow-xl border border-teal-100 overflow-hidden">
-          <div className="bg-teal-600 px-8 py-8 text-center">
-            <div className="mx-auto mb-3 w-16 h-16 rounded-2xl bg-white/15 flex items-center justify-center">
-              <LockKeyhole className="w-8 h-8 text-white" />
+          <div className="bg-teal-600 px-8 py-7 text-center">
+            <div className="mx-auto mb-4 w-full max-w-[280px] rounded-2xl bg-white p-3 shadow-sm">
+              <img src="/dawaa-logo.svg" alt="شعار صيدليات دواء" className="w-full h-auto" />
             </div>
-            <h1 className="text-2xl font-bold text-white">صيدليات دواء</h1>
-            <p className="text-teal-100 mt-1">نظام المشتريات والحسابات</p>
+            <p className="text-teal-50 font-medium">نظام المشتريات والحسابات</p>
           </div>
 
           <form onSubmit={submit} className="p-7 space-y-5">
@@ -78,14 +79,14 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {error && <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>}
+            {error && <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 break-words">{error}</div>}
 
             <button disabled={loading} className="w-full h-12 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white font-bold transition-colors">
               {loading ? 'جاري تسجيل الدخول...' : 'دخول'}
             </button>
           </form>
         </div>
-        <p className="text-center text-xs text-gray-400 mt-4">لا يتم استخدام البريد الإلكتروني لتسجيل الدخول</p>
+        <p className="text-center text-xs text-gray-400 mt-4">تسجيل الدخول باسم المستخدم والرقم السري فقط</p>
       </div>
     </div>
   );
