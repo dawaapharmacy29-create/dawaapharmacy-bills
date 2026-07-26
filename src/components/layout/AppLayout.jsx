@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -13,6 +13,7 @@ const navItems = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
   { path: "/system-status", label: "حالة النظام", icon: Activity, adminOnly: true },
   { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2, teal: true },
+  { path: "/smart-purchase-orders", label: "طلبيات المشتريات الذكية", icon: BrainCircuit, emerald: true },
   { path: "/purchase-workflow", label: "مركز دورة المشتريات", icon: GitBranch, emerald: true },
   { path: "/invoices", label: "فواتير الشراء", icon: FileText },
   { path: "/invoices/quality", label: "جودة الفواتير", icon: ListChecks, amber: true },
@@ -80,13 +81,8 @@ export default function AppLayout() {
     const pathOnly = item.path.split("?")[0];
     const isActive = location.pathname === pathOnly && (item.path === pathOnly || location.search === `?${item.path.split("?")[1] || ""}`);
     return (
-      <Link
-        key={item.path}
-        to={item.path}
-        onClick={closeMobile ? () => setOpen(false) : undefined}
-        className={cn(
-          "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",
-          item.indent ? "px-2 py-2 mr-3" : "px-3 py-2.5",
+      <Link key={item.path} to={item.path} onClick={closeMobile ? () => setOpen(false) : undefined}
+        className={cn("flex items-center gap-3 rounded-lg text-sm font-medium transition-colors", item.indent ? "px-2 py-2 mr-3" : "px-3 py-2.5",
           item.gold ? "bg-yellow-50 text-yellow-700 border border-yellow-300"
             : item.pink ? "bg-pink-50 text-pink-700 border border-pink-200"
             : item.dark ? "bg-gray-900 text-white border border-gray-700"
@@ -98,8 +94,7 @@ export default function AppLayout() {
             : item.amber ? "bg-amber-50 text-amber-700 border border-amber-200"
             : isActive ? "bg-teal-50 text-teal-700"
             : item.indent ? "text-gray-500 hover:bg-gray-100 text-xs"
-            : "text-gray-600 hover:bg-gray-100"
-        )}
+            : "text-gray-600 hover:bg-gray-100")}
       >
         <item.icon className={cn(item.indent ? "w-3 h-3" : "w-4 h-4")} />
         <span className="flex-1">{item.label}</span>
@@ -109,15 +104,8 @@ export default function AppLayout() {
   });
 
   const logoutButton = (mobile = false) => (
-    <button
-      type="button"
-      disabled={isLoggingOut}
-      onClick={() => {
-        if (mobile) setOpen(false);
-        logout();
-      }}
-      className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-    >
+    <button type="button" disabled={isLoggingOut} onClick={() => { if (mobile) setOpen(false); logout(); }}
+      className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60">
       <LogOut className="w-4 h-4" /> {isLoggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
     </button>
   );
@@ -126,38 +114,16 @@ export default function AppLayout() {
     <div dir="rtl" className="flex min-h-screen bg-gray-50">
       <aside className="hidden md:flex flex-col w-60 bg-white border-l shadow-sm">
         <BrandHeader />
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <p className="text-sm font-bold text-gray-800 truncate">{user?.full_name || user?.username}</p>
-          <p className="text-xs text-gray-500 truncate" dir="ltr">{user?.username}</p>
-        </div>
+        <div className="px-4 py-3 border-b bg-gray-50"><p className="text-sm font-bold text-gray-800 truncate">{user?.full_name || user?.username}</p><p className="text-xs text-gray-500 truncate" dir="ltr">{user?.username}</p></div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">{renderNav()}</nav>
         <div className="p-3 border-t">{logoutButton()}</div>
       </aside>
-
       <div className="md:hidden fixed top-0 right-0 left-0 z-[60] bg-teal-600 flex items-center justify-between px-3 py-2.5 shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="h-9 w-9 overflow-hidden rounded-lg bg-white p-1"><img src="/dawaa-logo.jpg" alt="صيدليات دواء" className="h-full w-full object-contain" /></div>
-          <div><h1 className="text-white font-bold text-sm">صيدليات دواء</h1><p className="text-teal-100 text-[10px]">المشتريات</p></div>
-        </div>
+        <div className="flex items-center gap-2"><div className="h-9 w-9 overflow-hidden rounded-lg bg-white p-1"><img src="/dawaa-logo.jpg" alt="صيدليات دواء" className="h-full w-full object-contain" /></div><div><h1 className="text-white font-bold text-sm">صيدليات دواء</h1><p className="text-teal-100 text-[10px]">المشتريات</p></div></div>
         <button type="button" onClick={() => setOpen(true)} className="text-white p-2 active:bg-teal-500 rounded-lg"><Menu className="w-6 h-6" /></button>
       </div>
-
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="right" className="w-72 p-0" dir="rtl">
-          <BrandHeader compact />
-          <div className="px-4 py-3 border-b bg-gray-50">
-            <p className="text-sm font-bold text-gray-800 truncate">{user?.full_name || user?.username}</p>
-            <p className="text-xs text-gray-500 truncate" dir="ltr">{user?.username}</p>
-          </div>
-          <nav className="overflow-y-auto p-3 space-y-1 h-[calc(100vh-165px)]">{renderNav(true)}</nav>
-          <div className="p-3 border-t">{logoutButton(true)}</div>
-        </SheetContent>
-      </Sheet>
-
-      <main className="flex-1 md:overflow-auto pt-14 md:pt-0 flex flex-col min-w-0">
-        <div className="px-4 pt-3 pb-0 flex justify-end"><SmartAlerts /></div>
-        <div className="flex-1"><Outlet /></div>
-      </main>
+      <Sheet open={open} onOpenChange={setOpen}><SheetContent side="right" className="w-72 p-0" dir="rtl"><BrandHeader compact /><div className="px-4 py-3 border-b bg-gray-50"><p className="text-sm font-bold text-gray-800 truncate">{user?.full_name || user?.username}</p><p className="text-xs text-gray-500 truncate" dir="ltr">{user?.username}</p></div><nav className="overflow-y-auto p-3 space-y-1 h-[calc(100vh-165px)]">{renderNav(true)}</nav><div className="p-3 border-t">{logoutButton(true)}</div></SheetContent></Sheet>
+      <main className="flex-1 md:overflow-auto pt-14 md:pt-0 flex flex-col min-w-0"><div className="px-4 pt-3 pb-0 flex justify-end"><SmartAlerts /></div><div className="flex-1"><Outlet /></div></main>
     </div>
   );
 }
