@@ -53,6 +53,8 @@ function entityClient(entity) {
     delete: (id) => callDataApi({ action: 'delete', entity, id }),
     bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }),
     bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }),
+    // Base44 realtime compatibility. Supabase polling/query invalidation will be added later.
+    subscribe: () => () => {},
   };
 }
 
@@ -108,3 +110,5 @@ export const base44 = {
   },
   asServiceRole: { entities },
 };
+
+export default base44;
