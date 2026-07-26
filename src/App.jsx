@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
 import AppErrorBoundary from './components/system/AppErrorBoundary';
 import Dashboard from './pages/Dashboard';
+import FastPurchaseInvoices from './pages/FastPurchaseInvoices';
 import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
 import QuickInvoiceEntry from './pages/QuickInvoiceEntry';
 import InvoiceQualityCenter from './pages/InvoiceQualityCenter';
@@ -60,7 +61,8 @@ const AuthenticatedApp = () => {
         <Route path="/system-status" element={<SystemStatus />} />
         <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
         <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
-        <Route path="/invoices" element={<PurchaseInvoices />} />
+        <Route path="/invoices/manage" element={<PurchaseInvoices />} />
+        <Route path="/invoices" element={<FastPurchaseInvoices />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/expenses" element={<Expenses />} />
         <Route path="/reports" element={<Reports />} />
