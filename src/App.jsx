@@ -6,6 +6,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
+import AppErrorBoundary from './components/system/AppErrorBoundary';
 import Dashboard from './pages/Dashboard';
 import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
 import Suppliers from './pages/Suppliers.jsx';
@@ -33,14 +34,16 @@ import DataReviewCenter from './pages/DataReviewCenter';
 import BranchSettlements from './pages/BranchSettlements';
 import PurchaseWorkflowCenter from './pages/PurchaseWorkflowCenter';
 import TeamMergeCenter from './pages/TeamMergeCenter';
+import SystemStatus from './pages/SystemStatus';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated } = useAuth();
 
   if (isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white">
-        <div className="w-9 h-9 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin" />
+      <div dir="rtl" className="fixed inset-0 flex flex-col items-center justify-center gap-3 bg-white">
+        <div className="w-10 h-10 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin" />
+        <p className="text-sm font-medium text-slate-500">جاري التحقق من الحساب...</p>
       </div>
     );
   }
@@ -51,6 +54,7 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/system-status" element={<SystemStatus />} />
         <Route path="/invoices" element={<PurchaseInvoices />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/expenses" element={<Expenses />} />
@@ -85,14 +89,16 @@ const AuthenticatedApp = () => {
 
 function App() {
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <AuthenticatedApp />
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <Router>
+            <AuthenticatedApp />
+          </Router>
+          <Toaster />
+        </QueryClientProvider>
+      </AuthProvider>
+    </AppErrorBoundary>
   )
 }
 
