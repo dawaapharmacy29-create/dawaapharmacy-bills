@@ -40,80 +40,53 @@ import BranchSettlements from './pages/BranchSettlements';
 import PurchaseWorkflowCenter from './pages/PurchaseWorkflowCenter';
 import SmartPurchaseCenter from './pages/SmartPurchaseCenter';
 import SmartPurchaseReceiving from './pages/SmartPurchaseReceiving';
+import SmartPurchaseOrderManagement from './pages/SmartPurchaseOrderManagement';
 import TeamMergeCenter from './pages/TeamMergeCenter';
 import SystemStatus from './pages/SystemStatus';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated } = useAuth();
-
-  if (isLoadingAuth) {
-    return (
-      <div dir="rtl" className="fixed inset-0 flex flex-col items-center justify-center gap-3 bg-white">
-        <div className="w-10 h-10 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin" />
-        <p className="text-sm font-medium text-slate-500">جاري التحقق من الحساب...</p>
-      </div>
-    );
-  }
-
+  if (isLoadingAuth) return <div dir="rtl" className="fixed inset-0 flex flex-col items-center justify-center gap-3 bg-white"><div className="w-10 h-10 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin"/><p className="text-sm font-medium text-slate-500">جاري التحقق من الحساب...</p></div>;
   if (!isAuthenticated) return <LoginPage />;
-
-  return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        <Route path="/" element={<FastDashboard />} />
-        <Route path="/dashboard/advanced" element={<Dashboard />} />
-        <Route path="/system-status" element={<SystemStatus />} />
-        <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
-        <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
-        <Route path="/invoices/manage" element={<PurchaseInvoices />} />
-        <Route path="/invoices" element={<FastPurchaseInvoices />} />
-        <Route path="/suppliers" element={<Suppliers />} />
-        <Route path="/expenses" element={<Expenses />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/supplier-balances" element={<SupplierBalances />} />
-        <Route path="/activity-log" element={<ActivityLog />} />
-        <Route path="/user-management" element={<UserManagement />} />
-        <Route path="/doctor-account-coverage" element={<DoctorAccountCoverage />} />
-        <Route path="/team-members" element={<TeamMembers />} />
-        <Route path="/team-merge" element={<TeamMergeCenter />} />
-        <Route path="/pending-invoices" element={<PendingInvoices />} />
-        <Route path="/medicine-list" element={<MedicineList />} />
-        <Route path="/returns" element={<Returns />} />
-        <Route path="/inventory" element={<InventoryManagement />} />
-        <Route path="/customer-orders" element={<CustomerOrders />} />
-        <Route path="/pharmacy-orders" element={<PharmacyOrders />} />
-        <Route path="/inventory-count" element={<InventoryCount />} />
-        <Route path="/reports-branch" element={<ReportsBranch />} />
-        <Route path="/supplier-balances-branch" element={<SupplierBalancesBranch />} />
-        <Route path="/replenishment" element={<ReplenishmentPage />} />
-        <Route path="/shift-delivery" element={<ShiftDelivery />} />
-        <Route path="/security-audit" element={<SecurityAuditPage />} />
-        <Route path="/supplier-rules-backfill" element={<SupplierRulesBackfill />} />
-        <Route path="/review-needed-invoices" element={<ReviewNeededInvoices />} />
-        <Route path="/data-review" element={<DataReviewCenter />} />
-        <Route path="/branch-settlements" element={<BranchSettlements />} />
-        <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
-        <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
-        <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
-      </Route>
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
-  );
+  return <Routes><Route element={<AppLayout />}>
+    <Route path="/" element={<FastDashboard />} />
+    <Route path="/dashboard/advanced" element={<Dashboard />} />
+    <Route path="/system-status" element={<SystemStatus />} />
+    <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
+    <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
+    <Route path="/invoices/manage" element={<PurchaseInvoices />} />
+    <Route path="/invoices" element={<FastPurchaseInvoices />} />
+    <Route path="/suppliers" element={<Suppliers />} />
+    <Route path="/expenses" element={<Expenses />} />
+    <Route path="/reports" element={<Reports />} />
+    <Route path="/supplier-balances" element={<SupplierBalances />} />
+    <Route path="/activity-log" element={<ActivityLog />} />
+    <Route path="/user-management" element={<UserManagement />} />
+    <Route path="/doctor-account-coverage" element={<DoctorAccountCoverage />} />
+    <Route path="/team-members" element={<TeamMembers />} />
+    <Route path="/team-merge" element={<TeamMergeCenter />} />
+    <Route path="/pending-invoices" element={<PendingInvoices />} />
+    <Route path="/medicine-list" element={<MedicineList />} />
+    <Route path="/returns" element={<Returns />} />
+    <Route path="/inventory" element={<InventoryManagement />} />
+    <Route path="/customer-orders" element={<CustomerOrders />} />
+    <Route path="/pharmacy-orders" element={<PharmacyOrders />} />
+    <Route path="/inventory-count" element={<InventoryCount />} />
+    <Route path="/reports-branch" element={<ReportsBranch />} />
+    <Route path="/supplier-balances-branch" element={<SupplierBalancesBranch />} />
+    <Route path="/replenishment" element={<ReplenishmentPage />} />
+    <Route path="/shift-delivery" element={<ShiftDelivery />} />
+    <Route path="/security-audit" element={<SecurityAuditPage />} />
+    <Route path="/supplier-rules-backfill" element={<SupplierRulesBackfill />} />
+    <Route path="/review-needed-invoices" element={<ReviewNeededInvoices />} />
+    <Route path="/data-review" element={<DataReviewCenter />} />
+    <Route path="/branch-settlements" element={<BranchSettlements />} />
+    <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
+    <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
+    <Route path="/smart-purchase-orders/manage" element={<SmartPurchaseOrderManagement />} />
+    <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
+  </Route><Route path="*" element={<PageNotFound />} /></Routes>;
 };
 
-function App() {
-  return (
-    <AppErrorBoundary>
-      <AuthProvider>
-        <QueryClientProvider client={queryClientInstance}>
-          <Router>
-            <AuthenticatedApp />
-          </Router>
-          <Toaster />
-        </QueryClientProvider>
-      </AuthProvider>
-    </AppErrorBoundary>
-  )
-}
-
+function App(){return <AppErrorBoundary><AuthProvider><QueryClientProvider client={queryClientInstance}><Router><AuthenticatedApp /></Router><Toaster /></QueryClientProvider></AuthProvider></AppErrorBoundary>}
 export default App;
