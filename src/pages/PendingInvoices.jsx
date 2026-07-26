@@ -1,164 +1,242 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
-import { Button } from "@/components/ui/button";
-import { Trash2, CheckSquare, ClipboardList } from "lucide-react";
-import InvoiceTable from "@/components/invoices/InvoiceTable";
-import InvoiceViewDialog from "@/components/invoices/InvoiceViewDialog";
-import InvoiceFormDialog from "@/components/invoices/InvoiceFormDialog";
-import ConfirmDialog from "@/components/invoices/ConfirmDialog";
-import { logActivity } from "@/lib/activityLogger";
-import { useUserRole } from "@/lib/useUserRole";
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
+import { base44, invoiceWorkflowApi } from '@/api/base44Client';
+import { useUserRole } from '@/lib/useUserRole';
+import InvoiceViewDialog from '@/components/invoices/InvoiceViewDialog';
+import InvoiceFormDialog from '@/components/invoices/InvoiceFormDialog';
+import { CheckCircle2, ClipboardCheck, Eye, FileEdit, RotateCcw, Search, Send, ShieldCheck, WalletCards } from 'lucide-react';
+
+const STATUS_CONFIG = {
+  draft: { label: 'مسودة', className: 'bg-slate-100 text-slate-700' },
+  submitted: { label: 'في انتظار المراجعة', className: 'bg-amber-100 text-amber-800' },
+  reviewed: { label: 'تمت المراجعة', className: 'bg-blue-100 text-blue-800' },
+  returned: { label: 'مرتجعة للتصحيح', className: 'bg-red-100 text-red-800' },
+  approved: { label: 'معتمدة ماليًا', className: 'bg-emerald-100 text-emerald-800' },
+};
+
+const TABS = ['all', 'draft', 'submitted', 'reviewed', 'returned', 'approved'];
+const TAB_LABELS = { all: 'الكل', ...Object.fromEntries(Object.entries(STATUS_CONFIG).map(([key, value]) => [key, value.label])) };
+const ERROR_MESSAGES = {
+  forbidden: 'الحساب الحالي لا يملك صلاحية تنفيذ هذه الخطوة.',
+  invalid_transition: 'لا يمكن تنفيذ هذه الخطوة من حالة الفاتورة الحالية.',
+  note_required: 'اكتب سبب إعادة الفاتورة للتصحيح.',
+  invoice_not_found: 'الفاتورة غير موجودة.',
+};
 
 export default function PendingInvoices() {
-  const [selectedIds, setSelectedIds] = useState([]);
-  const [viewInvoice, setViewInvoice] = useState(null);
-  const [viewOpen, setViewOpen] = useState(false);
-  const [editingInvoice, setEditingInvoice] = useState(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmSave, setConfirmSave] = useState(false);
-  const [singleDeleteId, setSingleDeleteId] = useState(null);
-
   const qc = useQueryClient();
-  const { canSaveInvoice, canDeleteInvoice } = useUserRole();
+  const { toast } = useToast();
+  const { user, isAdmin, canEnterInvoice, canReviewInvoice, canApproveInvoice } = useUserRole();
+  const [tab, setTab] = useState('submitted');
+  const [search, setSearch] = useState('');
+  const [viewInvoice, setViewInvoice] = useState(null);
+  const [editingInvoice, setEditingInvoice] = useState(null);
+  const [actionState, setActionState] = useState(null);
+  const [note, setNote] = useState('');
 
-  const { data: invoices = [], isLoading } = useQuery({
-    queryKey: ["purchase-invoices"],
-    queryFn: () => base44.entities.PurchaseInvoice.list("-created_date"),
+  const invoicesQuery = useQuery({
+    queryKey: ['purchase-invoices'],
+    queryFn: () => base44.entities.PurchaseInvoice.list('-created_date', 10000, 0),
+    staleTime: 30000,
+    retry: 1,
   });
 
-  const pending = invoices.filter((i) => i.status === "انتظار المراجعة");
+  const allInvoices = invoicesQuery.data || [];
+  const branches = Array.isArray(user?.branch_ids) ? user.branch_ids : [];
+  const branchInvoices = useMemo(() => {
+    if (isAdmin || !branches.length) return allInvoices;
+    return allInvoices.filter((invoice) => !invoice.branch || branches.includes(invoice.branch));
+  }, [allInvoices, branches, isAdmin]);
+
+  const counts = useMemo(() => {
+    const result = { all: branchInvoices.length };
+    Object.keys(STATUS_CONFIG).forEach((status) => {
+      result[status] = branchInvoices.filter((invoice) => (invoice.workflow_status || 'approved') === status).length;
+    });
+    return result;
+  }, [branchInvoices]);
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return branchInvoices.filter((invoice) => {
+      const status = invoice.workflow_status || 'approved';
+      if (tab !== 'all' && status !== tab) return false;
+      if (!term) return true;
+      return [invoice.system_invoice_number, invoice.supplier_invoice_number, invoice.supplier_name, invoice.branch, invoice.entered_by_name]
+        .some((value) => String(value || '').toLowerCase().includes(term));
+    });
+  }, [branchInvoices, tab, search]);
+
+  const workflowMutation = useMutation({
+    mutationFn: async ({ invoice, action, note: actionNote }) => {
+      if (action === 'submit') return invoiceWorkflowApi.submit(invoice.id, actionNote);
+      if (action === 'review') return invoiceWorkflowApi.review(invoice.id, actionNote);
+      if (action === 'approve') return invoiceWorkflowApi.approve(invoice.id, actionNote);
+      if (action === 'return') return invoiceWorkflowApi.returnForCorrection(invoice.id, actionNote);
+      if (action === 'reopen') return invoiceWorkflowApi.reopen(invoice.id, actionNote);
+      throw new Error('unsupported_action');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-invoices'] });
+      qc.invalidateQueries({ queryKey: ['pending-invoices-count'] });
+      toast({ title: 'تم تحديث حالة الفاتورة بنجاح' });
+      setActionState(null);
+      setNote('');
+    },
+    onError: (error) => toast({ title: 'تعذر تنفيذ الإجراء', description: ERROR_MESSAGES[error?.message] || error?.message, variant: 'destructive' }),
+  });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.PurchaseInvoice.update(id, data),
-    onSuccess: (_, { data }) => {
-      qc.invalidateQueries({ queryKey: ["purchase-invoices"] });
-      setDialogOpen(false);
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['purchase-invoices'] });
       setEditingInvoice(null);
-      logActivity({ action_type: "update", entity_type: "invoice", entity_id: _.id, entity_label: data.system_invoice_number, details: `تعديل فاتورة` });
+      toast({ title: 'تم حفظ تصحيح الفاتورة' });
     },
+    onError: (error) => toast({ title: 'تعذر تعديل الفاتورة', description: ERROR_MESSAGES[error?.message] || error?.message, variant: 'destructive' }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.PurchaseInvoice.delete(id),
-    onSuccess: (_, id) => {
-      qc.setQueryData(["purchase-invoices"], (old = []) => old.filter((inv) => inv.id !== id));
-      setSelectedIds((prev) => prev.filter((s) => s !== id));
-      logActivity({ action_type: "delete", entity_type: "invoice", entity_id: id, entity_label: id, details: `حذف فاتورة` });
-    },
-  });
-
-  const executeBulkSave = () => {
-    selectedIds.forEach((id) => {
-      const inv = pending.find((i) => i.id === id);
-      if (inv) updateMutation.mutate({ id, data: { ...inv, status: "يتم الحفظ" } });
-    });
-    setSelectedIds([]);
+  const openAction = (invoice, action) => {
+    setActionState({ invoice, action });
+    setNote('');
   };
 
-  const executeBulkDelete = () => {
-    selectedIds.forEach((id) => deleteMutation.mutate(id));
-    setSelectedIds([]);
-  };
+  const actionLabel = (action) => ({ submit: 'إرسال للمراجعة', review: 'تأكيد المراجعة', approve: 'اعتماد مالي', return: 'إعادة للتصحيح', reopen: 'إعادة فتح الفاتورة' }[action] || action);
 
-  const executeSingleDelete = () => {
-    if (singleDeleteId) deleteMutation.mutate(singleDeleteId);
-    setSingleDeleteId(null);
+  const renderActions = (invoice) => {
+    const status = invoice.workflow_status || 'approved';
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => setViewInvoice(invoice)}><Eye className="h-3.5 w-3.5" /> عرض</Button>
+        {canEnterInvoice && ['draft', 'returned'].includes(status) && (
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => setEditingInvoice(invoice)}><FileEdit className="h-3.5 w-3.5" /> تعديل</Button>
+        )}
+        {canEnterInvoice && ['draft', 'returned'].includes(status) && (
+          <Button size="sm" className="gap-1 bg-teal-600 hover:bg-teal-700" onClick={() => openAction(invoice, 'submit')}><Send className="h-3.5 w-3.5" /> إرسال للمراجعة</Button>
+        )}
+        {canReviewInvoice && status === 'submitted' && (
+          <Button size="sm" className="gap-1 bg-blue-600 hover:bg-blue-700" onClick={() => openAction(invoice, 'review')}><ClipboardCheck className="h-3.5 w-3.5" /> تمت المراجعة</Button>
+        )}
+        {(canReviewInvoice || canApproveInvoice) && ['submitted', 'reviewed'].includes(status) && (
+          <Button size="sm" variant="outline" className="gap-1 border-red-300 text-red-700" onClick={() => openAction(invoice, 'return')}><RotateCcw className="h-3.5 w-3.5" /> إعادة للتصحيح</Button>
+        )}
+        {canApproveInvoice && status === 'reviewed' && (
+          <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => openAction(invoice, 'approve')}><WalletCards className="h-3.5 w-3.5" /> اعتماد مالي</Button>
+        )}
+        {isAdmin && status === 'approved' && (
+          <Button size="sm" variant="outline" onClick={() => openAction(invoice, 'reopen')}>إعادة فتح</Button>
+        )}
+      </div>
+    );
   };
-
-  const handleToggleSelect = (id) => {
-    setSelectedIds((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
-  };
-
-  const handleToggleAll = (checked, rows) => {
-    if (checked) setSelectedIds(rows.map((r) => r.id));
-    else setSelectedIds([]);
-  };
-
-  const handleView = (inv) => { setViewInvoice(inv); setViewOpen(true); };
-  const handleEdit = (inv) => { setEditingInvoice(inv); setDialogOpen(true); };
-  const handleSingleDelete = (id) => { setSingleDeleteId(id); setConfirmDelete(true); };
 
   return (
-    <div dir="rtl" className="p-4 md:p-6 space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div dir="rtl" className="space-y-5 p-4 md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-yellow-100 rounded-lg shrink-0">
-            <ClipboardList className="w-5 h-5 text-yellow-700" />
-          </div>
+          <div className="rounded-xl bg-amber-50 p-3"><ShieldCheck className="h-6 w-6 text-amber-700" /></div>
           <div>
-            <h1 className="text-lg md:text-2xl font-bold text-gray-800">فواتير تنتظر المراجعة</h1>
-            <p className="text-gray-500 text-sm mt-0.5">{pending.length} فاتورة في انتظار المراجعة</p>
+            <h1 className="text-2xl font-bold text-gray-900">دورة مراجعة واعتماد الفواتير</h1>
+            <p className="mt-1 text-sm text-gray-500">كل خطوة مسجلة باسم المستخدم ووقتها، من إدخال الفاتورة حتى الاعتماد المالي.</p>
           </div>
         </div>
+        <Badge variant="outline">الدور الحالي: {user?.display_name || user?.username}</Badge>
       </div>
 
-      {/* Bulk Actions Bar */}
-      {selectedIds.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2.5">
-          <span className="text-sm font-semibold text-yellow-700">تم تحديد {selectedIds.length} فاتورة</span>
-          <div className="flex gap-2 sm:mr-auto">
-            {canSaveInvoice && (
-              <Button size="sm" variant="outline" className="border-green-400 text-green-700 hover:bg-green-50 gap-1.5" onClick={() => setConfirmSave(true)}>
-                <CheckSquare className="w-3.5 h-3.5" /> <span className="hidden sm:inline">تحويل إلى</span> "يتم الحفظ"
-              </Button>
-            )}
-            {canDeleteInvoice && (
-              <Button size="sm" variant="outline" className="border-red-400 text-red-600 hover:bg-red-50 gap-1.5" onClick={() => setConfirmDelete(true)}>
-                <Trash2 className="w-3.5 h-3.5" /> حذف المحدد
-              </Button>
-            )}
-            <button className="text-xs text-gray-500 hover:underline" onClick={() => setSelectedIds([])}>إلغاء</button>
-          </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {Object.entries(STATUS_CONFIG).map(([status, config]) => (
+          <Card key={status} className="p-4">
+            <p className="text-xs text-gray-500">{config.label}</p>
+            <p className="mt-2 text-3xl font-bold text-gray-900">{counts[status] || 0}</p>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-4">
+        <div className="flex flex-wrap gap-2 border-b pb-4">
+          {TABS.map((status) => (
+            <button key={status} onClick={() => setTab(status)} className={`rounded-full px-3 py-1.5 text-xs font-bold ${tab === status ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              {TAB_LABELS[status]} ({counts[status] || 0})
+            </button>
+          ))}
+        </div>
+        <div className="relative mt-4 max-w-md">
+          <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث برقم الفاتورة أو المورد أو الفرع..." className="pr-10" />
+        </div>
+      </Card>
+
+      {invoicesQuery.isLoading ? (
+        <Card className="p-10 text-center text-gray-500">جاري تحميل الفواتير...</Card>
+      ) : invoicesQuery.isError ? (
+        <Card className="border-red-200 p-6 text-center text-red-700">{invoicesQuery.error?.message}</Card>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((invoice) => {
+            const status = invoice.workflow_status || 'approved';
+            const config = STATUS_CONFIG[status] || STATUS_CONFIG.approved;
+            return (
+              <Card key={invoice.id} className="p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-bold text-gray-900">فاتورة {invoice.system_invoice_number || 'بدون رقم'}</p>
+                      <Badge className={`${config.className} border-0`}>{config.label}</Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-gray-600">{invoice.supplier_name || 'مورد غير محدد'} — {invoice.branch || 'فرع غير محدد'}</p>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                      <span>القيمة: {Number(invoice.total_value || 0).toLocaleString('ar-EG')} ج</span>
+                      <span>التاريخ: {invoice.invoice_date || '—'}</span>
+                      <span>أدخلها: {invoice.entered_by_name || 'بيانات منقولة'}</span>
+                      {invoice.reviewed_by_name && <span>راجعها: {invoice.reviewed_by_name}</span>}
+                      {invoice.approved_by_name && <span>اعتمدها: {invoice.approved_by_name}</span>}
+                    </div>
+                    {invoice.review_note && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">ملاحظة المراجعة: {invoice.review_note}</p>}
+                  </div>
+                  {renderActions(invoice)}
+                </div>
+              </Card>
+            );
+          })}
+          {!filtered.length && <Card className="p-10 text-center text-gray-400"><CheckCircle2 className="mx-auto mb-3 h-10 w-10" />لا توجد فواتير في هذه المرحلة.</Card>}
         </div>
       )}
 
-      <InvoiceTable
-        invoices={pending}
-        isLoading={isLoading}
-        onEdit={handleEdit}
-        onDelete={handleSingleDelete}
-        onView={handleView}
-        selectedIds={selectedIds}
-        onToggleSelect={handleToggleSelect}
-        onToggleAll={handleToggleAll}
-      />
-
+      <InvoiceViewDialog open={!!viewInvoice} onOpenChange={(open) => !open && setViewInvoice(null)} invoice={viewInvoice} />
       <InvoiceFormDialog
-        open={dialogOpen}
-        onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingInvoice(null); }}
-        onSubmit={(formData) => { if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData }); }}
+        open={!!editingInvoice}
+        onOpenChange={(open) => !open && setEditingInvoice(null)}
         invoice={editingInvoice}
+        allInvoices={allInvoices}
         isLoading={updateMutation.isPending}
-        allInvoices={invoices}
+        onSubmit={(data) => updateMutation.mutate({ id: editingInvoice.id, data })}
       />
 
-      <InvoiceViewDialog
-        open={viewOpen}
-        onOpenChange={setViewOpen}
-        invoice={viewInvoice}
-        onEdit={canSaveInvoice ? handleEdit : null}
-      />
-
-      <ConfirmDialog
-        open={confirmDelete}
-        onOpenChange={(o) => { setConfirmDelete(o); if (!o) setSingleDeleteId(null); }}
-        title="تأكيد الحذف"
-        description={singleDeleteId ? "هل أنت متأكد من حذف هذه الفاتورة؟" : `هل أنت متأكد من حذف ${selectedIds.length} فاتورة؟`}
-        onConfirm={singleDeleteId ? executeSingleDelete : executeBulkDelete}
-        confirmLabel="حذف"
-      />
-
-      <ConfirmDialog
-        open={confirmSave}
-        onOpenChange={setConfirmSave}
-        title="تأكيد التحويل"
-        description={`هل أنت متأكد من تحويل ${selectedIds.length} فاتورة إلى "يتم الحفظ"؟`}
-        onConfirm={executeBulkSave}
-        confirmLabel="تحويل"
-        confirmClass="bg-green-600 hover:bg-green-700"
-      />
+      <Dialog open={!!actionState} onOpenChange={(open) => !open && setActionState(null)}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader><DialogTitle>{actionLabel(actionState?.action)}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">الفاتورة: {actionState?.invoice?.system_invoice_number || '—'}</p>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={actionState?.action === 'return' ? 'سبب الإعادة للتصحيح — مطلوب' : 'ملاحظة اختيارية'} />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setActionState(null)}>إلغاء</Button>
+            <Button
+              disabled={workflowMutation.isPending || (actionState?.action === 'return' && !note.trim())}
+              className="bg-teal-600 hover:bg-teal-700"
+              onClick={() => workflowMutation.mutate({ ...actionState, note })}
+            >
+              {workflowMutation.isPending ? 'جاري التنفيذ...' : 'تأكيد'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
