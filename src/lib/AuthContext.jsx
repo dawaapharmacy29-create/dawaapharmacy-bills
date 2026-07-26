@@ -13,6 +13,7 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const checkUserAuth = useCallback(async () => {
     setIsLoadingAuth(true);
@@ -34,6 +35,15 @@ export const AuthProvider = ({ children }) => {
     checkUserAuth();
   }, [checkUserAuth]);
 
+  useEffect(() => {
+    const handleExpired = () => {
+      setUser(null);
+      setIsAuthenticated(false);
+    };
+    window.addEventListener('dawaa-session-expired', handleExpired);
+    return () => window.removeEventListener('dawaa-session-expired', handleExpired);
+  }, []);
+
   const login = async (username, pin) => {
     try {
       const result = await loginWithUsernamePin(username, pin);
@@ -48,11 +58,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(() => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
     setUser(null);
     setIsAuthenticated(false);
-    await logoutUsernameSession();
-  };
+    logoutUsernameSession().finally(() => setIsLoggingOut(false));
+  }, [isLoggingOut]);
 
   return (
     <AuthContext.Provider value={{
@@ -62,6 +74,7 @@ export const AuthProvider = ({ children }) => {
       isLoadingPublicSettings: false,
       authError,
       authChecked: !isLoadingAuth,
+      isLoggingOut,
       login,
       logout,
       checkUserAuth,
