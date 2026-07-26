@@ -38,6 +38,7 @@ import ReviewNeededInvoices from './components/invoices/ReviewNeededInvoices';
 import DataReviewCenter from './pages/DataReviewCenter';
 import BranchSettlements from './pages/BranchSettlements';
 import PurchaseWorkflowCenter from './pages/PurchaseWorkflowCenter';
+import SmartPurchaseCenter from './pages/SmartPurchaseCenter';
 import TeamMergeCenter from './pages/TeamMergeCenter';
 import SystemStatus from './pages/SystemStatus';
 
@@ -91,6 +92,7 @@ const AuthenticatedApp = () => {
         <Route path="/data-review" element={<DataReviewCenter />} />
         <Route path="/branch-settlements" element={<BranchSettlements />} />
         <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
+        <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
