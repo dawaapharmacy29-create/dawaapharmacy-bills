@@ -1,21 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { useAuth } from '@/lib/AuthContext';
 
 export function useUserRole() {
-  const { data: user } = useQuery({
-    queryKey: ["current-user"],
-    queryFn: () => base44.auth.me(),
-  });
+  const { user } = useAuth();
+  const role = user?.role || 'viewer';
+  const isAdmin = role === 'admin';
+  const isManager = isAdmin || role === 'manager';
+  const isViewer = role === 'viewer';
 
-  const role = user?.role || "viewer";
-  const isAdmin = role === "admin";
-  const isManager = role === "admin" || role === "manager";
-  const isViewer = role === "viewer";
-
-  const canDeleteInvoice = isAdmin || !!user?.can_delete_invoice;
-  const canSaveInvoice = isAdmin || role === "manager" || !!user?.can_save_invoice;
-  const canManageTeam = isAdmin || !!user?.can_manage_team;
-  const canSetBudget = isAdmin || !!user?.can_set_budget;
-
-  return { role, isAdmin, isManager, isViewer, user, canDeleteInvoice, canSaveInvoice, canManageTeam, canSetBudget };
+  return {
+    role,
+    isAdmin,
+    isManager,
+    isViewer,
+    user,
+    canDeleteInvoice: isAdmin || !!user?.can_delete_invoice,
+    canSaveInvoice: isManager || !!user?.can_save_invoice,
+    canManageTeam: isAdmin || !!user?.can_manage_team,
+    canSetBudget: isAdmin || !!user?.can_set_budget,
+  };
 }
