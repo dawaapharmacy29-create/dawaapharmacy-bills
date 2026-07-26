@@ -86,6 +86,11 @@ export const invoiceWorkflowApi = {
   reopen: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'reopen', note }),
 };
 
+export const performanceApi = {
+  invoices: (params = {}) => callDataApi({ action: 'pagedInvoices', ...params }),
+  dashboard: (params = {}) => callDataApi({ action: 'dashboardSummary', ...params }),
+};
+
 export const base44 = {
   entities,
   auth: {
