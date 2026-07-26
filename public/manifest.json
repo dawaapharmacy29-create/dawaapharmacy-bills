@@ -1,0 +1,19 @@
+{
+  "name": "صيدليات دواء - نظام المشتريات والحسابات",
+  "short_name": "صيدليات دواء",
+  "description": "نظام المشتريات والحسابات لصيدليات دواء",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0fdfa",
+  "theme_color": "#0f9d8f",
+  "icons": [
+    {
+      "src": "/dawaa-favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
