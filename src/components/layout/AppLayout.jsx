@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/AuthContext";
 const navItems = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
   { path: "/system-status", label: "حالة النظام", icon: Activity, adminOnly: true },
+  { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2, teal: true },
   { path: "/purchase-workflow", label: "مركز دورة المشتريات", icon: GitBranch, emerald: true },
   { path: "/invoices", label: "فواتير الشراء", icon: FileText },
   { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badge: true },
