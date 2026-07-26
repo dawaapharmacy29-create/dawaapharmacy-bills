@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -39,7 +39,8 @@ const navItems = [
   { path: "/data-review", label: "مركز مراجعة البيانات", icon: Database, adminOnly: true },
   { path: "/security-audit", label: "سجل الأمان", icon: ShieldCheck, adminOnly: true },
   { path: "/supplier-rules-backfill", label: "تطبيق قواعد الموردين", icon: FileSearch, adminOnly: true },
-  { path: "/user-management", label: "المستخدمين والصلاحيات", icon: UserCheck },
+  { path: "/doctor-account-coverage", label: "تغطية حسابات الدكاترة", icon: UserRoundCheck, adminOnly: true },
+  { path: "/user-management", label: "المستخدمين والصلاحيات", icon: UserCheck, adminOnly: true },
   { path: "/team-members", label: "فريق العمل", icon: UserCheck },
   { path: "/team-merge", label: "دمج الموظفين", icon: ArrowLeftRight, adminOnly: true },
 ];
@@ -64,8 +65,8 @@ export default function AppLayout() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const { isAdmin } = useUserRole();
-  const { user, logout } = useAuth();
-  const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
+  const { user, logout, isLoggingOut } = useAuth();
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || isAdmin);
 
   const { data: pendingInvoices = [] } = useQuery({
     queryKey: ["pending-invoices-count"],
@@ -107,6 +108,20 @@ export default function AppLayout() {
     );
   });
 
+  const logoutButton = (mobile = false) => (
+    <button
+      type="button"
+      disabled={isLoggingOut}
+      onClick={() => {
+        if (mobile) setOpen(false);
+        logout();
+      }}
+      className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <LogOut className="w-4 h-4" /> {isLoggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
+    </button>
+  );
+
   return (
     <div dir="rtl" className="flex min-h-screen bg-gray-50">
       <aside className="hidden md:flex flex-col w-60 bg-white border-l shadow-sm">
@@ -116,11 +131,7 @@ export default function AppLayout() {
           <p className="text-xs text-gray-500 truncate" dir="ltr">{user?.username}</p>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">{renderNav()}</nav>
-        <div className="p-3 border-t">
-          <button onClick={logout} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50">
-            <LogOut className="w-4 h-4" /> تسجيل الخروج
-          </button>
-        </div>
+        <div className="p-3 border-t">{logoutButton()}</div>
       </aside>
 
       <div className="md:hidden fixed top-0 right-0 left-0 z-[60] bg-teal-600 flex items-center justify-between px-3 py-2.5 shadow-sm">
@@ -128,7 +139,7 @@ export default function AppLayout() {
           <div className="h-9 w-9 overflow-hidden rounded-lg bg-white p-1"><img src="/dawaa-logo.jpg" alt="صيدليات دواء" className="h-full w-full object-contain" /></div>
           <div><h1 className="text-white font-bold text-sm">صيدليات دواء</h1><p className="text-teal-100 text-[10px]">المشتريات</p></div>
         </div>
-        <button onClick={() => setOpen(true)} className="text-white p-2 active:bg-teal-500 rounded-lg"><Menu className="w-6 h-6" /></button>
+        <button type="button" onClick={() => setOpen(true)} className="text-white p-2 active:bg-teal-500 rounded-lg"><Menu className="w-6 h-6" /></button>
       </div>
 
       <Sheet open={open} onOpenChange={setOpen}>
@@ -139,11 +150,7 @@ export default function AppLayout() {
             <p className="text-xs text-gray-500 truncate" dir="ltr">{user?.username}</p>
           </div>
           <nav className="overflow-y-auto p-3 space-y-1 h-[calc(100vh-165px)]">{renderNav(true)}</nav>
-          <div className="p-3 border-t">
-            <button onClick={() => { setOpen(false); logout(); }} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50">
-              <LogOut className="w-4 h-4" /> تسجيل الخروج
-            </button>
-          </div>
+          <div className="p-3 border-t">{logoutButton(true)}</div>
         </SheetContent>
       </Sheet>
 
