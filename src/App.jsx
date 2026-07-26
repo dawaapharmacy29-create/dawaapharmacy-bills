@@ -4,7 +4,7 @@ import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
@@ -35,24 +35,17 @@ import PurchaseWorkflowCenter from './pages/PurchaseWorkflowCenter';
 import TeamMergeCenter from './pages/TeamMergeCenter';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isAuthenticated } = useAuth();
 
-  if (isLoadingPublicSettings || isLoadingAuth) {
+  if (isLoadingAuth) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+      <div className="fixed inset-0 flex items-center justify-center bg-white">
+        <div className="w-9 h-9 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      navigateToLogin();
-      return null;
-    }
-  }
+  if (!isAuthenticated) return <LoginPage />;
 
   return (
     <Routes>
