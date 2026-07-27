@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, BarChart3, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck, Landmark } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, BarChart3, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck, Landmark, Zap } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -13,11 +13,12 @@ const navItems = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
   { path: "/system-status", label: "حالة النظام", icon: Activity, adminOnly: true },
   { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2, teal: true },
-  { path: "/smart-purchase-orders", label: "طلبيات المشتريات الذكية", icon: BrainCircuit, emerald: true },
-  { path: "/smart-purchase-orders/manage", label: "إدارة واعتماد الطلبيات", icon: FileSearch, violet: true },
+  { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap, emerald: true },
+  { path: "/smart-purchase-orders", label: "رفع وتحليل ملف الطلبية", icon: BrainCircuit, indent: true },
+  { path: "/smart-purchase-orders/manage", label: "تعديل وعروض الموردين", icon: FileSearch, indent: true },
   { path: "/smart-purchase-receiving", label: "استلام ومطابقة الطلبيات", icon: PackageCheck, cyan: true },
   { path: "/smart-purchase-insights", label: "تقييم وتحسين المشتريات", icon: BarChart3, amber: true },
-  { path: "/purchase-workflow", label: "مركز دورة المشتريات", icon: GitBranch, emerald: true },
+  { path: "/purchase-workflow", label: "مركز دورة المشتريات", icon: GitBranch, indent: true },
   { path: "/invoices", label: "فواتير الشراء", icon: FileText },
   { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks, amber: true },
   { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badge: true },
