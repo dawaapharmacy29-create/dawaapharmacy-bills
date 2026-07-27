@@ -43,6 +43,7 @@ import SmartPurchaseCenter from './pages/SmartPurchaseCenter';
 import SmartPurchaseReceiving from './pages/SmartPurchaseReceiving';
 import SmartPurchaseOrderManagement from './pages/SmartPurchaseOrderManagement';
 import SmartPurchaseInsights from './pages/SmartPurchaseInsights';
+import SmartPurchaseUnifiedCenter from './pages/SmartPurchaseUnifiedCenter';
 import TeamMergeCenter from './pages/TeamMergeCenter';
 import SystemStatus from './pages/SystemStatus';
 
@@ -85,6 +86,7 @@ const AuthenticatedApp = () => {
     <Route path="/data-review" element={<DataReviewCenter />} />
     <Route path="/branch-settlements" element={<BranchSettlements />} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
+    <Route path="/purchase-center" element={<SmartPurchaseUnifiedCenter />} />
     <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
     <Route path="/smart-purchase-orders/manage" element={<SmartPurchaseOrderManagement />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
