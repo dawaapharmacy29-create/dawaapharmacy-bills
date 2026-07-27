@@ -41,6 +41,7 @@ import PurchaseWorkflowCenter from './pages/PurchaseWorkflowCenter';
 import SmartPurchaseCenter from './pages/SmartPurchaseCenter';
 import SmartPurchaseReceiving from './pages/SmartPurchaseReceiving';
 import SmartPurchaseOrderManagement from './pages/SmartPurchaseOrderManagement';
+import SmartPurchaseInsights from './pages/SmartPurchaseInsights';
 import TeamMergeCenter from './pages/TeamMergeCenter';
 import SystemStatus from './pages/SystemStatus';
 
@@ -85,6 +86,7 @@ const AuthenticatedApp = () => {
     <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
     <Route path="/smart-purchase-orders/manage" element={<SmartPurchaseOrderManagement />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
+    <Route path="/smart-purchase-insights" element={<SmartPurchaseInsights />} />
   </Route><Route path="*" element={<PageNotFound />} /></Routes>;
 };
 
