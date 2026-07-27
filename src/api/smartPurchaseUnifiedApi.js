@@ -6,7 +6,7 @@ async function rpc(action,payload={}){
   const r=await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_unified`,{method:'POST',headers:{apikey:KEY,Authorization:`Bearer ${KEY}`,'Content-Type':'application/json'},body:JSON.stringify({p_session_token:t,p_action:action,p_payload:payload})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok||d?.ok===false){
-    const m={order_not_found:'الطلبية غير موجودة.',items_without_supplier:'يوجد أصناف معتمدة بدون مورد.',treasury_not_found:'خزنة الفرع غير موجودة.',insufficient_available_balance:'الرصيد المتاح لا يكفي لاعتماد الطلبية.',forbidden:'لا توجد صلاحية لتنفيذ الإجراء.'};
+    const m={order_not_found:'الطلبية غير موجودة.',items_without_supplier:'يوجد أصناف معتمدة بدون مورد.',empty_order:'لا توجد قيمة صالحة لاعتماد الطلبية.',forbidden:'لا توجد صلاحية لتنفيذ الإجراء.'};
     const e=new Error(m[d?.error]||d?.error||`فشل الطلب (${r.status})`); e.details=d?.data; throw e;
   }
   return d.data;
@@ -14,7 +14,9 @@ async function rpc(action,payload={}){
 export const smartPurchaseUnifiedApi={
   dashboard:()=>rpc('dashboard'),
   getOrder:(id)=>rpc('get_order',{id}),
-  approveAndReserve:(payload)=>rpc('approve_and_reserve',payload),
+  approveOrder:(orderId)=>rpc('approve_order',{order_id:orderId}),
+  approveAndReserve:(payload)=>rpc('approve_order',{order_id:payload.order_id}),
+  returnToReview:(orderId,newStatus='مسودة')=>rpc('release_reservation',{order_id:orderId,new_status:newStatus}),
   releaseReservation:(orderId,newStatus='مسودة')=>rpc('release_reservation',{order_id:orderId,new_status:newStatus}),
   markSent:(orderId)=>rpc('mark_sent',{order_id:orderId}),
 };
