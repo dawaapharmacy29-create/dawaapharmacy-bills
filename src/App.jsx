@@ -32,6 +32,7 @@ import ReportsBranch from './pages/ReportsBranch';
 import SupplierBalancesBranch from './pages/SupplierBalancesBranch';
 import ReplenishmentPage from './pages/ReplenishmentPage';
 import ShiftDelivery from './pages/ShiftDelivery';
+import TreasuryCenter from './pages/TreasuryCenter';
 import SecurityAuditPage from './pages/SecurityAuditPage';
 import SupplierRulesBackfill from './pages/SupplierRulesBackfill';
 import ReviewNeededInvoices from './components/invoices/ReviewNeededInvoices';
@@ -77,6 +78,7 @@ const AuthenticatedApp = () => {
     <Route path="/supplier-balances-branch" element={<SupplierBalancesBranch />} />
     <Route path="/replenishment" element={<ReplenishmentPage />} />
     <Route path="/shift-delivery" element={<ShiftDelivery />} />
+    <Route path="/treasury" element={<TreasuryCenter />} />
     <Route path="/security-audit" element={<SecurityAuditPage />} />
     <Route path="/supplier-rules-backfill" element={<SupplierRulesBackfill />} />
     <Route path="/review-needed-invoices" element={<ReviewNeededInvoices />} />
