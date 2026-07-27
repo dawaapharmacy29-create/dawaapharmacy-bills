@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, BarChart3, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, BarChart3, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck, Landmark } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -19,7 +19,7 @@ const navItems = [
   { path: "/smart-purchase-insights", label: "تقييم وتحسين المشتريات", icon: BarChart3, amber: true },
   { path: "/purchase-workflow", label: "مركز دورة المشتريات", icon: GitBranch, emerald: true },
   { path: "/invoices", label: "فواتير الشراء", icon: FileText },
-  { path: "/invoices/quality", label: "جودة الفواتير", icon: ListChecks, amber: true },
+  { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks, amber: true },
   { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badge: true },
   { path: "/medicine-list", label: "أدوية اللسته", icon: FlaskConical, gold: true },
   { path: "/expenses", label: "المصروفات", icon: Receipt },
@@ -30,6 +30,7 @@ const navItems = [
   { path: "/pharmacy-orders", label: "طلبات الصيدليات", icon: FlaskConical, violet: true },
   { path: "/replenishment", label: "قائمة الأصناف المطلوبة", icon: PackageSearch, emerald: true },
   { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock, purple: true },
+  { path: "/treasury", label: "الخزنة والعهد والتحويلات", icon: Landmark, teal: true },
   { path: "/suppliers", label: "الموردين", icon: Users },
   { path: "/reports", label: "التقارير (إجمالي)", icon: BarChart2 },
   { path: "/reports-branch", label: "تقارير دواء شكري", icon: BarChart2, indent: true },
@@ -54,7 +55,7 @@ function BrandHeader({ compact = false }) { return <div className="border-b bg-t
 export default function AppLayout() {
   const location = useLocation(); const [open,setOpen]=useState(false); const {isAdmin}=useUserRole(); const {user,logout,isLoggingOut}=useAuth();
   const visibleNavItems=navItems.filter(item=>!item.adminOnly||isAdmin);
-  const {data:pendingInvoices=[]}=useQuery({queryKey:["pending-invoices-count"],queryFn:()=>base44.entities.PurchaseInvoice.filter({status:"انتظار المراجعة"}),staleTime:30000,retry:1});
+  const {data:pendingInvoices=[]}=useQuery({queryKey:["pending-invoices-count"],queryFn:()=>base44.entities.PurchaseInvoice.filter({workflow_status:"submitted"}),staleTime:30000,retry:1});
   const pendingCount=pendingInvoices.length;
   const renderNav=(closeMobile=false)=>visibleNavItems.map(item=>{const pathOnly=item.path.split("?")[0];const isActive=location.pathname===pathOnly&&(item.path===pathOnly||location.search===`?${item.path.split("?")[1]||""}`);return <Link key={item.path} to={item.path} onClick={closeMobile?()=>setOpen(false):undefined} className={cn("flex items-center gap-3 rounded-lg text-sm font-medium transition-colors",item.indent?"px-2 py-2 mr-3":"px-3 py-2.5",item.gold?"bg-yellow-50 text-yellow-700 border border-yellow-300":item.pink?"bg-pink-50 text-pink-700 border border-pink-200":item.dark?"bg-gray-900 text-white border border-gray-700":item.teal?"bg-teal-600 text-white border border-teal-700":item.cyan?"bg-cyan-600 text-white border border-cyan-700":item.violet?"bg-violet-600 text-white border border-violet-700":item.emerald?"bg-emerald-600 text-white border border-emerald-700":item.purple?"bg-purple-600 text-white border border-purple-700":item.amber?"bg-amber-50 text-amber-700 border border-amber-200":isActive?"bg-teal-50 text-teal-700":item.indent?"text-gray-500 hover:bg-gray-100 text-xs":"text-gray-600 hover:bg-gray-100")}><item.icon className={cn(item.indent?"w-3 h-3":"w-4 h-4")}/><span className="flex-1">{item.label}</span>{item.badge&&pendingCount>0&&<span className="rounded-full bg-yellow-400 px-1.5 py-0.5 text-xs font-bold text-yellow-900">{pendingCount}</span>}</Link>});
   const logoutButton=(mobile=false)=><button type="button" disabled={isLoggingOut} onClick={()=>{if(mobile)setOpen(false);logout();}} className="w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"><LogOut className="w-4 h-4"/>{isLoggingOut?"جاري تسجيل الخروج...":"تسجيل الخروج"}</button>;
