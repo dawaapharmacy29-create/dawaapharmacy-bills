@@ -5,18 +5,19 @@ const SUPABASE_KEY = ENV_KEY?.startsWith('eyJ') ? ENV_KEY : LEGACY_ANON_KEY;
 const SESSION_KEY = 'dawaa_staff_session';
 const REQUEST_TIMEOUT_MS = 20000;
 
-function readSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }
-  catch { return null; }
-}
+function readSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return null; } }
 function getSessionToken() { return readSession()?.session_token || ''; }
-function errorText(value, fallback = 'حدث خطأ غير متوقع') {
+export function errorText(value, fallback = 'حدث خطأ غير متوقع') {
   if (!value) return fallback;
   if (typeof value === 'string') return value;
-  if (value?.message) return String(value.message);
-  if (value?.details) return String(value.details);
-  if (value?.hint) return String(value.hint);
-  try { return JSON.stringify(value); } catch { return fallback; }
+  if (value instanceof Error && value.message) return errorText(value.message, fallback);
+  if (typeof value === 'object') {
+    for (const key of ['message', 'error_description', 'details', 'hint', 'error']) {
+      if (value[key] && value[key] !== value) return errorText(value[key], fallback);
+    }
+    try { const text = JSON.stringify(value); return text === '{}' ? fallback : text; } catch { return fallback; }
+  }
+  return String(value);
 }
 
 async function executeRequest(payload) {
@@ -25,21 +26,17 @@ async function executeRequest(payload) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/app-data`, {
-      method: 'POST',
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'x-staff-session': token },
-      body: JSON.stringify(payload), signal: controller.signal,
-    });
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/app-data`, { method: 'POST', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'x-staff-session': token }, body: JSON.stringify(payload), signal: controller.signal });
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body?.ok === false) {
-      const message = errorText(body?.error || body?.message, `Data request failed (${response.status})`);
+      const message = errorText(body?.error || body?.message || body, `فشل طلب البيانات (${response.status})`);
       if (response.status === 401 || message === 'invalid_session') window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
       throw new Error(message);
     }
     return body.data;
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.');
-    throw error;
+    throw new Error(errorText(error));
   } finally { window.clearTimeout(timeout); }
 }
 
@@ -60,14 +57,9 @@ async function callSecureRpc(functionName, params = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
-      method: 'POST',
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_session_token: token, ...params }),
-      signal: controller.signal,
-    });
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, { method: 'POST', headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ p_session_token: token, ...params }), signal: controller.signal });
     const result = await response.json().catch(() => ({}));
-    const message = errorText(result?.error || result?.message || result?.details, `تعذر تنفيذ الاستعلام (${response.status})`);
+    const message = errorText(result?.error || result?.message || result?.details || result, `تعذر تنفيذ الاستعلام (${response.status})`);
     if (!response.ok || result?.ok === false) {
       if (result?.error === 'invalid_session') window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
       throw new Error(message);
@@ -75,123 +67,61 @@ async function callSecureRpc(functionName, params = {}) {
     return result.data;
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.');
-    throw error;
+    throw new Error(errorText(error));
   } finally { window.clearTimeout(timeout); }
 }
 
-const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense', 'TargetGoal']);
-async function callSpecialEntity(entity, action, id = null, data = {}) {
-  return callSecureRpc('app_special_entity_action', {
-    p_entity: entity,
-    p_action: action,
-    p_id: id,
-    p_data: data,
-  });
+function sortRowsClient(rows, sort) {
+  const desc = String(sort).startsWith('-'); const key = desc ? String(sort).slice(1) : String(sort);
+  return [...(Array.isArray(rows) ? rows : [])].sort((a, b) => { const av = a?.[key] ?? ''; const bv = b?.[key] ?? ''; if (av === bv) return 0; return av > bv ? (desc ? -1 : 1) : (desc ? 1 : -1); });
 }
+
+async function listPurchaseInvoices(sort, limit = 10000, offset = 0, filters = {}) {
+  const pageSize = Math.min(Math.max(Number(limit || 1000), 1), 500);
+  const startPage = Math.floor(Number(offset || 0) / pageSize) + 1;
+  const rows = [];
+  let page = startPage;
+  while (rows.length < Number(limit || 10000)) {
+    const result = await callSecureRpc('app_paged_purchase_invoices', {
+      p_branch: filters.branch || 'all', p_date_from: filters.date_from || null, p_date_to: filters.date_to || null,
+      p_search: filters.search || null, p_payment_type: filters.payment_type || null, p_purchase_category: filters.purchase_category || null,
+      p_workflow_status: filters.workflow_status || null, p_sort_field: String(sort || '-created_at').replace(/^-/, ''),
+      p_sort_direction: String(sort || '').startsWith('-') ? 'desc' : 'asc', p_page: page, p_page_size: pageSize,
+    });
+    const batch = Array.isArray(result?.rows) ? result.rows : [];
+    rows.push(...batch);
+    if (!batch.length || page >= Number(result?.total_pages || 1)) break;
+    page += 1;
+  }
+  const sliced = rows.slice(0, Number(limit || rows.length));
+  return Object.keys(filters).length ? sliced.filter((row) => Object.entries(filters).every(([key, value]) => ['date_from','date_to','search'].includes(key) || (Array.isArray(value) ? value.includes(row[key]) : row[key] === value))) : sliced;
+}
+
+const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense', 'TargetGoal']);
+async function callSpecialEntity(entity, action, id = null, data = {}) { return callSecureRpc('app_special_entity_action', { p_entity: entity, p_action: action, p_id: id, p_data: data }); }
 
 function entityClient(entity) {
-  if (SPECIAL_ENTITIES.has(entity)) {
-    return {
-      list: async (sort, limit, offset) => {
-        const rows = await callSpecialEntity(entity, 'list');
-        const sorted = sort ? sortRowsClient(rows, sort) : rows;
-        const start = Number(offset || 0);
-        const end = limit ? start + Number(limit) : undefined;
-        return sorted.slice(start, end);
-      },
-      filter: async (filters = {}, sort, limit, offset) => {
-        const rows = await callSpecialEntity(entity, 'list');
-        const filtered = rows.filter((row) => Object.entries(filters).every(([key, value]) => Array.isArray(value) ? value.includes(row[key]) : row[key] === value));
-        const sorted = sort ? sortRowsClient(filtered, sort) : filtered;
-        const start = Number(offset || 0);
-        const end = limit ? start + Number(limit) : undefined;
-        return sorted.slice(start, end);
-      },
-      get: async (id) => (await callSpecialEntity(entity, 'list')).find((row) => row.id === id) || null,
-      create: (data) => callSpecialEntity(entity, 'create', null, data),
-      update: (id, data) => callSpecialEntity(entity, 'update', id, data),
-      delete: (id) => callSpecialEntity(entity, 'delete', id, {}),
-      bulkCreate: async (items) => Promise.all(items.map((item) => callSpecialEntity(entity, 'create', null, item))),
-      bulkUpdate: async (items) => Promise.all(items.map((item) => callSpecialEntity(entity, 'update', String(item.id), item.data || item))),
-      subscribe: () => () => {},
-    };
-  }
-  return {
-    list: (sort, limit, offset) => callDataApi({ action: 'list', entity, sort, limit, offset }),
-    filter: (filters = {}, sort, limit, offset) => callDataApi({ action: 'filter', entity, filters, sort, limit, offset }),
-    get: (id) => callDataApi({ action: 'get', entity, id }),
-    create: (data) => callDataApi({ action: 'create', entity, data }),
-    update: (id, data) => callDataApi({ action: 'update', entity, id, data }),
-    delete: (id) => callDataApi({ action: 'delete', entity, id }),
-    bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }),
-    bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }),
-    subscribe: () => () => {},
+  if (entity === 'PurchaseInvoice') return {
+    list: (sort, limit, offset) => listPurchaseInvoices(sort, limit, offset),
+    filter: (filters = {}, sort, limit, offset) => listPurchaseInvoices(sort, limit, offset, filters),
+    get: async (id) => (await listPurchaseInvoices('-created_at', 5000, 0)).find((row) => row.id === id) || null,
+    create: (data) => callDataApi({ action: 'create', entity, data }), update: (id, data) => callDataApi({ action: 'update', entity, id, data }), delete: (id) => callDataApi({ action: 'delete', entity, id }),
+    bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }), bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }), subscribe: () => () => {},
   };
-}
-
-function sortRowsClient(rows, sort) {
-  const desc = String(sort).startsWith('-');
-  const key = desc ? String(sort).slice(1) : String(sort);
-  return [...rows].sort((a, b) => {
-    const av = a?.[key] ?? '';
-    const bv = b?.[key] ?? '';
-    if (av === bv) return 0;
-    return av > bv ? (desc ? -1 : 1) : (desc ? 1 : -1);
-  });
+  if (SPECIAL_ENTITIES.has(entity)) return {
+    list: async (sort, limit, offset) => { const rows = await callSpecialEntity(entity, 'list'); const sorted = sort ? sortRowsClient(rows, sort) : (Array.isArray(rows) ? rows : []); const start = Number(offset || 0); return sorted.slice(start, limit ? start + Number(limit) : undefined); },
+    filter: async (filters = {}, sort, limit, offset) => { const rows = await callSpecialEntity(entity, 'list'); const filtered = (Array.isArray(rows) ? rows : []).filter((row) => Object.entries(filters).every(([key, value]) => Array.isArray(value) ? value.includes(row[key]) : row[key] === value)); const sorted = sort ? sortRowsClient(filtered, sort) : filtered; const start = Number(offset || 0); return sorted.slice(start, limit ? start + Number(limit) : undefined); },
+    get: async (id) => (await callSpecialEntity(entity, 'list')).find((row) => row.id === id) || null,
+    create: (data) => callSpecialEntity(entity, 'create', null, data), update: (id, data) => callSpecialEntity(entity, 'update', id, data), delete: (id) => callSpecialEntity(entity, 'delete', id, {}),
+    bulkCreate: async (items) => Promise.all(items.map((item) => callSpecialEntity(entity, 'create', null, item))), bulkUpdate: async (items) => Promise.all(items.map((item) => callSpecialEntity(entity, 'update', String(item.id), item.data || item))), subscribe: () => () => {},
+  };
+  return { list: (sort, limit, offset) => callDataApi({ action: 'list', entity, sort, limit, offset }), filter: (filters = {}, sort, limit, offset) => callDataApi({ action: 'filter', entity, filters, sort, limit, offset }), get: (id) => callDataApi({ action: 'get', entity, id }), create: (data) => callDataApi({ action: 'create', entity, data }), update: (id, data) => callDataApi({ action: 'update', entity, id, data }), delete: (id) => callDataApi({ action: 'delete', entity, id }), bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }), bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }), subscribe: () => () => {} };
 }
 
 const entities = new Proxy({}, { get: (_target, entity) => entityClient(String(entity)) });
 function currentAccount() { return readSession()?.account || null; }
-
-export const staffAccountsApi = {
-  list: () => callDataApi({ action: 'adminAccounts', admin_action: 'list' }),
-  create: (payload) => callDataApi({ action: 'adminAccounts', admin_action: 'create', payload }),
-  update: (payload) => callDataApi({ action: 'adminAccounts', admin_action: 'update', payload }),
-  setStatus: (id, status) => callDataApi({ action: 'adminAccounts', admin_action: 'set_status', payload: { id, status } }),
-  resetPin: (id, pin) => callDataApi({ action: 'adminAccounts', admin_action: 'reset_pin', payload: { id, pin } }),
-};
-
-export const invoiceWorkflowApi = {
-  submit: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'submit', note }),
-  review: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'review', note }),
-  approve: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'approve', note }),
-  returnForCorrection: (invoiceId, note) => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'return', note }),
-  reopen: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'reopen', note }),
-};
-
-export const performanceApi = {
-  dashboard: (params = {}) => callSecureRpc('app_dashboard_summary', {
-    p_branch: params.branch || 'all', p_date_from: params.date_from || null,
-    p_date_to: params.date_to || null, p_month: params.month || null,
-  }),
-  invoices: (params = {}) => callSecureRpc('app_paged_purchase_invoices', {
-    p_branch: params.branch || 'all', p_date_from: params.date_from || null, p_date_to: params.date_to || null,
-    p_search: params.search || null, p_payment_type: params.payment_type === 'all' ? null : params.payment_type || null,
-    p_purchase_category: params.purchase_category === 'all' ? null : params.purchase_category || null,
-    p_workflow_status: params.workflow_status === 'all' ? null : params.workflow_status || null,
-    p_sort_field: params.sort_by || 'invoice_date', p_sort_direction: params.sort_direction || 'desc',
-    p_page: params.page || 1, p_page_size: params.page_size || 50,
-  }),
-};
-
-export const base44 = {
-  entities,
-  auth: {
-    me: async () => {
-      const account = currentAccount();
-      if (!account) throw new Error('Authentication required');
-      return { ...account, full_name: account.display_name, name: account.display_name, email: '', branches: Array.isArray(account.branch_ids) ? account.branch_ids : [], branch: Array.isArray(account.branch_ids) ? account.branch_ids[0] || '' : '', original_role: account.role, role: account.role === 'general_manager' ? 'admin' : account.role };
-    },
-    logout: () => localStorage.removeItem(SESSION_KEY),
-    redirectToLogin: () => window.location.assign('/'),
-  },
-  integrations: { Core: { UploadFile: async ({ file }) => {
-    if (!file) throw new Error('File is required');
-    const file_url = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error || new Error('Unable to read file')); reader.readAsDataURL(file); });
-    return { file_url };
-  } } },
-  functions: { invoke: async (name, payload) => ({ data: { ok: true, migrated: true, function: name, payload } }) },
-  asServiceRole: { entities },
-};
-
+export const staffAccountsApi = { list: () => callDataApi({ action: 'adminAccounts', admin_action: 'list' }), create: (payload) => callDataApi({ action: 'adminAccounts', admin_action: 'create', payload }), update: (payload) => callDataApi({ action: 'adminAccounts', admin_action: 'update', payload }), setStatus: (id, status) => callDataApi({ action: 'adminAccounts', admin_action: 'set_status', payload: { id, status } }), resetPin: (id, pin) => callDataApi({ action: 'adminAccounts', admin_action: 'reset_pin', payload: { id, pin } }) };
+export const invoiceWorkflowApi = { submit: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'submit', note }), review: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'review', note }), approve: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'approve', note }), returnForCorrection: (invoiceId, note) => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'return', note }), reopen: (invoiceId, note = '') => callDataApi({ action: 'invoiceWorkflow', invoice_id: invoiceId, workflow_action: 'reopen', note }) };
+export const performanceApi = { dashboard: (params = {}) => callSecureRpc('app_dashboard_summary', { p_branch: params.branch || 'all', p_date_from: params.date_from || null, p_date_to: params.date_to || null, p_month: params.month || null }), invoices: (params = {}) => callSecureRpc('app_paged_purchase_invoices', { p_branch: params.branch || 'all', p_date_from: params.date_from || null, p_date_to: params.date_to || null, p_search: params.search || null, p_payment_type: params.payment_type === 'all' ? null : params.payment_type || null, p_purchase_category: params.purchase_category === 'all' ? null : params.purchase_category || null, p_workflow_status: params.workflow_status === 'all' ? null : params.workflow_status || null, p_sort_field: params.sort_by || 'invoice_date', p_sort_direction: params.sort_direction || 'desc', p_page: params.page || 1, p_page_size: params.page_size || 50 }) };
+export const base44 = { entities, auth: { me: async () => { const account = currentAccount(); if (!account) throw new Error('Authentication required'); return { ...account, full_name: account.display_name, name: account.display_name, email: '', branches: Array.isArray(account.branch_ids) ? account.branch_ids : [], branch: Array.isArray(account.branch_ids) ? account.branch_ids[0] || '' : '', original_role: account.role, role: account.role === 'general_manager' ? 'admin' : account.role }; }, logout: () => localStorage.removeItem(SESSION_KEY), redirectToLogin: () => window.location.assign('/') }, integrations: { Core: { UploadFile: async ({ file }) => { if (!file) throw new Error('File is required'); const file_url = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error || new Error('Unable to read file')); reader.readAsDataURL(file); }); return { file_url }; } } }, functions: { invoke: async (name, payload) => ({ data: { ok: true, migrated: true, function: name, payload } }) }, asServiceRole: { entities } };
 export default base44;
