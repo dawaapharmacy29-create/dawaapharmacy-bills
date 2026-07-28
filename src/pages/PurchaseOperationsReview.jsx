@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { purchaseOperationsApi } from '@/api/operationsReviewApi';
-import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw, History } from 'lucide-react';
 
 const STATUS_LABELS = {
   draft: 'مسودة', under_review: 'تحت المراجعة', approved: 'معتمد', supplier_selected: 'تم اختيار المورد', ordered: 'تم الطلب',
@@ -11,10 +11,12 @@ const NEXT_STATUS = {
   supplier_selected: ['ordered','approved','cancelled'], ordered: ['partially_received','received','shortage','cancelled'],
   partially_received: ['received','shortage','cancelled'], received: ['invoice_matched','partially_received'], invoice_matched: ['closed','received'], shortage: ['under_review','ordered','cancelled'],
 };
+const ACTION_LABELS = { insert: 'إنشاء', update: 'تعديل', status_change: 'تغيير حالة' };
 const money = (value) => new Intl.NumberFormat('ar-EG',{maximumFractionDigits:2}).format(Number(value||0));
 
 export default function PurchaseOperationsReview() {
   const [data, setData] = useState({ issues: [], unified_orders: [], three_way_issues: [], sla_orders: [], supplier_offers: [], summary: {} });
+  const [auditRows, setAuditRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -23,7 +25,11 @@ export default function PurchaseOperationsReview() {
 
   async function refresh() {
     setLoading(true); setError('');
-    try { setData(await purchaseOperationsApi.dashboard() || {}); }
+    try {
+      const [dashboard, audit] = await Promise.all([purchaseOperationsApi.dashboard(), purchaseOperationsApi.auditFeed(80)]);
+      setData(dashboard || {});
+      setAuditRows(audit || []);
+    }
     catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -59,13 +65,14 @@ export default function PurchaseOperationsReview() {
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5" />{error}</div>}
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-700 flex gap-2"><CheckCircle2 className="w-5 h-5" />{message}</div>}
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-7 gap-3">
         <div className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">مشكلات بيانات</div><div className="text-3xl font-bold mt-1">{data.summary?.open_issues || 0}</div></div>
         <div className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">مسودات</div><div className="text-3xl font-bold mt-1">{data.summary?.draft_orders || 0}</div></div>
         <div className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">تم الطلب</div><div className="text-3xl font-bold mt-1">{data.summary?.ordered_orders || 0}</div></div>
         <div className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">نواقص</div><div className="text-3xl font-bold mt-1">{data.summary?.shortage_orders || 0}</div></div>
         <div className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">فروق مطابقة</div><div className="text-3xl font-bold mt-1">{data.summary?.three_way_issues || 0}</div></div>
         <div className="rounded-xl border border-red-200 bg-red-50 p-4"><div className="text-xs text-red-700">متأخر أكثر من 24 ساعة</div><div className="text-3xl font-bold text-red-800 mt-1">{data.summary?.sla_over_24h || delayed.length}</div></div>
+        <div className="rounded-xl border bg-white p-4"><div className="text-xs text-slate-500">عمليات مدققة</div><div className="text-3xl font-bold mt-1">{auditRows.length}</div></div>
       </div>
 
       <section className="rounded-2xl border border-amber-200 bg-amber-50 overflow-auto">
@@ -80,6 +87,7 @@ export default function PurchaseOperationsReview() {
         <div className="p-4 font-bold text-red-900">الطلبات المتأخرة حسب SLA ({delayed.length})</div>
         <table className="min-w-[1000px] w-full text-sm bg-white"><thead className="bg-red-50"><tr>{['الفرع','الصنف','الحالة','ساعات بدون إجراء','الخطورة','آخر تحديث'].map((h)=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>
           {delayed.map((x)=><tr key={`${x.source_type}-${x.id}`} className="border-t"><td className="p-3">{x.branch||'—'}</td><td className="p-3 font-medium">{x.product_name}</td><td className="p-3">{STATUS_LABELS[x.status]||x.status}</td><td className="p-3 font-bold">{Math.round(Number(x.hours_in_status||0))}</td><td className="p-3">{x.sla_level}</td><td className="p-3">{x.updated_at?.slice?.(0,16)||'—'}</td></tr>)}
+          {!delayed.length && <tr><td colSpan="6" className="p-8 text-center text-slate-500">لا توجد طلبات متأخرة حاليًا.</td></tr>}
         </tbody></table>
       </section>
 
@@ -102,6 +110,15 @@ export default function PurchaseOperationsReview() {
         <div className="p-4 font-bold">مقارنة عروض الموردين — أفضل تكلفة فعلية</div>
         <table className="min-w-[1100px] w-full text-sm"><thead className="bg-slate-50"><tr>{['كود الصنف','الصنف','المورد','السعر','الخصم','البونص','التكلفة الفعلية','مدة التوريد','الدفع','صلاحية العرض'].map((h)=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>
           {offers.map((x)=><tr key={x.id} className="border-t"><td className="p-3">{x.product_code||'—'}</td><td className="p-3 font-medium">{x.product_name}</td><td className="p-3">{x.supplier_name}</td><td className="p-3">{money(x.list_price)} ج</td><td className="p-3">{money(x.discount_percent)}%</td><td className="p-3">{money(x.bonus_quantity)} / {money(x.bonus_base_quantity)}</td><td className="p-3 font-bold text-emerald-700">{money(x.effective_cost_after_bonus)} ج</td><td className="p-3">{x.lead_time_days||0} يوم</td><td className="p-3">{x.payment_type||'—'}</td><td className="p-3">{x.valid_until||'—'}</td></tr>)}
+          {!offers.length && <tr><td colSpan="10" className="p-8 text-center text-slate-500">لا توجد عروض موردين مرفوعة حتى الآن.</td></tr>}
+        </tbody></table>
+      </section>
+
+      <section className="rounded-2xl border bg-white overflow-auto shadow-sm">
+        <div className="p-4 font-bold flex items-center gap-2"><History className="w-5 h-5"/>سجل تدقيق دورة المشتريات</div>
+        <table className="min-w-[1200px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الوقت','الفرع','الكيان','الإجراء','المستخدم','الحالة القديمة','الحالة الجديدة','الصنف'].map((h)=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>
+          {auditRows.map((x)=><tr key={x.id} className="border-t"><td className="p-3">{x.created_at ? new Date(x.created_at).toLocaleString('ar-EG') : '—'}</td><td className="p-3">{x.branch || '—'}</td><td className="p-3">{x.entity_type}</td><td className="p-3">{ACTION_LABELS[x.action] || x.action}</td><td className="p-3">{x.actor_name || 'النظام'}</td><td className="p-3">{x.old_data?.status || x.old_data?.order_status || '—'}</td><td className="p-3">{x.new_data?.status || x.new_data?.order_status || '—'}</td><td className="p-3">{x.new_data?.product_name || x.old_data?.product_name || '—'}</td></tr>)}
+          {!auditRows.length && <tr><td colSpan="8" className="p-8 text-center text-slate-500">لا توجد عمليات جديدة في سجل التدقيق بعد.</td></tr>}
         </tbody></table>
       </section>
     </div>
