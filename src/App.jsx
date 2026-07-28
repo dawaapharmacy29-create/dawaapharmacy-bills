@@ -49,6 +49,7 @@ import SmartPurchaseUnifiedCenter from './pages/SmartPurchaseUnifiedCenter';
 import TeamMergeCenter from './pages/TeamMergeCenter';
 import SystemStatus from './pages/SystemStatus';
 import BranchPerformanceCenter from './pages/BranchPerformanceCenter';
+import SalesPurchasesReport from './pages/SalesPurchasesReport';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated } = useAuth();
@@ -58,6 +59,7 @@ const AuthenticatedApp = () => {
     <Route path="/" element={<FastDashboard />} />
     <Route path="/dashboard/advanced" element={<Dashboard />} />
     <Route path="/branch-performance" element={<BranchPerformanceCenter />} />
+    <Route path="/sales-purchases-report" element={<SalesPurchasesReport />} />
     <Route path="/system-status" element={<SystemStatus />} />
     <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
     <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
