@@ -9,28 +9,47 @@ function token() {
   }
 }
 
-async function rpc(functionName, action, payload = {}) {
+function readableError(data, status) {
+  const code = typeof data?.error === 'string' ? data.error : '';
+  const messages = {
+    general_manager_only: 'هذه الحركة متاحة للمدير العام فقط.',
+    forbidden: 'الحساب الحالي لا يملك صلاحية تنفيذ هذا الإجراء.',
+    reason_required: 'اكتب سببًا واضحًا قبل الحفظ.',
+    invalid_amount: 'القيمة يجب أن تكون أكبر من صفر.',
+    treasury_not_found: 'الخزنة المحددة غير موجودة.',
+    transfer_not_ready: 'التحويل ليس في المرحلة المناسبة.',
+    shift_not_found: 'الشيفت غير موجود.',
+    invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+  };
+  if (messages[code]) return messages[code];
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.details === 'string') return data.details;
+  return `فشل الطلب (${status})`;
+}
+
+async function postRpc(functionName, body) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
   const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
+    body: JSON.stringify({ p_session_token: sessionToken, ...body }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) {
-    const messages = {
-      general_manager_only: 'هذه الحركة متاحة للمدير العام فقط.',
-      forbidden: 'الحساب الحالي لا يملك صلاحية تنفيذ هذا الإجراء.',
-      reason_required: 'اكتب سببًا واضحًا قبل الحفظ.',
-      invalid_amount: 'القيمة يجب أن تكون أكبر من صفر.',
-      treasury_not_found: 'الخزنة المحددة غير موجودة.',
-      transfer_not_ready: 'التحويل ليس في المرحلة المناسبة.',
-      shift_not_found: 'الشيفت غير موجود.',
-    };
-    throw new Error(messages[data?.error] || data?.error || `فشل الطلب (${response.status})`);
-  }
+  if (!response.ok || data?.ok === false) throw new Error(readableError(data, response.status));
   return data.data;
+}
+
+async function rpc(functionName, action, payload = {}) {
+  return postRpc(functionName, { p_action: action, p_payload: payload });
+}
+
+async function shiftAction(id, action, reason = null) {
+  return postRpc('treasury_shift_action', {
+    p_shift_id: id,
+    p_action: action,
+    p_reason: reason,
+  });
 }
 
 export const treasuryApi = {
@@ -41,7 +60,7 @@ export const treasuryApi = {
   handoverTransfer: (id) => rpc('treasury_center', 'handover_transfer', { id }),
   postTransfer: (id, targetAccountType = 'cash') => rpc('treasury_center', 'post_transfer', { id, target_account_type: targetAccountType, destination_account_type: targetAccountType }),
   controlsDashboard: () => rpc('treasury_controls', 'dashboard'),
-  approveShift: (id) => rpc('treasury_controls', 'approve_shift', { id }),
-  returnShift: (id, reason) => rpc('treasury_controls', 'return_shift', { id, reason }),
+  approveShift: (id) => shiftAction(id, 'approve'),
+  returnShift: (id, reason) => shiftAction(id, 'return', reason),
   reconcileOpening: (payload) => rpc('treasury_controls', 'reconcile_opening', payload),
 };
