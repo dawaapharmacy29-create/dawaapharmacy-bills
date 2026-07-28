@@ -13,6 +13,7 @@ import DailyProgressIndicator from '@/components/dashboard/DailyProgressIndicato
 
 const BRANCHES = ['دواء الشامي', 'دواء شكري'];
 const fmt = (value) => Number(value || 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
+const iso = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 function cycleDates(reference = new Date()) {
   const y = reference.getFullYear();
@@ -20,8 +21,21 @@ function cycleDates(reference = new Date()) {
   const day = reference.getDate();
   const start = day >= 26 ? new Date(y, m, 26) : new Date(y, m - 1, 26);
   const end = day >= 26 ? new Date(y, m + 1, 25) : new Date(y, m, 25);
-  const iso = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   return { from: iso(start), to: iso(end) };
+}
+
+function presetRange(type) {
+  const now = new Date();
+  if (type === 'today') return { from: iso(now), to: iso(now) };
+  if (type === 'week') {
+    const start = new Date(now);
+    const day = start.getDay();
+    const diff = day === 6 ? 0 : day + 1;
+    start.setDate(start.getDate() - diff);
+    return { from: iso(start), to: iso(now) };
+  }
+  if (type === 'month') return { from: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`, to: iso(now) };
+  return cycleDates(now);
 }
 
 function Stat({ label, value, suffix = 'ج', icon: Icon, className = '' }) {
@@ -34,9 +48,10 @@ export default function FastDashboard() {
   const { isAdmin } = useUserRole();
   const [searchParams, setSearchParams] = useSearchParams();
   const branch = searchParams.get('branch') || 'all';
-  const initialCycle = useMemo(() => cycleDates(), []);
-  const [dateFrom, setDateFrom] = useState(initialCycle.from);
-  const [dateTo, setDateTo] = useState(initialCycle.to);
+  const initial = useMemo(() => presetRange('week'), []);
+  const [period, setPeriod] = useState('week');
+  const [dateFrom, setDateFrom] = useState(initial.from);
+  const [dateTo, setDateTo] = useState(initial.to);
   const [editingTargets, setEditingTargets] = useState(false);
   const [targetInputs, setTargetInputs] = useState({ 'دواء الشامي': '', 'دواء شكري': '' });
   const month = dateTo.slice(0, 7);
@@ -47,10 +62,21 @@ export default function FastDashboard() {
     setSearchParams(next, { replace: true });
   };
 
+  const applyPeriod = (type) => {
+    setPeriod(type);
+    if (type !== 'custom') {
+      const next = presetRange(type);
+      setDateFrom(next.from);
+      setDateTo(next.to);
+    }
+  };
+
   const query = useQuery({
     queryKey: ['fast-dashboard-summary', branch, dateFrom, dateTo, month],
     queryFn: () => performanceApi.dashboard({ branch, date_from: dateFrom, date_to: dateTo, month }),
     staleTime: 30000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
     retry: 1,
   });
   const data = query.data || {};
@@ -88,17 +114,18 @@ export default function FastDashboard() {
   return (
     <div dir="rtl" className="space-y-5 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="text-2xl font-bold text-gray-900">الصفحة الرئيسية</h1><p className="mt-1 text-sm text-gray-500">داشبورد سريع محسوب داخل Supabase — الدورة الافتراضية من 26 إلى 25.</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">الصفحة الرئيسية</h1><p className="mt-1 text-sm text-gray-500">الداشبورد يحسب البيانات القديمة والجديدة مباشرة ويتحدث تلقائيًا كل دقيقة.</p></div>
         <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching} className="gap-2"><RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> تحديث</Button><Button asChild variant="outline"><Link to="/dashboard/advanced">التحليل التفصيلي</Link></Button></div>
       </div>
 
-      <Card className="p-4">
+      <Card className="space-y-4 p-4">
+        <div className="flex flex-wrap gap-2">{[['today','يومي'],['week','أسبوعي'],['month','شهري'],['custom','فترة مخصصة']].map(([key,label]) => <Button key={key} size="sm" variant={period === key ? 'default' : 'outline'} onClick={() => applyPeriod(key)}>{label}</Button>)}</div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-48 flex-1"><BranchSelector value={branch} onChange={setBranch} /></div>
-          <div><label className="mb-1 block text-xs text-gray-500">من</label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div>
-          <div><label className="mb-1 block text-xs text-gray-500">إلى</label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div>
-          <Button variant="outline" onClick={() => { const cycle = cycleDates(); setDateFrom(cycle.from); setDateTo(cycle.to); }} className="gap-2"><Calendar className="h-4 w-4" /> دورة 26–25</Button>
+          {period === 'custom' && <><div><label className="mb-1 block text-xs text-gray-500">من</label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div><div><label className="mb-1 block text-xs text-gray-500">إلى</label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div></>}
+          <Button variant="outline" onClick={() => { const cycle = cycleDates(); setPeriod('custom'); setDateFrom(cycle.from); setDateTo(cycle.to); }} className="gap-2"><Calendar className="h-4 w-4" /> دورة 26–25</Button>
         </div>
+        <p className="text-xs text-gray-500">الفترة الحالية: {dateFrom} إلى {dateTo}</p>
       </Card>
 
       {query.isLoading ? <Card className="p-16 text-center text-gray-500">جاري تحميل ملخص الداشبورد...</Card> : query.isError ? <Card className="border-red-200 p-8 text-center text-red-700"><p>تعذر تحميل الداشبورد: {query.error?.message}</p><Button className="mt-3" onClick={() => query.refetch()}>إعادة المحاولة</Button></Card> : <>
