@@ -228,10 +228,10 @@ export default function Dashboard() {
         <div className="flex gap-2"><Button onClick={submitTargets} disabled={saveTargetMutation.isPending}>حفظ</Button><Button variant="outline" onClick={() => setEditingTarget(false)}>إلغاء</Button></div>
       </Card>}
 
-      <BudgetAlert budgets={budgets} invoices={branchMonthInvoices} expenses={branchMonthExpenses} />
+      <BudgetAlert budgets={budgets} invoices={branchMonthInvoices} expenses={branchMonthExpenses} suppliers={suppliers} />
       <LowStockAlert />
-      <PurchaseDashboard invoices={branchMonthInvoices} suppliers={suppliers} branch={branch} dateFrom={monthStart} dateTo={monthEnd} isLoading={invoicesLoading} pendingCount={pending} />
-      <BranchBudgetCard budgets={budgets} invoices={branchMonthInvoices} expenses={branchMonthExpenses} />
+      <PurchaseDashboard invoices={branchMonthInvoices} suppliers={suppliers} branch={branch} onBranchChange={setBranch} dateFilter={safeDates} isLoading={invoicesLoading} pendingCount={pending} />
+      <BranchBudgetCard budgets={budgets} invoices={branchMonthInvoices} expenses={branchMonthExpenses} suppliers={suppliers} startDate={monthStart} endDate={monthEnd} />
     </div>
   );
 }
