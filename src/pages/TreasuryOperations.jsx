@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { treasuryApi } from '@/api/treasuryApi';
-import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck, Send, RotateCcw, XCircle } from 'lucide-react';
+import { treasuryOperationsApi } from '@/api/operationsReviewApi';
+import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck, Send, RotateCcw, XCircle, History } from 'lucide-react';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const money = (value) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(value || 0));
 const ACCOUNT_LABELS = { cash: 'النقدي', instapay: 'إنستا باي', vodafone_cash: 'فودافون كاش', accounts_custody: 'عهدة الحسابات' };
+const ACTION_LABELS = { insert: 'إنشاء', update: 'تعديل', status_change: 'تغيير حالة' };
 
 export default function TreasuryOperations() {
   const [treasuries, setTreasuries] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [closures, setClosures] = useState([]);
+  const [auditRows, setAuditRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -21,11 +24,14 @@ export default function TreasuryOperations() {
   async function refresh() {
     setLoading(true); setError('');
     try {
-      const [dashboard, alertRows, closureRows] = await Promise.all([treasuryApi.dashboard(), treasuryApi.alerts(), treasuryApi.closures()]);
+      const [dashboard, alertRows, closureRows, audit] = await Promise.all([
+        treasuryApi.dashboard(), treasuryApi.alerts(), treasuryApi.closures(), treasuryOperationsApi.auditFeed(60),
+      ]);
       setTreasuries(dashboard?.treasuries || []);
       setTransfers(dashboard?.transfers || []);
       setAlerts(alertRows || []);
       setClosures(closureRows || []);
+      setAuditRows(audit || []);
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -62,11 +68,12 @@ export default function TreasuryOperations() {
       {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5" />{error}</div>}
       {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-700 flex gap-2"><CheckCircle2 className="w-5 h-5" />{message}</div>}
 
-      <div className="grid md:grid-cols-4 gap-3">
+      <div className="grid md:grid-cols-5 gap-3">
         <div className="rounded-xl border border-red-200 bg-red-50 p-4"><div className="text-sm text-red-700">حرج</div><div className="text-3xl font-bold text-red-800 mt-1">{groupedAlerts.critical.length}</div></div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><div className="text-sm text-amber-700">تحذير</div><div className="text-3xl font-bold text-amber-800 mt-1">{groupedAlerts.warning.length}</div></div>
         <div className="rounded-xl border bg-white p-4"><div className="text-sm text-slate-500">تحويلات معلقة</div><div className="text-3xl font-bold mt-1">{transfers.filter((x) => ['pending','transferred_to_accounts'].includes(x.status)).length}</div></div>
         <div className="rounded-xl border bg-white p-4"><div className="text-sm text-slate-500">إقفالات مسجلة</div><div className="text-3xl font-bold mt-1">{closures.length}</div></div>
+        <div className="rounded-xl border bg-white p-4"><div className="text-sm text-slate-500">عمليات مدققة</div><div className="text-3xl font-bold mt-1">{auditRows.length}</div></div>
       </div>
 
       <section className="rounded-2xl border bg-white p-4 shadow-sm">
@@ -101,6 +108,14 @@ export default function TreasuryOperations() {
         <div className="p-4 font-bold">سجل الإقفالات اليومية</div>
         <table className="min-w-[1100px] w-full text-sm"><thead className="bg-slate-50"><tr>{['التاريخ','الفرع','الخزنة','النظامي','الفعلي','الفرق','الحالة','إعادة فتح'].map((h)=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>
           {closures.map((x)=><tr key={x.id} className="border-t"><td className="p-3">{x.closing_date}</td><td className="p-3">{x.branch}</td><td className="p-3">{ACCOUNT_LABELS[x.account_type] || x.account_type}</td><td className="p-3">{money(x.system_balance)} ج</td><td className="p-3">{money(x.actual_balance)} ج</td><td className="p-3 font-bold">{money(x.difference)} ج</td><td className="p-3">{x.status}</td><td className="p-3">{x.status==='closed'&&<div className="flex gap-2"><input value={reopenReasons[x.id]||''} onChange={(e)=>setReopenReasons({...reopenReasons,[x.id]:e.target.value})} placeholder="سبب إعادة الفتح" className="rounded border px-2 py-1"/><button disabled={!reopenReasons[x.id]?.trim()} onClick={()=>run(()=>treasuryApi.reopenDay({treasury_id:x.treasury_id,closing_date:x.closing_date,reason:reopenReasons[x.id]}),'تمت إعادة فتح اليوم بسبب مسجل.')} className="rounded border px-3 py-1.5 disabled:opacity-40"><RotateCcw className="w-4 h-4"/></button></div>}</td></tr>)}
+        </tbody></table>
+      </section>
+
+      <section className="rounded-2xl border bg-white shadow-sm overflow-auto">
+        <div className="p-4 font-bold flex items-center gap-2"><History className="w-5 h-5"/>سجل التدقيق المالي</div>
+        <table className="min-w-[1100px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الوقت','الفرع','الكيان','الإجراء','المستخدم','الحالة القديمة','الحالة الجديدة'].map((h)=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>
+          {auditRows.map((x)=><tr key={x.id} className="border-t"><td className="p-3">{x.created_at ? new Date(x.created_at).toLocaleString('ar-EG') : '—'}</td><td className="p-3">{x.branch || '—'}</td><td className="p-3">{x.entity_type}</td><td className="p-3">{ACTION_LABELS[x.action] || x.action}</td><td className="p-3">{x.actor_name || 'النظام'}</td><td className="p-3">{x.old_data?.status || '—'}</td><td className="p-3">{x.new_data?.status || '—'}</td></tr>)}
+          {!auditRows.length && <tr><td colSpan="7" className="p-8 text-center text-slate-500">لا توجد عمليات جديدة في سجل التدقيق بعد.</td></tr>}
         </tbody></table>
       </section>
     </div>
