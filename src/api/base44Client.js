@@ -79,7 +79,7 @@ async function callSecureRpc(functionName, params = {}) {
   } finally { window.clearTimeout(timeout); }
 }
 
-const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense']);
+const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense', 'TargetGoal']);
 async function callSpecialEntity(entity, action, id = null, data = {}) {
   return callSecureRpc('app_special_entity_action', {
     p_entity: entity,
