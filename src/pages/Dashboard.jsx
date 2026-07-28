@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, performanceApi } from "@/api/base44Client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileText, Users, Receipt, TrendingUp, Building2, Pencil, Check, Calendar, X, Target } from "lucide-react";
+import { FileText, Users, Receipt, TrendingUp, Pencil, Calendar } from "lucide-react";
 import BranchBudgetCard from "@/components/dashboard/BranchBudgetCard";
 import BudgetAlert from "@/components/dashboard/BudgetAlert";
 import LowStockAlert from "@/components/dashboard/LowStockAlert";
@@ -17,10 +17,6 @@ import { useToast } from "@/components/ui/use-toast";
 import { useUserRole } from "@/lib/useUserRole";
 
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
-const branchColor = {
-  "دواء شكري": "bg-blue-50 border-blue-200 text-blue-700",
-  "دواء الشامي": "bg-purple-50 border-purple-200 text-purple-700",
-};
 const today = new Date().toISOString().split("T")[0];
 const firstOfMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`;
 
@@ -66,19 +62,34 @@ export default function Dashboard() {
     setShowDateFilter(false);
   };
 
-  const { data: invoices = [], isLoading: invoicesLoading, refetch: refetchInvoices } = useQuery({
-    queryKey: ["purchase-invoices"],
+  const { data: invoices = [], isLoading: invoicesLoading, refetch: refetchInvoices, isError: invoicesError } = useQuery({
+    queryKey: ["advanced-dashboard-invoices", dateFilter.from, dateFilter.to, branch],
     queryFn: async () => {
-      const PAGE = 500;
-      let all = [];
-      let page = 0;
-      while (true) {
-        const batch = await base44.entities.PurchaseInvoice.list("-created_date", PAGE, page * PAGE);
-        all = [...all, ...batch];
-        if (batch.length < PAGE) break;
-        page += 1;
+      const pageSize = 200;
+      const first = await performanceApi.invoices({
+        branch,
+        date_from: dateFilter.from,
+        date_to: dateFilter.to,
+        page: 1,
+        page_size: pageSize,
+        sort_by: "invoice_date",
+        sort_direction: "desc",
+      });
+      const rows = [...(first?.rows || [])];
+      const totalPages = Number(first?.total_pages || 1);
+      for (let page = 2; page <= totalPages; page += 1) {
+        const result = await performanceApi.invoices({
+          branch,
+          date_from: dateFilter.from,
+          date_to: dateFilter.to,
+          page,
+          page_size: pageSize,
+          sort_by: "invoice_date",
+          sort_direction: "desc",
+        });
+        rows.push(...(result?.rows || []));
       }
-      return all;
+      return rows;
     },
     staleTime: 20000,
     refetchOnWindowFocus: false,
@@ -117,13 +128,7 @@ export default function Dashboard() {
         const amount = Number(values[branchName]);
         if (!Number.isFinite(amount) || amount < 0) throw new Error(`قيمة هدف ${branchName} غير صحيحة`);
         const existing = targetGoals.find((goal) => goal.month === currentMonth && goal.branch === branchName);
-        const payload = {
-          month: currentMonth,
-          branch: branchName,
-          goal_type: "sales",
-          label: `الهدف الشهري - ${branchName}`,
-          target_amount: amount,
-        };
+        const payload = { month: currentMonth, branch: branchName, goal_type: "sales", label: `الهدف الشهري - ${branchName}`, target_amount: amount };
         if (existing) await base44.entities.TargetGoal.update(existing.id, payload);
         else await base44.entities.TargetGoal.create(payload);
       }
@@ -137,37 +142,26 @@ export default function Dashboard() {
   });
 
   const openTargetEditor = () => {
-    setTargetInputs({
-      "دواء شكري": String(branchTargets["دواء شكري"] || ""),
-      "دواء الشامي": String(branchTargets["دواء الشامي"] || ""),
-    });
+    setTargetInputs({ "دواء شكري": String(branchTargets["دواء شكري"] || ""), "دواء الشامي": String(branchTargets["دواء الشامي"] || "") });
     setEditingTarget(true);
   };
-
-  const submitTargets = () => {
-    if (branch === "all") {
-      saveTargetMutation.mutate({ "دواء شكري": targetInputs["دواء شكري"], "دواء الشامي": targetInputs["دواء الشامي"] });
-    } else {
-      saveTargetMutation.mutate({ [branch]: targetInputs[branch] });
-    }
-  };
+  const submitTargets = () => branch === "all"
+    ? saveTargetMutation.mutate({ "دواء شكري": targetInputs["دواء شكري"], "دواء الشامي": targetInputs["دواء الشامي"] })
+    : saveTargetMutation.mutate({ [branch]: targetInputs[branch] });
 
   const { from: monthStart, to: monthEnd } = dateFilter;
-  const monthInvoices = invoices.filter((invoice) => {
-    const date = invoice.invoice_date || invoice.created_date?.split("T")[0];
-    return date && date >= monthStart && date <= monthEnd;
-  });
+  const monthInvoices = invoices;
   const monthExpenses = expenses.filter((expense) => {
     const date = expense.date || expense.created_date?.split("T")[0];
     return date && date >= monthStart && date <= monthEnd;
   });
-  const branchMonthInvoices = branch === "all" ? monthInvoices : monthInvoices.filter((invoice) => invoice.branch === branch);
+  const branchMonthInvoices = monthInvoices;
   const branchMonthExpenses = branch === "all" ? monthExpenses : monthExpenses.filter((expense) => expense.branch === branch);
   const totalInvoiceValue = branchMonthInvoices.reduce((sum, invoice) => sum + getInvoiceNetAmount(invoice, suppliers), 0);
   const totalExpenses = branchMonthExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const totalPayments = totalInvoiceValue + totalExpenses;
   const targetPercent = displayedTarget > 0 ? Math.min(Math.round((totalPayments / displayedTarget) * 100), 100) : 0;
-  const pending = invoices.filter((invoice) => invoice.status === "انتظار المراجعة" && (branch === "all" || invoice.branch === branch)).length;
+  const pending = invoices.filter((invoice) => invoice.status === "انتظار المراجعة").length;
   const totalCashPurchases = branchMonthInvoices.filter((invoice) => !isInvoiceExcluded(invoice, suppliers).excluded).reduce((sum, invoice) => sum + getInvoiceCashAmount(invoice), 0);
 
   const stats = [
@@ -193,6 +187,7 @@ export default function Dashboard() {
       </div>
 
       <BranchSelector value={branch} onChange={setBranch} />
+      {invoicesError && <Card className="border-red-200 bg-red-50 p-3 text-sm text-red-700">تعذر تحميل الفواتير. حدّث الصفحة أو أعد تسجيل الدخول.</Card>}
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {stats.map((item) => <Card key={item.label} className={`flex items-center gap-3 p-4 ${item.label === "إجمالي قيمة المدفوعات" ? "col-span-2 md:col-span-1" : ""}`}>
@@ -203,44 +198,22 @@ export default function Dashboard() {
                 <div className="mb-0.5 flex justify-between text-xs"><span className="text-gray-400">المستهدف: {money(displayedTarget)} ج</span><span className={targetPercent >= 100 ? "font-bold text-red-600" : targetPercent >= 80 ? "font-bold text-orange-500" : "font-semibold text-green-600"}>{targetPercent}%</span></div>
                 <DailyProgressIndicator startDate={monthStart} endDate={monthEnd} currentAmount={totalPayments} targetAmount={displayedTarget} height="h-3" />
               </> : <p className="text-xs text-gray-400">لم يحدد هدف شهري</p>}
-              {isAdmin && !editingTarget && <button type="button" onClick={openTargetEditor} className="mt-1 flex items-center gap-1 text-xs text-teal-600 hover:underline"><Pencil className="h-3 w-3" /> {branch === "all" ? "تعديل أهداف الفروع" : `تعديل هدف ${branch}`}</button>}
+              {isAdmin && !editingTarget && <button type="button" onClick={openTargetEditor} className="mt-1 flex items-center gap-1 text-xs text-teal-600 hover:underline"><Pencil className="h-3 w-3" /> {branch === "all" ? "تعديل أهداف الفروع" : "تعديل هدف الفرع"}</button>}
             </div>}
           </div>
         </Card>)}
       </div>
 
-      {editingTarget && <Card className="border-teal-200 p-4">
-        <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><Target className="h-5 w-5 text-teal-700" /><div><p className="font-bold">تعديل التارجت الشهري</p><p className="text-xs text-gray-500">الإجمالي يُحسب تلقائيًا من مجموع الفرعين.</p></div></div><Button size="icon" variant="ghost" onClick={() => setEditingTarget(false)}><X className="h-4 w-4" /></Button></div>
-        <div className={`grid gap-3 ${branch === "all" ? "md:grid-cols-2" : "max-w-sm"}`}>
-          {(branch === "all" ? BRANCHES : [branch]).map((branchName) => <div key={branchName} className="space-y-1"><label className="text-sm font-semibold">{branchName}</label><Input type="number" min="0" step="1000" value={targetInputs[branchName]} onChange={(e) => setTargetInputs((old) => ({ ...old, [branchName]: e.target.value }))} placeholder="اكتب الهدف الشهري" /></div>)}
-        </div>
-        {branch === "all" && <p className="mt-3 rounded-lg bg-gray-50 p-2 text-sm">الإجمالي المتوقع: <strong>{money(Number(targetInputs["دواء شكري"] || 0) + Number(targetInputs["دواء الشامي"] || 0))} ج</strong></p>}
-        <div className="mt-3 flex gap-2"><Button onClick={submitTargets} disabled={saveTargetMutation.isPending} className="gap-2 bg-teal-600 hover:bg-teal-700"><Check className="h-4 w-4" /> {saveTargetMutation.isPending ? "جاري الحفظ..." : "حفظ التارجت"}</Button><Button variant="outline" onClick={() => setEditingTarget(false)}>إلغاء</Button></div>
+      {editingTarget && <Card className="space-y-3 p-4">
+        <p className="font-semibold text-gray-700">تعديل التارجت الشهري</p>
+        <div className="grid gap-3 md:grid-cols-2">{(branch === "all" ? BRANCHES : [branch]).map((branchName) => <div key={branchName}><label className="mb-1 block text-xs text-gray-500">{branchName}</label><Input type="number" min="0" value={targetInputs[branchName]} onChange={(e) => setTargetInputs((old) => ({ ...old, [branchName]: e.target.value }))} /></div>)}</div>
+        <div className="flex gap-2"><Button onClick={submitTargets} disabled={saveTargetMutation.isPending}>حفظ</Button><Button variant="outline" onClick={() => setEditingTarget(false)}>إلغاء</Button></div>
       </Card>}
 
-      <PurchaseDashboard invoices={branchMonthInvoices} suppliers={suppliers} branch={branch} onBranchChange={setBranch} dateFilter={dateFilter} isLoading={invoicesLoading} />
+      <BudgetAlert budgets={budgets} invoices={branchMonthInvoices} expenses={branchMonthExpenses} />
       <LowStockAlert />
-      <BudgetAlert invoices={branchMonthInvoices} expenses={branchMonthExpenses} budgets={budgets} suppliers={suppliers} />
-      <BranchBudgetCard invoices={branchMonthInvoices} budgets={budgets} suppliers={suppliers} startDate={monthStart} endDate={monthEnd} />
-
-      {branch === "all" && <div><h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-gray-700"><Building2 className="h-4 w-4" /> ملخص الفروع</h2><div className="grid gap-4 md:grid-cols-2">
-        {BRANCHES.map((branchName) => {
-          const branchInvoices = monthInvoices.filter((invoice) => invoice.branch === branchName);
-          const branchNetInvoices = branchInvoices.filter((invoice) => !isInvoiceExcluded(invoice, suppliers).excluded);
-          const branchTotal = branchNetInvoices.reduce((sum, invoice) => sum + getInvoiceNetAmount(invoice, suppliers), 0);
-          const branchPaid = branchInvoices.reduce((sum, invoice) => sum + Number(invoice.paid_value || 0), 0);
-          const branchExpenses = monthExpenses.filter((expense) => expense.branch === branchName).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-          const goal = branchTargets[branchName];
-          const progress = goal > 0 ? Math.round(((branchTotal + branchExpenses) / goal) * 100) : 0;
-          return <Card key={branchName} className={`border-2 p-4 ${branchColor[branchName]}`}><div className="mb-3 flex items-center justify-between"><h3 className="font-bold">{branchName}</h3><BadgeText value={goal ? `هدف ${money(goal)} ج` : "بدون هدف"} /></div><div className="space-y-1.5 text-sm"><div className="flex justify-between"><span>عدد الفواتير (صافي)</span><strong>{branchNetInvoices.length}</strong></div><div className="flex justify-between"><span>صافي المشتريات</span><strong>{money(branchTotal)} ج</strong></div><div className="flex justify-between"><span>المدفوع</span><strong>{money(branchPaid)} ج</strong></div><div className="flex justify-between border-t pt-1.5"><span>المصروفات</span><strong>{money(branchExpenses)} ج</strong></div>{goal > 0 && <div className="flex justify-between border-t pt-1.5"><span>نسبة التارجت</span><strong>{progress}%</strong></div>}</div></Card>;
-        })}
-      </div></div>}
-
-      {pending > 0 && <Card className="border-yellow-200 bg-yellow-50 p-4"><p className="text-sm font-semibold text-yellow-800">⏳ يوجد {pending} فاتورة في انتظار المراجعة</p></Card>}
+      <PurchaseDashboard invoices={branchMonthInvoices} suppliers={suppliers} branch={branch} dateFrom={monthStart} dateTo={monthEnd} isLoading={invoicesLoading} pendingCount={pending} />
+      <BranchBudgetCard budgets={budgets} invoices={branchMonthInvoices} expenses={branchMonthExpenses} />
     </div>
   );
-}
-
-function BadgeText({ value }) {
-  return <span className="rounded-full border bg-white/70 px-2 py-1 text-xs font-semibold">{value}</span>;
 }
