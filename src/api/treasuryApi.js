@@ -15,15 +15,21 @@ function readableError(data, status) {
     general_manager_only: 'هذه الحركة متاحة للمدير العام فقط.',
     forbidden: 'الحساب الحالي لا يملك صلاحية تنفيذ هذا الإجراء.',
     reason_required: 'اكتب سببًا واضحًا قبل الحفظ.',
+    actual_balance_required: 'اكتب الرصيد الفعلي قبل الإقفال.',
     invalid_amount: 'القيمة يجب أن تكون أكبر من صفر.',
     treasury_not_found: 'الخزنة المحددة غير موجودة.',
     transfer_not_ready: 'التحويل ليس في المرحلة المناسبة.',
     shift_not_found: 'الشيفت غير موجود.',
     invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+    already_posted: 'تم اعتماد هذا الشيفت وترحيله من قبل.',
+    unsupported_action: 'الإجراء المطلوب غير مدعوم.',
   };
   if (messages[code]) return messages[code];
   if (typeof data?.message === 'string') return data.message;
   if (typeof data?.details === 'string') return data.details;
+  if (data?.error && typeof data.error === 'object') {
+    try { return JSON.stringify(data.error); } catch { /* ignore */ }
+  }
   return `فشل الطلب (${status})`;
 }
 
@@ -63,4 +69,7 @@ export const treasuryApi = {
   approveShift: (id) => shiftAction(id, 'approve'),
   returnShift: (id, reason) => shiftAction(id, 'return', reason),
   reconcileOpening: (payload) => rpc('treasury_controls', 'reconcile_opening', payload),
+  alerts: () => rpc('treasury_daily_close_action', 'alerts'),
+  closeDay: (payload) => rpc('treasury_daily_close_action', 'close', payload),
+  reopenDay: (payload) => rpc('treasury_daily_close_action', 'reopen', payload),
 };
