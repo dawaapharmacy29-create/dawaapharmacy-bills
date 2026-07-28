@@ -26,6 +26,7 @@ async function postRpc(name, body) {
       order_not_found: 'الطلب غير موجود.',
       reason_required: 'اكتب سببًا واضحًا.',
       invalid_decision: 'قرار فرق المطابقة غير صحيح.',
+      invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
     };
     throw new Error(messages[data?.error] || data?.error || `فشل الطلب (${response.status})`);
   }
@@ -34,6 +35,10 @@ async function postRpc(name, body) {
 
 async function rpc(name, action, payload = {}) {
   return postRpc(name, { p_action: action, p_payload: payload });
+}
+
+async function auditFeed(module, limit = 50) {
+  return postRpc('operations_audit_feed', { p_module: module, p_limit: limit });
 }
 
 export const purchaseOperationsApi = {
@@ -50,6 +55,7 @@ export const purchaseOperationsApi = {
     p_decision: decision,
     p_reason: reason,
   }),
+  auditFeed: (limit = 50) => auditFeed('purchases', limit),
 };
 
 export const treasuryOperationsApi = {
@@ -57,4 +63,5 @@ export const treasuryOperationsApi = {
   closures: () => rpc('treasury_daily_close_action', 'closures'),
   closeDay: (payload) => rpc('treasury_daily_close_action', 'close', payload),
   reopenDay: (payload) => rpc('treasury_daily_close_action', 'reopen', payload),
+  auditFeed: (limit = 50) => auditFeed('treasury', limit),
 };
