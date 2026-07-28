@@ -33,9 +33,7 @@ async function executeRequest(payload) {
     const body = await response.json().catch(() => ({}));
     if (!response.ok || body?.ok === false) {
       const message = errorText(body?.error || body?.message, `Data request failed (${response.status})`);
-      if (response.status === 401 || message === 'invalid_session') {
-        window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
-      }
+      if (response.status === 401 || message === 'invalid_session') window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
       throw new Error(message);
     }
     return body.data;
@@ -81,7 +79,43 @@ async function callSecureRpc(functionName, params = {}) {
   } finally { window.clearTimeout(timeout); }
 }
 
+const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense']);
+async function callSpecialEntity(entity, action, id = null, data = {}) {
+  return callSecureRpc('app_special_entity_action', {
+    p_entity: entity,
+    p_action: action,
+    p_id: id,
+    p_data: data,
+  });
+}
+
 function entityClient(entity) {
+  if (SPECIAL_ENTITIES.has(entity)) {
+    return {
+      list: async (sort, limit, offset) => {
+        const rows = await callSpecialEntity(entity, 'list');
+        const sorted = sort ? sortRowsClient(rows, sort) : rows;
+        const start = Number(offset || 0);
+        const end = limit ? start + Number(limit) : undefined;
+        return sorted.slice(start, end);
+      },
+      filter: async (filters = {}, sort, limit, offset) => {
+        const rows = await callSpecialEntity(entity, 'list');
+        const filtered = rows.filter((row) => Object.entries(filters).every(([key, value]) => Array.isArray(value) ? value.includes(row[key]) : row[key] === value));
+        const sorted = sort ? sortRowsClient(filtered, sort) : filtered;
+        const start = Number(offset || 0);
+        const end = limit ? start + Number(limit) : undefined;
+        return sorted.slice(start, end);
+      },
+      get: async (id) => (await callSpecialEntity(entity, 'list')).find((row) => row.id === id) || null,
+      create: (data) => callSpecialEntity(entity, 'create', null, data),
+      update: (id, data) => callSpecialEntity(entity, 'update', id, data),
+      delete: (id) => callSpecialEntity(entity, 'delete', id, {}),
+      bulkCreate: async (items) => Promise.all(items.map((item) => callSpecialEntity(entity, 'create', null, item))),
+      bulkUpdate: async (items) => Promise.all(items.map((item) => callSpecialEntity(entity, 'update', String(item.id), item.data || item))),
+      subscribe: () => () => {},
+    };
+  }
   return {
     list: (sort, limit, offset) => callDataApi({ action: 'list', entity, sort, limit, offset }),
     filter: (filters = {}, sort, limit, offset) => callDataApi({ action: 'filter', entity, filters, sort, limit, offset }),
@@ -94,6 +128,18 @@ function entityClient(entity) {
     subscribe: () => () => {},
   };
 }
+
+function sortRowsClient(rows, sort) {
+  const desc = String(sort).startsWith('-');
+  const key = desc ? String(sort).slice(1) : String(sort);
+  return [...rows].sort((a, b) => {
+    const av = a?.[key] ?? '';
+    const bv = b?.[key] ?? '';
+    if (av === bv) return 0;
+    return av > bv ? (desc ? -1 : 1) : (desc ? 1 : -1);
+  });
+}
+
 const entities = new Proxy({}, { get: (_target, entity) => entityClient(String(entity)) });
 function currentAccount() { return readSession()?.account || null; }
 
