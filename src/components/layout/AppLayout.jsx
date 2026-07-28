@@ -1,5 +1,5 @@
 import { Link, useLocation, Outlet } from "react-router-dom";
-import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, BarChart3, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck, Landmark, Zap, Building2 } from "lucide-react";
+import { LayoutDashboard, FileText, FilePlus2, Users, Receipt, Menu, LogOut, BarChart2, BarChart3, HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX, ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight, GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck, Landmark, Zap, Building2, Scale } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/AuthContext";
 const navItems = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
   { path: "/branch-performance", label: "مقارنة وكفاءة الفروع", icon: Building2, teal: true },
+  { path: "/sales-purchases-report", label: "المبيعات مقابل المشتريات", icon: Scale, emerald: true },
   { path: "/system-status", label: "حالة النظام", icon: Activity, adminOnly: true },
   { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2, teal: true },
   { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap, emerald: true },
