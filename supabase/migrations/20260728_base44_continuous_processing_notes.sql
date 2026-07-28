@@ -1,0 +1,19 @@
+-- Base44 continuous processing rollout
+--
+-- The following database objects were deployed directly to Supabase project
+-- zqfsakrxazznkqnjlgzv during the guarded migration rollout:
+--
+-- 1. public.base44_apply_log
+-- 2. public.apply_base44_new_record(uuid)
+-- 3. public.process_base44_event_after_insert()
+-- 4. trigger trg_process_base44_event_after_insert on public.base44_sync_events
+--
+-- Processing policy:
+-- - Supplier and PharmacyOrder records classified as new_in_base44 are inserted automatically.
+-- - ShiftDelivery, SupplierPayment, PurchaseInvoice and other financial records remain pending review.
+-- - Existing records, updates and deletes are never auto-applied.
+-- - All apply attempts are recorded in public.base44_apply_log.
+--
+-- This file intentionally records the rollout policy only. The executable SQL is maintained
+-- in the Supabase migration history for the production project to avoid applying the same
+-- production migration twice from CI.
