@@ -19,13 +19,28 @@ import { useUserRole } from "@/lib/useUserRole";
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
 const today = new Date().toISOString().split("T")[0];
 const firstOfMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`;
+const DEFAULT_DATES = { from: firstOfMonth, to: today };
+
+function isValidDateValue(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizeDates(value) {
+  if (!value || typeof value !== "object") return { ...DEFAULT_DATES };
+  const from = isValidDateValue(value.from) ? value.from : firstOfMonth;
+  const to = isValidDateValue(value.to) ? value.to : today;
+  if (from > to) return { ...DEFAULT_DATES };
+  return { from, to };
+}
 
 function getStoredDates() {
   try {
     const stored = localStorage.getItem("dashboard_date_filter");
-    if (stored) return JSON.parse(stored);
-  } catch {}
-  return { from: firstOfMonth, to: today };
+    if (stored) return normalizeDates(JSON.parse(stored));
+  } catch {
+    localStorage.removeItem("dashboard_date_filter");
+  }
+  return { ...DEFAULT_DATES };
 }
 
 function money(value) {
@@ -36,13 +51,16 @@ export default function Dashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { isAdmin } = useUserRole();
-  const [dateFilter, setDateFilter] = useState(getStoredDates);
-  const [tempDate, setTempDate] = useState(getStoredDates);
+  const [dateFilter, setDateFilter] = useState(() => getStoredDates());
+  const [tempDate, setTempDate] = useState(() => getStoredDates());
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetInputs, setTargetInputs] = useState({ "دواء شكري": "", "دواء الشامي": "" });
   const [searchParams, setSearchParams] = useSearchParams();
   const branch = searchParams.get("branch") || "all";
+  const safeDates = normalizeDates(dateFilter);
+  const monthStart = safeDates.from;
+  const monthEnd = safeDates.to;
 
   const setBranch = (value) => {
     const next = new URLSearchParams(searchParams);
@@ -53,23 +71,24 @@ export default function Dashboard() {
   };
 
   const applyDateFilter = () => {
-    if (!tempDate.from || !tempDate.to || tempDate.from > tempDate.to) {
+    const nextDates = normalizeDates(tempDate);
+    if (!tempDate?.from || !tempDate?.to || tempDate.from > tempDate.to) {
       toast({ title: "الفترة غير صحيحة", description: "تأكد من تاريخ البداية والنهاية.", variant: "destructive" });
       return;
     }
-    setDateFilter(tempDate);
-    localStorage.setItem("dashboard_date_filter", JSON.stringify(tempDate));
+    setDateFilter(nextDates);
+    localStorage.setItem("dashboard_date_filter", JSON.stringify(nextDates));
     setShowDateFilter(false);
   };
 
   const { data: invoices = [], isLoading: invoicesLoading, refetch: refetchInvoices, isError: invoicesError } = useQuery({
-    queryKey: ["advanced-dashboard-invoices", dateFilter.from, dateFilter.to, branch],
+    queryKey: ["advanced-dashboard-invoices", monthStart, monthEnd, branch],
     queryFn: async () => {
       const pageSize = 200;
       const first = await performanceApi.invoices({
         branch,
-        date_from: dateFilter.from,
-        date_to: dateFilter.to,
+        date_from: monthStart,
+        date_to: monthEnd,
         page: 1,
         page_size: pageSize,
         sort_by: "invoice_date",
@@ -80,8 +99,8 @@ export default function Dashboard() {
       for (let page = 2; page <= totalPages; page += 1) {
         const result = await performanceApi.invoices({
           branch,
-          date_from: dateFilter.from,
-          date_to: dateFilter.to,
+          date_from: monthStart,
+          date_to: monthEnd,
           page,
           page_size: pageSize,
           sort_by: "invoice_date",
@@ -149,7 +168,6 @@ export default function Dashboard() {
     ? saveTargetMutation.mutate({ "دواء شكري": targetInputs["دواء شكري"], "دواء الشامي": targetInputs["دواء الشامي"] })
     : saveTargetMutation.mutate({ [branch]: targetInputs[branch] });
 
-  const { from: monthStart, to: monthEnd } = dateFilter;
   const monthInvoices = invoices;
   const monthExpenses = expenses.filter((expense) => {
     const date = expense.date || expense.created_date?.split("T")[0];
@@ -176,11 +194,11 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h1 className="text-2xl font-bold text-gray-800">الصفحة الرئيسية</h1><p className="mt-0.5 text-sm text-gray-500">من {monthStart} إلى {monthEnd}</p></div>
         <div className="relative">
-          <Button variant="outline" size="sm" onClick={() => { setTempDate(dateFilter); setShowDateFilter((value) => !value); }} className="gap-2"><Calendar className="h-4 w-4" /> تحديد الفترة</Button>
+          <Button variant="outline" size="sm" onClick={() => { setTempDate({ ...safeDates }); setShowDateFilter((value) => !value); }} className="gap-2"><Calendar className="h-4 w-4" /> تحديد الفترة</Button>
           {showDateFilter && <div className="absolute left-0 top-10 z-50 w-64 max-w-[calc(100vw-2rem)] space-y-3 rounded-xl border bg-white p-4 shadow-lg">
             <p className="text-sm font-semibold text-gray-700">اختر الفترة الزمنية</p>
-            <div className="space-y-1"><label className="text-xs text-gray-500">من تاريخ</label><Input type="date" value={tempDate.from} onChange={(e) => setTempDate((old) => ({ ...old, from: e.target.value }))} /></div>
-            <div className="space-y-1"><label className="text-xs text-gray-500">إلى تاريخ</label><Input type="date" value={tempDate.to} onChange={(e) => setTempDate((old) => ({ ...old, to: e.target.value }))} /></div>
+            <div className="space-y-1"><label className="text-xs text-gray-500">من تاريخ</label><Input type="date" value={tempDate?.from || firstOfMonth} onChange={(e) => setTempDate((old) => ({ ...normalizeDates(old), from: e.target.value }))} /></div>
+            <div className="space-y-1"><label className="text-xs text-gray-500">إلى تاريخ</label><Input type="date" value={tempDate?.to || today} onChange={(e) => setTempDate((old) => ({ ...normalizeDates(old), to: e.target.value }))} /></div>
             <div className="flex gap-2"><Button size="sm" className="flex-1 bg-teal-600 hover:bg-teal-700" onClick={applyDateFilter}>تطبيق</Button><Button size="sm" variant="outline" onClick={() => setShowDateFilter(false)}>إلغاء</Button></div>
           </div>}
         </div>
