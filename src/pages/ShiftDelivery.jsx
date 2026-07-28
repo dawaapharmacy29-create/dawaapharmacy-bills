@@ -6,6 +6,7 @@ import ShiftDeliveryForm from "@/components/shift/ShiftDeliveryForm";
 import ShiftDeliveryHistory from "@/components/shift/ShiftDeliveryHistory";
 import ShiftDeliveryStats from "@/components/shift/ShiftDeliveryStats";
 import ShiftDeliveryReport from "@/components/shift/ShiftDeliveryReport";
+import ShiftDeliveryInsights from "@/components/shift/ShiftDeliveryInsights";
 import ExpenseItemsTab from "@/components/shift/ExpenseItemsTab";
 import { cn } from "@/lib/utils";
 
@@ -14,7 +15,7 @@ export default function ShiftDelivery() {
   const canViewAll = isAdmin || isManager;
   const [activeTab, setActiveTab] = useState("new");
 
-  const { data: deliveries = [] } = useQuery({
+  const { data: deliveries = [], refetch } = useQuery({
     queryKey: ["shift-deliveries"],
     queryFn: async () => {
       const PAGE = 500; let all = []; let page = 0;
@@ -27,12 +28,15 @@ export default function ShiftDelivery() {
       return all;
     },
     staleTime: 30000,
+    refetchInterval: 60000,
+    refetchOnWindowFocus: true,
   });
 
   const tabs = canViewAll
     ? [
         { key: "new", label: "تسليم جديد" },
         { key: "history", label: "التسليمات" },
+        { key: "insights", label: "التحليل التشغيلي" },
         { key: "stats", label: "الإحصائيات" },
         { key: "report", label: "التقرير" },
         { key: "items", label: "بنود المصروفات" },
@@ -41,7 +45,6 @@ export default function ShiftDelivery() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
-      {/* Tabs */}
       <div className="flex items-center gap-1 border-b overflow-x-auto">
         {tabs.map((tab) => (
           <button
@@ -59,11 +62,11 @@ export default function ShiftDelivery() {
         ))}
       </div>
 
-      {/* Content */}
-      {activeTab === "new" && <ShiftDeliveryForm onSaved={() => canViewAll && setActiveTab("history")} />}
+      {activeTab === "new" && <ShiftDeliveryForm onSaved={async () => { await refetch(); if (canViewAll) setActiveTab("history"); }} />}
       {activeTab === "history" && canViewAll && (
         <ShiftDeliveryHistory deliveries={deliveries} onNewShift={() => setActiveTab("new")} />
       )}
+      {activeTab === "insights" && canViewAll && <ShiftDeliveryInsights deliveries={deliveries} />}
       {activeTab === "stats" && canViewAll && <ShiftDeliveryStats deliveries={deliveries} />}
       {activeTab === "report" && canViewAll && <ShiftDeliveryReport deliveries={deliveries} />}
       {activeTab === "items" && canViewAll && <ExpenseItemsTab />}
