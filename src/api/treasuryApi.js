@@ -31,7 +31,7 @@ function readableError(data, status) {
   return `فشل الطلب (${status})`;
 }
 
-async function postRpc(functionName, body) {
+async function executeRpc(functionName, body) {
   if (!SUPABASE_URL || !KEY) throw new Error('إعدادات Supabase الخاصة بالخزنة غير مكتملة في بيئة التشغيل.');
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
@@ -55,6 +55,17 @@ async function postRpc(functionName, body) {
     throw error;
   } finally {
     window.clearTimeout(timeout);
+  }
+}
+
+async function postRpc(functionName, body) {
+  try {
+    return await executeRpc(functionName, body);
+  } catch (error) {
+    const nonRetryable = ['انتهت الجلسة. سجل الدخول مرة أخرى.', 'هذه الحركة متاحة للمدير العام فقط.', 'الحساب الحالي لا يملك صلاحية تنفيذ هذا الإجراء.'];
+    if (nonRetryable.includes(error?.message)) throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 400));
+    return executeRpc(functionName, body);
   }
 }
 
