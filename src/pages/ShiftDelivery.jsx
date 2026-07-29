@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { base44 } from "@/api/base44Client";
+import { shiftDeliveryApi } from "@/api/shiftDeliveryApi";
 import { useUserRole } from "@/lib/useUserRole";
 import ShiftDeliveryForm from "@/components/shift/ShiftDeliveryForm";
 import ShiftDeliveryHistory from "@/components/shift/ShiftDeliveryHistory";
@@ -26,22 +26,12 @@ export default function ShiftDelivery() {
   const [activeTab, setActiveTab] = useState("new");
 
   const { data: deliveries = [], refetch, isFetching, error } = useQuery({
-    queryKey: ["shift-deliveries"],
-    queryFn: async () => {
-      const pageSize = 500;
-      let all = [];
-      let page = 0;
-      while (true) {
-        const batch = await base44.entities.ShiftDelivery.list("-shift_date", pageSize, page * pageSize);
-        all = [...all, ...batch];
-        if (batch.length < pageSize) break;
-        page += 1;
-      }
-      return all;
-    },
+    queryKey: ["shift-deliveries", "direct-rpc"],
+    queryFn: () => shiftDeliveryApi.list({ limit: 5000 }),
     staleTime: 30000,
     refetchInterval: 60000,
     refetchOnWindowFocus: true,
+    retry: 1,
   });
 
   const today = localDate();
@@ -71,7 +61,7 @@ export default function ShiftDelivery() {
 
     {canViewAll && <div className="grid grid-cols-2 gap-3 lg:grid-cols-5"><MetricCard label="تسليمات اليوم" value={overview.todayCount} hint="المسجل من 6 شيفتات متوقعة" icon={Wallet} /><MetricCard label="شيفتات ناقصة اليوم" value={overview.missingToday} hint="فرعان × 3 شيفتات" icon={AlertTriangle} className={overview.missingToday ? "text-red-600" : "text-emerald-700"} /><MetricCard label="بانتظار مراجعة الخزنة" value={overview.pending} icon={AlertTriangle} className={overview.pending ? "text-amber-600" : "text-emerald-700"} /><MetricCard label="معتمد اليوم" value={overview.approvedToday} icon={CheckCircle2} className="text-emerald-700" /><MetricCard label="صافي تسليمات اليوم" value={`${fmt(overview.todayNet)} ج`} icon={Landmark} className="text-indigo-700" /></div>}
 
-    {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">تعذر تحميل بعض تسليمات الشيفت: {error.message}</div>}
+    {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">تعذر تحميل تسليمات الشيفت: {error.message}</div>}
 
     <div className="flex items-center gap-1 overflow-x-auto border-b bg-white px-2">
       {tabs.map((tab) => <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={cn("whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors", activeTab === tab.key ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-800")}>{tab.label}{tab.key === "history" && overview.pending > 0 && <span className="mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{overview.pending}</span>}</button>)}
