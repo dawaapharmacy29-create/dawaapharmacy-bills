@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
-import { Banknote, CreditCard, Landmark, Loader2, Plus, Save, ShieldCheck, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, CreditCard, Landmark, Loader2, Plus, RotateCcw, Save, ShieldCheck, Trash2, Wallet } from "lucide-react";
 import { useUserRole } from "@/lib/useUserRole";
 
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
@@ -52,6 +52,8 @@ export default function ShiftDeliveryForm({ onSaved }) {
   const actualCash = numberValue(form.actual_cash);
   const cashDifference = actualCash - expectedCash;
   const netAmount = totalSales - totalExpenses;
+  const matchingShift = existingDeliveries.find((item) => item.branch === form.branch && item.shift_type === form.shift_type && item.shift_date === form.shift_date);
+  const isReturnedCorrection = matchingShift?.treasury_status === "returned";
   const updateExpense = (index, field, value) => setExpenses((previous) => previous.map((expense, itemIndex) => itemIndex === index ? { ...expense, [field]: value } : expense));
 
   const handleSave = async () => {
@@ -61,8 +63,10 @@ export default function ShiftDeliveryForm({ onSaved }) {
     if (!form.submitted_by) return setError("الرجاء اختيار الموظف المسؤول");
     if (totalSales <= 0) return setError("الرجاء تسجيل مبيعات الشيفت حسب طريقة التحصيل");
     if (netAmount < 0) return setError("إجمالي المصروفات أكبر من مبيعات الشيفت");
-    const duplicateShift = existingDeliveries.some((item) => item.branch === form.branch && item.shift_type === form.shift_type && item.shift_date === form.shift_date);
-    if (duplicateShift) return setError("تم تسجيل تسليم لهذا الفرع والشيفت في نفس اليوم بالفعل");
+    if (matchingShift && !isReturnedCorrection) {
+      const statusLabel = ["approved", "reviewed"].includes(matchingShift.treasury_status) ? "تم اعتماد هذا الشيفت بالفعل ولا يمكن استبداله" : "يوجد تسليم لنفس الفرع والشيفت والتاريخ بانتظار المراجعة";
+      return setError(statusLabel);
+    }
 
     const validExpenses = expenses.filter((expense) => expense.category || numberValue(expense.amount) > 0).map((expense) => ({ entry_type: "expense", description: expense.description || "", amount: numberValue(expense.amount), category: expense.category || "أخرى" }));
     const auditDetails = [
@@ -74,22 +78,27 @@ export default function ShiftDeliveryForm({ onSaved }) {
       { entry_type: "cash_control", category: "نقدية فعلية", description: "المبلغ الموجود عند التسليم", amount: actualCash },
       { entry_type: "cash_control", category: "فرق الخزنة", description: cashDifference === 0 ? "مطابق" : cashDifference > 0 ? "زيادة" : "عجز", amount: cashDifference },
     ];
+    const payload = {
+      branch: form.branch,
+      shift_type: form.shift_type,
+      shift_date: form.shift_date,
+      submitted_by: form.submitted_by,
+      total_sales: totalSales,
+      expenses: [...auditDetails, ...validExpenses],
+      total_expenses: totalExpenses,
+      net_amount: netAmount,
+      status: "انتظار مراجعة الخزنة",
+      treasury_status: "pending_review",
+      treasury_review_note: "",
+      notes: form.notes,
+      corrected_at: isReturnedCorrection ? new Date().toISOString() : null,
+      corrected_by: isReturnedCorrection ? currentUserName : null,
+    };
 
     setSaving(true);
     try {
-      await base44.entities.ShiftDelivery.create({
-        branch: form.branch,
-        shift_type: form.shift_type,
-        shift_date: form.shift_date,
-        submitted_by: form.submitted_by,
-        total_sales: totalSales,
-        expenses: [...auditDetails, ...validExpenses],
-        total_expenses: totalExpenses,
-        net_amount: netAmount,
-        status: "انتظار مراجعة الخزنة",
-        treasury_status: "pending_review",
-        notes: form.notes,
-      });
+      if (isReturnedCorrection) await base44.entities.ShiftDelivery.update(matchingShift.id, payload);
+      else await base44.entities.ShiftDelivery.create(payload);
       qc.invalidateQueries({ queryKey: ["shift-deliveries"] });
       qc.invalidateQueries({ queryKey: ["treasury"] });
       setForm({ branch: "", shift_type: "", shift_date: today, submitted_by: currentUserName, cash_sales: "", card_sales: "", transfer_sales: "", opening_cash: "", actual_cash: "", notes: "" });
@@ -105,6 +114,8 @@ export default function ShiftDeliveryForm({ onSaved }) {
     <div className="mb-5 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100"><Wallet className="h-5 w-5 text-indigo-600" /></div><div><h2 className="text-xl font-bold text-gray-900">تسليم شيفت متكامل</h2><p className="text-sm text-gray-500">سجل طرق التحصيل، المصروفات، والنقدية الفعلية ليظهر فرق الخزنة بوضوح قبل الاعتماد.</p></div></div>
     <Card className="space-y-6 p-4 md:p-6">
       <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><ShieldCheck className="h-5 w-5 shrink-0" /><span>الحفظ ينشئ تسليمًا بانتظار المراجعة. لن يُعتبر الشيفت مقفلًا ماليًا قبل اعتماد الخزنة.</span></div>
+      {isReturnedCorrection && <div className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"><RotateCcw className="h-5 w-5 shrink-0" /><div><p className="font-bold">هذا الشيفت مرتجع للتصحيح</p><p className="mt-1 text-xs">سيتم تحديث نفس التسليم وإرساله مرة أخرى للخزنة، ولن يتم إنشاء تسليم مكرر. سبب الإرجاع: {matchingShift.treasury_review_note || "راجع تفاصيل التسليم"}</p></div></div>}
+      {matchingShift && !isReturnedCorrection && <div className="flex gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800"><AlertTriangle className="h-5 w-5 shrink-0" /><span>يوجد تسليم مسجل لنفس الفرع والشيفت والتاريخ. غيّر الاختيار أو راجع سجل التسليمات.</span></div>}
 
       <section><h3 className="mb-4 border-b pb-2 text-sm font-bold text-gray-800">1. بيانات الشيفت</h3><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <label className="space-y-1.5"><Label>الفرع *</Label><Select value={form.branch} onValueChange={(value) => setForm({ ...form, branch: value })}><SelectTrigger><SelectValue placeholder="اختر الفرع" /></SelectTrigger><SelectContent>{BRANCHES.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}</SelectContent></Select></label>
@@ -128,7 +139,7 @@ export default function ShiftDeliveryForm({ onSaved }) {
 
       <label className="block space-y-1.5"><Label>ملاحظات الشيفت والتسليم</Label><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} className="w-full rounded-md border p-3 text-sm" rows={4} placeholder="أي ملاحظات عن الخزنة، الفيزا، المصروفات أو الشيفت التالي" /></label>
       {error && <p className="rounded-lg bg-red-50 p-3 text-center text-sm font-medium text-red-700">{error}</p>}
-      <Button onClick={handleSave} disabled={saving} className="h-12 w-full bg-indigo-600 text-white hover:bg-indigo-700">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}حفظ وإرسال لمراجعة الخزنة</Button>
+      <Button onClick={handleSave} disabled={saving || (matchingShift && !isReturnedCorrection)} className="h-12 w-full bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : isReturnedCorrection ? <RotateCcw className="h-4 w-4" /> : <Save className="h-4 w-4" />}{isReturnedCorrection ? "حفظ التصحيح وإعادة الإرسال للخزنة" : "حفظ وإرسال لمراجعة الخزنة"}</Button>
     </Card>
   </div>;
 }
