@@ -4,7 +4,7 @@ import {
   HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX,
   ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight,
   GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck, Landmark,
-  Zap, Building2, Scale, ChevronDown, Search, X, Star, Layers3
+  Zap, Building2, Scale, ChevronDown, Search, X, Layers3, BadgeCheck
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -38,7 +38,7 @@ const navGroups = [
       { label: "الفواتير", items: [
         { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2 },
         { path: "/invoices", label: "فواتير الشراء", icon: FileText },
-        { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badge: true },
+        { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badgeKey: "invoices" },
         { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks },
       ]},
       { label: "دورة الطلبية", items: [
@@ -60,9 +60,10 @@ const navGroups = [
   {
     key: "finance", label: "الحسابات والتشغيل", icon: Landmark,
     sections: [
-      { label: "الخزنة والشيفت", items: [
-        { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock },
-        { path: "/treasury", label: "الخزنة والعهد والتحويلات", icon: Landmark },
+      { label: "دورة الشيفت والخزنة", items: [
+        { path: "/shift-delivery", label: "تسجيل وتسليم الشيفت", icon: Clock },
+        { path: "/treasury/shift-review", label: "مراجعة واعتماد الشيفتات", icon: BadgeCheck, managerOnly: true, badgeKey: "shifts" },
+        { path: "/treasury", label: "الخزنة والأرصدة والتحويلات", icon: Landmark },
         { path: "/treasury-operations", label: "رقابة وإقفال الخزنة", icon: ShieldCheck, adminOnly: true },
       ]},
       { label: "الحركات المالية", items: [
@@ -110,7 +111,7 @@ const navGroups = [
 const quickLinks = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
   { path: "/invoices/new", label: "فاتورة جديدة", icon: FilePlus2 },
-  { path: "/pending-invoices", label: "المراجعة", icon: ClipboardList, badge: true },
+  { path: "/pending-invoices", label: "مراجعة الفواتير", icon: ClipboardList, badgeKey: "invoices" },
   { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock },
 ];
 
@@ -122,16 +123,17 @@ export default function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const { isAdmin } = useUserRole();
+  const { isAdmin, isManager } = useUserRole();
+  const canReviewShifts = isAdmin || isManager;
   const { user, logout, isLoggingOut } = useAuth();
 
   const visibleGroups = useMemo(() => navGroups.map((group) => ({
     ...group,
     sections: group.sections.map((section) => ({
       ...section,
-      items: section.items.filter((item) => !item.adminOnly || isAdmin),
+      items: section.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts)),
     })).filter((section) => section.items.length),
-  })).filter((group) => group.sections.length), [isAdmin]);
+  })).filter((group) => group.sections.length), [isAdmin, canReviewShifts]);
 
   const groupForPath = useMemo(() => visibleGroups.find((group) => group.sections.some((section) => section.items.some((item) => location.pathname === item.path.split("?")[0])))?.key || "home", [location.pathname, visibleGroups]);
   const [openGroup, setOpenGroup] = useState(() => localStorage.getItem(NAV_STORAGE_KEY) || groupForPath);
@@ -147,7 +149,20 @@ export default function AppLayout() {
     staleTime: 30000,
     retry: 1,
   });
-  const pendingCount = pendingInvoices.length;
+
+  const { data: pendingShifts = [] } = useQuery({
+    queryKey: ["pending-shifts-navigation-count"],
+    queryFn: async () => {
+      const rows = await base44.entities.ShiftDelivery.list("-shift_date", 500, 0);
+      return rows.filter((shift) => ["pending", "pending_review", "returned"].includes(shift.treasury_status || "pending"));
+    },
+    enabled: canReviewShifts,
+    staleTime: 30000,
+    refetchInterval: 60000,
+    retry: 1,
+  });
+
+  const badgeCounts = { invoices: pendingInvoices.length, shifts: pendingShifts.length };
 
   const isActive = (path) => {
     const [pathname, query] = path.split("?");
@@ -160,13 +175,14 @@ export default function AppLayout() {
     localStorage.setItem(NAV_STORAGE_KEY, next);
   };
 
-  const renderLink = (item, closeMobile = false, compact = false) => (
-    <Link key={item.path} to={item.path} onClick={closeMobile ? () => setMobileOpen(false) : undefined}
+  const renderLink = (item, closeMobile = false, compact = false) => {
+    const badgeValue = item.badgeKey ? Number(badgeCounts[item.badgeKey] || 0) : 0;
+    return <Link key={item.path} to={item.path} onClick={closeMobile ? () => setMobileOpen(false) : undefined}
       className={cn("flex items-center gap-2 rounded-lg transition-colors", compact ? "px-2 py-2 text-[11px]" : "px-3 py-2 text-xs", isActive(item.path) ? "bg-teal-600 font-bold text-white shadow-sm" : "text-gray-600 hover:bg-white hover:text-teal-700")}>
       <item.icon className="h-3.5 w-3.5 shrink-0"/><span className="min-w-0 flex-1 truncate">{item.label}</span>
-      {item.badge && pendingCount > 0 && <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-amber-950">{pendingCount}</span>}
-    </Link>
-  );
+      {badgeValue > 0 && <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", isActive(item.path) ? "bg-white/20 text-white" : "bg-amber-400 text-amber-950")}>{badgeValue}</span>}
+    </Link>;
+  };
 
   const filteredSearchItems = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -176,7 +192,7 @@ export default function AppLayout() {
 
   const renderNav = (closeMobile = false) => <div className="space-y-3">
     <div className="grid grid-cols-2 gap-1.5 rounded-xl border bg-gray-50 p-2">
-      {quickLinks.filter((item) => !item.adminOnly || isAdmin).map((item) => renderLink(item, closeMobile, true))}
+      {quickLinks.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts)).map((item) => renderLink(item, closeMobile, true))}
     </div>
 
     <div className="relative">

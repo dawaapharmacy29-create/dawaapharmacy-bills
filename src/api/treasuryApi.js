@@ -1,5 +1,6 @@
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
-const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJ6cWZzYWtyeGF6em5rcW5qbGd6diIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzg0OTk5MzgzLCJleHAiOjIxMDA1NzUzODN9.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const REQUEST_TIMEOUT_MS = 20000;
 
 function token() {
   try { return JSON.parse(localStorage.getItem('dawaa_staff_session') || 'null')?.session_token || ''; }
@@ -30,17 +31,42 @@ function readableError(data, status) {
   return `فشل الطلب (${status})`;
 }
 
-async function postRpc(functionName, body) {
+async function executeRpc(functionName, body) {
+  if (!SUPABASE_URL || !KEY) throw new Error('إعدادات Supabase الخاصة بالخزنة غير مكتملة في بيئة التشغيل.');
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
-    method: 'POST',
-    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ p_session_token: sessionToken, ...body }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) throw new Error(readableError(data, response.status));
-  return data.data;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+      method: 'POST',
+      headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_session_token: sessionToken, ...body }),
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok === false) {
+      if (response.status === 401 || data?.error === 'invalid_session') window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
+      throw new Error(readableError(data, response.status));
+    }
+    return data.data;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخزنة. أعد المحاولة.');
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function postRpc(functionName, body) {
+  try {
+    return await executeRpc(functionName, body);
+  } catch (error) {
+    const nonRetryable = ['انتهت الجلسة. سجل الدخول مرة أخرى.', 'هذه الحركة متاحة للمدير العام فقط.', 'الحساب الحالي لا يملك صلاحية تنفيذ هذا الإجراء.'];
+    if (nonRetryable.includes(error?.message)) throw error;
+    await new Promise((resolve) => window.setTimeout(resolve, 400));
+    return executeRpc(functionName, body);
+  }
 }
 
 async function rpc(functionName, action, payload = {}) {
