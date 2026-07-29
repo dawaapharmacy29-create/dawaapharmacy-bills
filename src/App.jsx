@@ -33,6 +33,7 @@ import SupplierBalancesBranch from './pages/SupplierBalancesBranch';
 import ReplenishmentPage from './pages/ReplenishmentPage';
 import ShiftDelivery from './pages/ShiftDelivery';
 import TreasuryCenter from './pages/TreasuryCenter';
+import ShiftTreasuryReview from './pages/ShiftTreasuryReview';
 import TreasuryOperations from './pages/TreasuryOperations';
 import PurchaseOperationsReview from './pages/PurchaseOperationsReview';
 import SecurityAuditPage from './pages/SecurityAuditPage';
@@ -86,6 +87,7 @@ const AuthenticatedApp = () => {
     <Route path="/replenishment" element={<ReplenishmentPage />} />
     <Route path="/shift-delivery" element={<ShiftDelivery />} />
     <Route path="/treasury" element={<TreasuryCenter />} />
+    <Route path="/treasury/shift-review" element={<ShiftTreasuryReview />} />
     <Route path="/treasury-operations" element={<TreasuryOperations />} />
     <Route path="/purchase-operations-review" element={<PurchaseOperationsReview />} />
     <Route path="/security-audit" element={<SecurityAuditPage />} />
