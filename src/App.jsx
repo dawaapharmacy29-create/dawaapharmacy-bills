@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -7,56 +8,67 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
 import AppErrorBoundary from './components/system/AppErrorBoundary';
-import FastDashboard from './pages/FastDashboard';
-import Dashboard from './pages/Dashboard';
-import FastPurchaseInvoices from './pages/FastPurchaseInvoices';
-import PurchaseInvoices from './pages/PurchaseInvoices.jsx';
-import QuickInvoiceEntry from './pages/QuickInvoiceEntry';
-import InvoiceQualityCenter from './pages/InvoiceQualityCenter';
-import DoctorAccountCoverage from './pages/DoctorAccountCoverage';
-import Suppliers from './pages/Suppliers.jsx';
-import Expenses from './pages/Expenses';
-import Reports from './pages/Reports';
-import SupplierBalances from './pages/SupplierBalances';
-import ActivityLog from './pages/ActivityLog';
-import UserManagement from './pages/UserManagement';
-import TeamMembers from './pages/TeamMembers';
-import PendingInvoices from './pages/PendingInvoices';
-import MedicineList from './pages/MedicineList';
-import Returns from './pages/Returns';
-import InventoryManagement from './pages/InventoryManagement';
-import CustomerOrders from './pages/CustomerOrders';
-import PharmacyOrders from './pages/PharmacyOrders';
-import InventoryCount from './pages/InventoryCount';
-import ReportsBranch from './pages/ReportsBranch';
-import SupplierBalancesBranch from './pages/SupplierBalancesBranch';
-import ReplenishmentPage from './pages/ReplenishmentPage';
-import ShiftDelivery from './pages/ShiftDelivery';
-import TreasuryCenter from './pages/TreasuryCenter';
-import ShiftTreasuryReview from './pages/ShiftTreasuryReview';
-import TreasuryOperations from './pages/TreasuryOperations';
-import PurchaseOperationsReview from './pages/PurchaseOperationsReview';
-import SecurityAuditPage from './pages/SecurityAuditPage';
-import SupplierRulesBackfill from './pages/SupplierRulesBackfill';
-import ReviewNeededInvoices from './components/invoices/ReviewNeededInvoices';
-import DataReviewCenter from './pages/DataReviewCenter';
-import BranchSettlements from './pages/BranchSettlements';
-import PurchaseWorkflowCenter from './pages/PurchaseWorkflowCenter';
-import SmartPurchaseCenter from './pages/SmartPurchaseCenter';
-import SmartPurchaseReceiving from './pages/SmartPurchaseReceiving';
-import SmartPurchaseOrderManagement from './pages/SmartPurchaseOrderManagement';
-import SmartPurchaseInsights from './pages/SmartPurchaseInsights';
-import SmartPurchaseUnifiedCenter from './pages/SmartPurchaseUnifiedCenter';
-import TeamMergeCenter from './pages/TeamMergeCenter';
-import SystemStatus from './pages/SystemStatus';
-import BranchPerformanceCenter from './pages/BranchPerformanceCenter';
-import SalesPurchasesReport from './pages/SalesPurchasesReport';
+
+// كل الصفحات بتتحمّل عند الحاجة فقط (lazy) بدل ما تتحمّل كلها مع أول فتح للتطبيق.
+// ده بيقلل حجم التحميل الأولي جدًا (كان يتضمن كل صفحات المشتريات والتقارير ومكتبات
+// التصدير Excel/PDF دفعة واحدة حتى لو المستخدم فاتح صفحة تسليم الشيفت بس).
+const FastDashboard = lazy(() => import('./pages/FastDashboard'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const FastPurchaseInvoices = lazy(() => import('./pages/FastPurchaseInvoices'));
+const PurchaseInvoices = lazy(() => import('./pages/PurchaseInvoices.jsx'));
+const QuickInvoiceEntry = lazy(() => import('./pages/QuickInvoiceEntry'));
+const InvoiceQualityCenter = lazy(() => import('./pages/InvoiceQualityCenter'));
+const DoctorAccountCoverage = lazy(() => import('./pages/DoctorAccountCoverage'));
+const Suppliers = lazy(() => import('./pages/Suppliers.jsx'));
+const Expenses = lazy(() => import('./pages/Expenses'));
+const Reports = lazy(() => import('./pages/Reports'));
+const SupplierBalances = lazy(() => import('./pages/SupplierBalances'));
+const ActivityLog = lazy(() => import('./pages/ActivityLog'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const TeamMembers = lazy(() => import('./pages/TeamMembers'));
+const PendingInvoices = lazy(() => import('./pages/PendingInvoices'));
+const MedicineList = lazy(() => import('./pages/MedicineList'));
+const Returns = lazy(() => import('./pages/Returns'));
+const InventoryManagement = lazy(() => import('./pages/InventoryManagement'));
+const CustomerOrders = lazy(() => import('./pages/CustomerOrders'));
+const PharmacyOrders = lazy(() => import('./pages/PharmacyOrders'));
+const InventoryCount = lazy(() => import('./pages/InventoryCount'));
+const ReportsBranch = lazy(() => import('./pages/ReportsBranch'));
+const SupplierBalancesBranch = lazy(() => import('./pages/SupplierBalancesBranch'));
+const ReplenishmentPage = lazy(() => import('./pages/ReplenishmentPage'));
+const ShiftDelivery = lazy(() => import('./pages/ShiftDelivery'));
+const TreasuryCenter = lazy(() => import('./pages/TreasuryCenter'));
+const ShiftTreasuryReview = lazy(() => import('./pages/ShiftTreasuryReview'));
+const TreasuryOperations = lazy(() => import('./pages/TreasuryOperations'));
+const PurchaseOperationsReview = lazy(() => import('./pages/PurchaseOperationsReview'));
+const SecurityAuditPage = lazy(() => import('./pages/SecurityAuditPage'));
+const SupplierRulesBackfill = lazy(() => import('./pages/SupplierRulesBackfill'));
+const ReviewNeededInvoices = lazy(() => import('./components/invoices/ReviewNeededInvoices'));
+const DataReviewCenter = lazy(() => import('./pages/DataReviewCenter'));
+const BranchSettlements = lazy(() => import('./pages/BranchSettlements'));
+const PurchaseWorkflowCenter = lazy(() => import('./pages/PurchaseWorkflowCenter'));
+const SmartPurchaseCenter = lazy(() => import('./pages/SmartPurchaseCenter'));
+const SmartPurchaseReceiving = lazy(() => import('./pages/SmartPurchaseReceiving'));
+const SmartPurchaseOrderManagement = lazy(() => import('./pages/SmartPurchaseOrderManagement'));
+const SmartPurchaseInsights = lazy(() => import('./pages/SmartPurchaseInsights'));
+const SmartPurchaseUnifiedCenter = lazy(() => import('./pages/SmartPurchaseUnifiedCenter'));
+const TeamMergeCenter = lazy(() => import('./pages/TeamMergeCenter'));
+const SystemStatus = lazy(() => import('./pages/SystemStatus'));
+const BranchPerformanceCenter = lazy(() => import('./pages/BranchPerformanceCenter'));
+const SalesPurchasesReport = lazy(() => import('./pages/SalesPurchasesReport'));
+
+function PageLoading() {
+  return <div dir="rtl" className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+    <div className="w-9 h-9 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin" />
+    <p className="text-sm font-medium text-slate-500">جاري تحميل الصفحة...</p>
+  </div>;
+}
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isAuthenticated } = useAuth();
   if (isLoadingAuth) return <div dir="rtl" className="fixed inset-0 flex flex-col items-center justify-center gap-3 bg-white"><div className="w-10 h-10 border-4 border-teal-100 border-t-teal-600 rounded-full animate-spin"/><p className="text-sm font-medium text-slate-500">جاري التحقق من الحساب...</p></div>;
   if (!isAuthenticated) return <LoginPage />;
-  return <Routes><Route element={<AppLayout />}>
+  return <Suspense fallback={<PageLoading />}><Routes><Route element={<AppLayout />}>
     <Route path="/" element={<FastDashboard />} />
     <Route path="/dashboard/advanced" element={<Dashboard />} />
     <Route path="/branch-performance" element={<BranchPerformanceCenter />} />
@@ -101,7 +113,7 @@ const AuthenticatedApp = () => {
     <Route path="/smart-purchase-orders/manage" element={<SmartPurchaseOrderManagement />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
     <Route path="/smart-purchase-insights" element={<SmartPurchaseInsights />} />
-  </Route><Route path="*" element={<PageNotFound />} /></Routes>;
+  </Route><Route path="*" element={<PageNotFound />} /></Routes></Suspense>;
 };
 
 function App(){return <AppErrorBoundary><AuthProvider><QueryClientProvider client={queryClientInstance}><Router><AuthenticatedApp /></Router><Toaster /></QueryClientProvider></AuthProvider></AppErrorBoundary>}

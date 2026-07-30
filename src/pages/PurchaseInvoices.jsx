@@ -383,7 +383,7 @@ export default function PurchaseInvoices() {
     <div dir="rtl" className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-800">فواتير الشراء</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-800">فواتير الشراء — تفصيلي وفلاتر</h1>
           <p className="text-gray-500 text-sm mt-0.5">{filtered.length} من {invoices.length} فاتورة</p>
         </div>
         {canSaveInvoice && (

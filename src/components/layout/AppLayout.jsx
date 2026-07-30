@@ -37,18 +37,23 @@ const navGroups = [
     sections: [
       { label: "الفواتير", items: [
         { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2 },
-        { path: "/invoices", label: "فواتير الشراء", icon: FileText },
+        { path: "/invoices", label: "فواتير الشراء — عرض سريع", icon: FileText },
+        { path: "/invoices/manage", label: "فواتير الشراء — تفصيلي وفلاتر", icon: FileSearch },
         { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badgeKey: "invoices" },
         { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks },
       ]},
-      { label: "دورة الطلبية", items: [
+      { label: "الأداة الموحدة (ابدأ من هنا)", items: [
         { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap },
-        { path: "/purchase-operations-review", label: "مراجعة تشغيل الطلبيات", icon: ListChecks, adminOnly: true },
-        { path: "/smart-purchase-orders", label: "رفع وتحليل ملف الطلبية", icon: BrainCircuit },
-        { path: "/smart-purchase-orders/manage", label: "العروض وتعديل الطلبية", icon: FileSearch },
-        { path: "/smart-purchase-receiving", label: "الاستلام والمطابقة", icon: PackageCheck },
-        { path: "/smart-purchase-insights", label: "تقييم وتحسين المشتريات", icon: BarChart3 },
-        { path: "/purchase-workflow", label: "دورة المشتريات", icon: GitBranch },
+      ]},
+      { label: "خطوات الطلبية بالتفصيل", items: [
+        { path: "/smart-purchase-orders", label: "1. رفع وتحليل ملف الطلبية", icon: BrainCircuit },
+        { path: "/smart-purchase-orders/manage", label: "2. مراجعة العروض واعتماد الطلبية", icon: FileSearch },
+        { path: "/smart-purchase-receiving", label: "3. الاستلام والمطابقة", icon: PackageCheck },
+        { path: "/smart-purchase-insights", label: "4. تقييم الأداء بعد التنفيذ", icon: BarChart3 },
+      ]},
+      { label: "مراقبة ومراجعة الطلبيات", items: [
+        { path: "/purchase-workflow", label: "متابعة الاختناقات والنواقص", icon: GitBranch },
+        { path: "/purchase-operations-review", label: "مراجعة شاملة وSLA", icon: ListChecks, adminOnly: true },
       ]},
       { label: "الطلبات", items: [
         { path: "/replenishment", label: "الأصناف المطلوبة", icon: PackageSearch },
@@ -63,8 +68,8 @@ const navGroups = [
       { label: "دورة الشيفت والخزنة", items: [
         { path: "/shift-delivery", label: "تسجيل وتسليم الشيفت", icon: Clock },
         { path: "/treasury/shift-review", label: "مراجعة واعتماد الشيفتات", icon: BadgeCheck, managerOnly: true, badgeKey: "shifts" },
-        { path: "/treasury", label: "الخزنة والأرصدة والتحويلات", icon: Landmark },
-        { path: "/treasury-operations", label: "رقابة وإقفال الخزنة", icon: ShieldCheck, adminOnly: true },
+        { path: "/treasury", label: "الخزنة — العمليات اليومية", icon: Landmark },
+        { path: "/treasury-operations", label: "الخزنة — الرقابة والإقفال (أدمن)", icon: ShieldCheck, adminOnly: true },
       ]},
       { label: "الحركات المالية", items: [
         { path: "/expenses", label: "المصروفات", icon: Receipt },

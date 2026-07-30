@@ -72,8 +72,8 @@ export default function FastPurchaseInvoices() {
     <div dir="rtl" className="space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">فواتير الشراء</h1>
-          <p className="mt-1 text-sm text-gray-500">قائمة سريعة من الخادم — يتم تحميل الصفحة المطلوبة فقط.</p>
+          <h1 className="text-2xl font-bold text-gray-900">فواتير الشراء — عرض سريع</h1>
+          <p className="mt-1 text-sm text-gray-500">قائمة سريعة من الخادم — يتم تحميل الصفحة المطلوبة فقط. للفلاتر التفصيلية استخدم "الإدارة المتقدمة".</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching} className="gap-2"><RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> تحديث</Button>
