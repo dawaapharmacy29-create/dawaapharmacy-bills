@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight, AlertTriangle, CheckCircle2, Plus } from "lucide-react";
+import { ArrowLeftRight, AlertTriangle, CheckCircle2, Plus, Lock } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { useUserRole } from "@/lib/useUserRole";
 
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
 const METHODS = ["كاش", "تحويل بنكي", "إنستا باي", "فودافون كاش", "تسوية حساب", "أخرى"];
@@ -28,6 +29,7 @@ const isLegacyInternal = (p) => !isSettlement(p) && BRANCHES.includes(p.supplier
 
 export default function BranchSettlements() {
   const qc = useQueryClient();
+  const { isAdmin } = useUserRole();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [error, setError] = useState("");
@@ -36,6 +38,7 @@ export default function BranchSettlements() {
     queryKey: ["branch-settlements-source"],
     queryFn: () => base44.entities.SupplierPayment.list("-payment_date", 5000),
     staleTime: 30000,
+    enabled: isAdmin,
   });
 
   const settlements = useMemo(() => payments.filter(isSettlement), [payments]);
@@ -76,6 +79,11 @@ export default function BranchSettlements() {
   };
 
   const total = settlements.reduce((sum, x) => sum + Number(x.amount || 0), 0);
+
+  if (!isAdmin) {
+    return <div dir="rtl" className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-gray-400"><Lock className="w-12 h-12" /><p>هذه الصفحة للمدير العام فقط</p></div>;
+  }
+
   return (
     <div dir="rtl" className="p-4 md:p-6 space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">

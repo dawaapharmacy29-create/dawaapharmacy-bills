@@ -48,7 +48,7 @@ export default function DoctorAccountCoverage() {
     return { accounts, doctors, missing, covered };
   }, [accountsQuery.data, membersQuery.data]);
 
-  if (!isAdmin) return <div dir="rtl" className="p-10 text-center text-gray-500">هذه الصفحة للمدير العام فقط.</div>;
+  if (!isAdmin) return <div dir="rtl" className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-gray-400"><ShieldCheck className="w-12 h-12" /><p>هذه الصفحة للمدير العام فقط</p></div>;
   const loading = accountsQuery.isLoading || membersQuery.isLoading;
   const failed = accountsQuery.isError || membersQuery.isError;
 

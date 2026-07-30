@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { treasuryApi } from '@/api/treasuryApi';
 import { treasuryOperationsApi } from '@/api/operationsReviewApi';
-import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck, Send, RotateCcw, XCircle, History } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck, Send, RotateCcw, XCircle, History, Lock } from 'lucide-react';
+import { useUserRole } from '@/lib/useUserRole';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const money = (value) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -9,6 +10,7 @@ const ACCOUNT_LABELS = { cash: 'النقدي', instapay: 'إنستا باي', vo
 const ACTION_LABELS = { insert: 'إنشاء', update: 'تعديل', status_change: 'تغيير حالة' };
 
 export default function TreasuryOperations() {
+  const { isAdmin } = useUserRole();
   const [treasuries, setTreasuries] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -36,7 +38,7 @@ export default function TreasuryOperations() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { if (isAdmin) refresh(); }, [isAdmin]);
 
   const selected = useMemo(() => treasuries.find((x) => x.id === form.treasury_id), [treasuries, form.treasury_id]);
   const groupedAlerts = useMemo(() => ({
@@ -57,6 +59,10 @@ export default function TreasuryOperations() {
     setMessage(`تم الإقفال. الرصيد النظامي ${money(result?.system_balance)} ج، والفرق ${money(result?.difference)} ج.`);
     setForm((current) => ({ ...current, actual_balance: '', counted_by_name: '', notes: '' }));
   }, 'تم إقفال الخزنة واعتماد فرق الجرد.');
+
+  if (!isAdmin) {
+    return <div dir="rtl" className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-gray-400"><Lock className="w-12 h-12" /><p>هذه الصفحة للمدير العام فقط</p></div>;
+  }
 
   return (
     <div dir="rtl" className="p-4 md:p-6 space-y-5">

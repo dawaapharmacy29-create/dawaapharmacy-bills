@@ -16,9 +16,9 @@ const BRANCHES = ['دواء الشامي', 'دواء شكري'];
 const ROLE_CONFIG = {
   general_manager: { label: 'المدير العام', className: 'bg-red-100 text-red-700', desc: 'كل الصلاحيات واعتماد وإعادة فتح الفواتير.' },
   branch_manager: { label: 'مدير فرع', className: 'bg-blue-100 text-blue-700', desc: 'متابعة فواتير الفرع والمراجعة وإعادة التصحيح.' },
-  invoice_entry: { label: 'دكتور إدخال فواتير', className: 'bg-teal-100 text-teal-700', desc: 'إدخال وتعديل المسودات وإرسالها للمراجعة.' },
-  invoice_reviewer: { label: 'دكتور مراجعة فواتير', className: 'bg-amber-100 text-amber-800', desc: 'مراجعة الفواتير أو إعادتها للتصحيح.' },
-  purchasing: { label: 'مسؤول مشتريات', className: 'bg-cyan-100 text-cyan-800', desc: 'إدخال الفواتير ومتابعة الموردين والمشتريات.' },
+  invoice_entry: { label: 'دكتور إدخال فواتير', className: 'bg-teal-100 text-teal-700', desc: 'لصيدلي/طبيب الفرع اللي بيدخل فواتير الشراء اليومية وبيرسلها للمراجعة. نفس صلاحية "مسؤول مشتريات" بالظبط.' },
+  invoice_reviewer: { label: 'دكتور مراجعة فواتير', className: 'bg-amber-100 text-amber-800', desc: 'مراجعة الفواتير أو إعادتها للتصحيح، بدون صلاحيات مدير الفرع الأوسع.' },
+  purchasing: { label: 'مسؤول مشتريات', className: 'bg-cyan-100 text-cyan-800', desc: 'لموظف إداري متخصص في المشتريات ومتابعة الموردين. نفس صلاحية "دكتور إدخال فواتير" بالظبط.' },
   accountant: { label: 'محاسب واعتماد مالي', className: 'bg-violet-100 text-violet-700', desc: 'الاعتماد المالي بعد إتمام المراجعة.' },
   viewer: { label: 'مشاهد فقط', className: 'bg-gray-100 text-gray-700', desc: 'عرض البيانات دون تعديل أو اعتماد.' },
 };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { purchaseOperationsApi } from '@/api/operationsReviewApi';
-import { AlertTriangle, CheckCircle2, RefreshCw, History } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RefreshCw, History, Lock } from 'lucide-react';
+import { useUserRole } from '@/lib/useUserRole';
 
 const STATUS_LABELS = {
   draft: 'مسودة', under_review: 'تحت المراجعة', approved: 'معتمد', supplier_selected: 'تم اختيار المورد', ordered: 'تم الطلب',
@@ -15,6 +16,7 @@ const ACTION_LABELS = { insert: 'إنشاء', update: 'تعديل', status_chang
 const money = (value) => new Intl.NumberFormat('ar-EG',{maximumFractionDigits:2}).format(Number(value||0));
 
 export default function PurchaseOperationsReview() {
+  const { isAdmin } = useUserRole();
   const [data, setData] = useState({ issues: [], unified_orders: [], three_way_issues: [], sla_orders: [], supplier_offers: [], summary: {} });
   const [auditRows, setAuditRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -33,7 +35,7 @@ export default function PurchaseOperationsReview() {
     catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { if (isAdmin) refresh(); }, [isAdmin]);
 
   async function run(action, success) {
     setLoading(true); setError(''); setMessage('');
@@ -54,6 +56,10 @@ export default function PurchaseOperationsReview() {
     }
     run(() => purchaseOperationsApi.updateStatus(x.id, x.source_type, value, reason), 'تم تحديث الحالة وفق دورة الطلب المعتمدة.');
   };
+
+  if (!isAdmin) {
+    return <div dir="rtl" className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-gray-400"><Lock className="w-12 h-12" /><p>هذه الصفحة للمدير العام فقط</p></div>;
+  }
 
   return (
     <div dir="rtl" className="p-4 md:p-6 space-y-5">

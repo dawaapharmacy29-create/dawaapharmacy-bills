@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
-import { Activity, CheckCircle2, Database, RefreshCw, Server, TriangleAlert, Users, Receipt, Target } from 'lucide-react';
+import { Activity, CheckCircle2, Database, RefreshCw, Server, TriangleAlert, Users, Receipt, Target, Lock } from 'lucide-react';
 import { base44, performanceApi, errorText } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useUserRole } from '@/lib/useUserRole';
 
 const CHECKS = [
   { key: 'dashboard', label: 'ملخص المشتريات', icon: Database, query: () => performanceApi.dashboard({ branch: 'all' }), count: (data) => Number(data?.invoice_count || 0) },
@@ -16,9 +17,13 @@ const CHECKS = [
 
 export default function SystemStatus() {
   const qc = useQueryClient();
-  const queries = useQueries({ queries: CHECKS.map((item) => ({ queryKey: ['system-status', item.key], queryFn: item.query, staleTime: 30000, retry: 1 })) });
+  const { isAdmin } = useUserRole();
+  const queries = useQueries({ queries: CHECKS.map((item) => ({ queryKey: ['system-status', item.key], queryFn: item.query, staleTime: 30000, retry: 1, enabled: isAdmin })) });
   const cards = useMemo(() => CHECKS.map((item, index) => ({ ...item, count: queries[index]?.data ? item.count(queries[index].data) : null, error: queries[index]?.isError ? errorText(queries[index]?.error) : null, loading: queries[index]?.isLoading || queries[index]?.isFetching })), [queries]);
   const isLoading = cards.some((item) => item.loading); const hasError = cards.some((item) => item.error); const healthy = !isLoading && !hasError;
+  if (!isAdmin) {
+    return <div dir="rtl" className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-gray-400"><Lock className="w-12 h-12" /><p>هذه الصفحة للمدير العام فقط</p></div>;
+  }
   return <div dir="rtl" className="space-y-5 p-4 md:p-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold text-slate-900">حالة النظام</h1><p className="mt-1 text-sm text-slate-500">فحص المسارات الأساسية المستخدمة فعليًا داخل التطبيق.</p></div><Button onClick={() => qc.invalidateQueries({ queryKey: ['system-status'] })} disabled={isLoading} variant="outline" className="gap-2"><RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> تحديث الفحص</Button></div>
     <Card className={`border p-5 ${healthy ? 'border-emerald-200 bg-emerald-50' : hasError ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}><div className="flex items-center gap-3">{healthy ? <CheckCircle2 className="h-8 w-8 text-emerald-600"/> : hasError ? <TriangleAlert className="h-8 w-8 text-red-600"/> : <Server className="h-8 w-8 text-amber-600"/>}<div><p className="font-bold text-slate-900">{healthy ? 'المسارات الأساسية تعمل بنجاح' : hasError ? 'توجد مسارات تحتاج مراجعة' : 'جاري فحص النظام'}</p><p className="mt-1 text-sm text-slate-600">آخر فحص: {new Date().toLocaleString('ar-EG')}</p></div></div></Card>
