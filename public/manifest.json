@@ -1,24 +1,20 @@
 {
-  "name": "صيدليات دواء - نظام المشتريات والحسابات",
+  "name": "صيدليات دواء - المشتريات والحسابات",
   "short_name": "صيدليات دواء",
-  "description": "نظام المشتريات والحسابات لصيدليات دواء",
+  "description": "نظام المشتريات والحسابات وتسليمات الشيفت لصيدليات دواء",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f0fdfa",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fffe",
   "theme_color": "#0f9d8f",
   "icons": [
     {
-      "src": "/dawaa-icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/dawaa-icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
+      "src": "/dawaa-favicon.svg?v=3",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ]
