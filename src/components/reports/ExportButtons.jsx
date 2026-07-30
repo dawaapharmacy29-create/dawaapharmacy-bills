@@ -20,7 +20,7 @@ function downloadFile(content, filename, mimeType) {
   URL.revokeObjectURL(url);
 }
 
-export default function ExportButtons({ invoices, expenses, year, branchData, monthlyData }) {
+export default function ExportButtons({ invoices, expenses, year, branchData, monthlyData, totals }) {
   const exportExcel = () => {
     // Invoices sheet
     const invHeaders = ["رقم الفاتورة", "المورد", "الفرع", "القيمة الإجمالية", "المرتجع", "المدفوع", "المتبقي", "طريقة الدفع", "الحالة"];
@@ -41,14 +41,30 @@ export default function ExportButtons({ invoices, expenses, year, branchData, mo
     const expRows = expenses.map((e) => [e.description, e.amount || 0, e.branch || "", e.category || "", e.date || ""]);
 
     // Monthly summary
-    const sumHeaders = ["الشهر", "المشتريات", "المصروفات"];
-    const sumRows = monthlyData.map((m) => [m.month, m.invoices, m.expenses]);
+    const sumHeaders = ["الشهر", "المبيعات", "المشتريات", "المصروفات", "الربح التقديري"];
+    const sumRows = monthlyData.map((m) => [m.month, m.sales || 0, m.invoices, m.expenses, (m.sales || 0) - m.invoices - m.expenses]);
+
+    // Branch profitability sheet
+    const branchHeaders = ["الفرع", "المبيعات", "المشتريات", "المصروفات", "الربح التقديري"];
+    const branchRows = branchData.map((b) => [b.branch, b.مبيعات || 0, b.مشتريات, b.مصروفات, b.ربح_تقديري || (b.مبيعات || 0) - b.مشتريات - b.مصروفات]);
+
+    // Overall totals
+    const totalsHeaders = ["البند", "القيمة"];
+    const totalsRows = totals ? [
+      ["إجمالي المبيعات", totals.totalSales || 0],
+      ["إجمالي المشتريات", totals.totalInvoices || 0],
+      ["إجمالي المصروفات", totals.totalExpenses || 0],
+      ["الربح التقديري", totals.estimatedProfit || 0],
+      ["هامش الربح التقديري %", Number((totals.profitMargin || 0).toFixed(1))],
+    ] : [];
 
     const invCSV = toCSV(invRows, invHeaders);
     const expCSV = toCSV(expRows, expHeaders);
     const sumCSV = toCSV(sumRows, sumHeaders);
+    const branchCSV = toCSV(branchRows, branchHeaders);
+    const totalsCSV = totalsRows.length ? toCSV(totalsRows, totalsHeaders) : "";
 
-    const combined = `--- فواتير الشراء ---\n${invCSV}\n\n--- المصروفات ---\n${expCSV}\n\n--- الملخص الشهري ---\n${sumCSV}`;
+    const combined = `--- الملخص العام (المبيعات والربح التقديري) ---\n${totalsCSV}\n\n--- مقارنة الفروع ---\n${branchCSV}\n\n--- فواتير الشراء ---\n${invCSV}\n\n--- المصروفات ---\n${expCSV}\n\n--- الملخص الشهري ---\n${sumCSV}`;
     downloadFile(combined, `تقرير_مالي_${year}.csv`, "text/csv;charset=utf-8;");
   };
 
@@ -63,9 +79,9 @@ export default function ExportButtons({ invoices, expenses, year, branchData, mo
     doc.setFontSize(12);
     doc.text("Branch Summary", 14, 28);
 
-    const branchHeaders = ["Branch", "Purchases (EGP)", "Expenses (EGP)", "Total (EGP)"];
+    const branchHeaders = ["Branch", "Sales (EGP)", "Purchases (EGP)", "Expenses (EGP)", "Est. Profit (EGP)"];
     let y = 35;
-    const colW = [50, 50, 50, 50];
+    const colW = [40, 42, 42, 42, 42];
     const startX = 14;
 
     // Header row
@@ -86,8 +102,9 @@ export default function ExportButtons({ invoices, expenses, year, branchData, mo
         doc.rect(startX, y - 5, colW.reduce((a, b) => a + b, 0), 8, "F");
       }
       doc.setFontSize(9);
-      const total = row["مشتريات"] + row["مصروفات"];
-      [row.branch, row["مشتريات"].toLocaleString(), row["مصروفات"].toLocaleString(), total.toLocaleString()].forEach((v, i) => {
+      const sales = row["مبيعات"] || 0;
+      const profit = row["ربح_تقديري"] ?? (sales - row["مشتريات"] - row["مصروفات"]);
+      [row.branch, sales.toLocaleString(), row["مشتريات"].toLocaleString(), row["مصروفات"].toLocaleString(), profit.toLocaleString()].forEach((v, i) => {
         const x = startX + colW.slice(0, i).reduce((a, b) => a + b, 0);
         doc.text(String(v), x + 2, y);
       });
@@ -101,8 +118,8 @@ export default function ExportButtons({ invoices, expenses, year, branchData, mo
     doc.text("Monthly Summary", 14, y);
     y += 8;
 
-    const mHeaders = ["Month", "Purchases", "Expenses"];
-    const mColW = [40, 40, 40];
+    const mHeaders = ["Month", "Sales", "Purchases", "Expenses"];
+    const mColW = [40, 35, 35, 35];
     doc.setFillColor(59, 130, 246);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
@@ -124,7 +141,7 @@ export default function ExportButtons({ invoices, expenses, year, branchData, mo
         doc.rect(startX, y - 5, mColW.reduce((a, b) => a + b, 0), 8, "F");
       }
       doc.setFontSize(9);
-      [row.month, row.invoices.toLocaleString(), row.expenses.toLocaleString()].forEach((v, i) => {
+      [row.month, (row.sales || 0).toLocaleString(), row.invoices.toLocaleString(), row.expenses.toLocaleString()].forEach((v, i) => {
         const x = startX + mColW.slice(0, i).reduce((a, b) => a + b, 0);
         doc.text(String(v), x + 2, y);
       });

@@ -70,11 +70,13 @@ export default function ReportsBranch() {
     staleTime: 60000,
   });
   const { data: allExpenses = [] } = useQuery({ queryKey: ["expenses"], queryFn: () => base44.entities.Expense.list("-created_date", 5000) });
+  const { data: allShifts = [] } = useQuery({ queryKey: ["shift-deliveries-report"], queryFn: () => base44.entities.ShiftDelivery.list("-shift_date", 5000) });
   const { data: settings = [] } = useQuery({ queryKey: ["report-settings"], queryFn: () => base44.entities.ReportSettings.list() });
 
   // Filter to this branch only
   const invoices = useMemo(() => allInvoices.filter(i => i.branch === branch), [allInvoices, branch]);
   const expenses = useMemo(() => allExpenses.filter(e => e.branch === branch), [allExpenses, branch]);
+  const shifts = useMemo(() => allShifts.filter(s => s.branch === branch), [allShifts, branch]);
 
   const settingFrom = settings.find(s => s.key === SETTING_KEY_FROM);
   const settingTo = settings.find(s => s.key === SETTING_KEY_TO);
@@ -106,26 +108,37 @@ export default function ReportsBranch() {
 
   const filteredInvoices = useMemo(() => invoices.filter(i => inRange(i.created_date, activeFrom, activeTo)), [invoices, activeFrom, activeTo]);
   const filteredExpenses = useMemo(() => expenses.filter(e => inRange(e.date, activeFrom, activeTo)), [expenses, activeFrom, activeTo]);
+  const filteredShifts = useMemo(() => shifts.filter(s => inRange(s.shift_date, activeFrom, activeTo)), [shifts, activeFrom, activeTo]);
 
   const monthlyData = useMemo(() => {
     const map = {};
+    const ensure = (k) => {
+      if (!map[k]) { const [y, m] = k.split("-"); map[k] = { month: `${MONTHS_AR[parseInt(m)-1]} ${y}`, invoices: 0, expenses: 0, sales: 0 }; }
+      return map[k];
+    };
     filteredInvoices.forEach((i) => {
       const k = getMonthKey(i.created_date);
       if (!k) return;
-      if (!map[k]) { const [y, m] = k.split("-"); map[k] = { month: `${MONTHS_AR[parseInt(m)-1]} ${y}`, invoices: 0, expenses: 0 }; }
-      map[k].invoices += i.total_value || 0;
+      ensure(k).invoices += i.total_value || 0;
     });
     filteredExpenses.forEach((e) => {
       const k = getMonthKey(e.date);
       if (!k) return;
-      if (!map[k]) { const [y, m] = k.split("-"); map[k] = { month: `${MONTHS_AR[parseInt(m)-1]} ${y}`, invoices: 0, expenses: 0 }; }
-      map[k].expenses += e.amount || 0;
+      ensure(k).expenses += e.amount || 0;
+    });
+    filteredShifts.forEach((s) => {
+      const k = getMonthKey(s.shift_date);
+      if (!k) return;
+      ensure(k).sales += Number(s.total_sales || 0);
     });
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
-  }, [filteredInvoices, filteredExpenses]);
+  }, [filteredInvoices, filteredExpenses, filteredShifts]);
 
   const totalInvoices = filteredInvoices.reduce((s, i) => s + (i.total_value || 0), 0);
   const totalExpenses = filteredExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+  const totalSales = filteredShifts.reduce((s, x) => s + Number(x.total_sales || 0), 0);
+  const estimatedProfit = totalSales - totalInvoices - totalExpenses;
+  const profitMargin = totalSales > 0 ? (estimatedProfit / totalSales) * 100 : 0;
   const fmt = (n) => n.toLocaleString("ar-EG");
   const changed = pendingFrom !== activeFrom || pendingTo !== activeTo;
   const formatDateAr = (d) => d ? new Date(d).toLocaleDateString("ar-EG") : "";
@@ -188,8 +201,9 @@ export default function ReportsBranch() {
             invoices={filteredInvoices}
             expenses={filteredExpenses}
             year={new Date(activeFrom).getFullYear()}
-            branchData={[{ branch, مشتريات: totalInvoices, مصروفات: totalExpenses }]}
+            branchData={[{ branch, مبيعات: totalSales, مشتريات: totalInvoices, مصروفات: totalExpenses, ربح_تقديري: estimatedProfit }]}
             monthlyData={monthlyData}
+            totals={{ totalSales, totalInvoices, totalExpenses, estimatedProfit, profitMargin }}
           />
         </div>
       </div>
@@ -197,10 +211,10 @@ export default function ReportsBranch() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
+          { label: "إجمالي المبيعات", value: fmt(totalSales) + " ج", color: "text-green-600", bg: "bg-green-50" },
           { label: "إجمالي المشتريات", value: fmt(totalInvoices) + " ج", color: "text-blue-600", bg: "bg-blue-50" },
           { label: "إجمالي المصروفات", value: fmt(totalExpenses) + " ج", color: "text-red-600", bg: "bg-red-50" },
-          { label: "عدد الفواتير", value: filteredInvoices.length, color: "text-teal-600", bg: "bg-teal-50" },
-          { label: "عدد المصروفات", value: filteredExpenses.length, color: "text-orange-600", bg: "bg-orange-50" },
+          { label: "الربح التقديري", value: fmt(estimatedProfit) + " ج", color: estimatedProfit >= 0 ? "text-teal-600" : "text-red-600", bg: "bg-teal-50" },
         ].map((s) => (
           <Card key={s.label} className={`p-4 ${s.bg}`}>
             <p className="text-xs text-gray-500">{s.label}</p>
@@ -208,11 +222,25 @@ export default function ReportsBranch() {
           </Card>
         ))}
       </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: "هامش الربح التقديري", value: `${profitMargin.toFixed(1)}%`, color: profitMargin >= 25 ? "text-emerald-600" : profitMargin >= 10 ? "text-amber-600" : "text-red-600", bg: "bg-purple-50" },
+          { label: "عدد الفواتير", value: filteredInvoices.length, color: "text-teal-600", bg: "bg-gray-50" },
+          { label: "عدد المصروفات", value: filteredExpenses.length, color: "text-orange-600", bg: "bg-gray-50" },
+          { label: "عدد تسليمات الشيفت", value: filteredShifts.length, color: "text-slate-600", bg: "bg-gray-50" },
+        ].map((s) => (
+          <Card key={s.label} className={`p-4 ${s.bg}`}>
+            <p className="text-xs text-gray-500">{s.label}</p>
+            <p className={`text-lg font-bold ${s.color} mt-1`}>{s.value}</p>
+          </Card>
+        ))}
+      </div>
+      <p className="text-xs text-gray-400 -mt-2">الربح التقديري = المبيعات − المشتريات − المصروفات. تقدير تدفق نقدي وليس هامشًا محاسبيًا دقيقًا لعدم توفر تكلفة الصنف في البيانات.</p>
 
       {/* Monthly Trend */}
       {monthlyData.length > 0 && (
         <Card className="p-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">تطور المشتريات والمصروفات شهرياً</h2>
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">تطور المبيعات والمشتريات والمصروفات شهرياً</h2>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -220,6 +248,7 @@ export default function ReportsBranch() {
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v.toLocaleString()} />
               <Tooltip formatter={(v) => v.toLocaleString("ar-EG") + " ج"} />
               <Legend />
+              <Line type="monotone" dataKey="sales" name="مبيعات" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
               <Line type="monotone" dataKey="invoices" name="مشتريات" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
               <Line type="monotone" dataKey="expenses" name="مصروفات" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
