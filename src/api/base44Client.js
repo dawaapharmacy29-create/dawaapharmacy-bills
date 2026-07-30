@@ -97,6 +97,18 @@ async function listPurchaseInvoices(sort, limit = 10000, offset = 0, filters = {
   return Object.keys(filters).length ? sliced.filter((row) => Object.entries(filters).every(([key, value]) => ['date_from','date_to','search'].includes(key) || (Array.isArray(value) ? value.includes(row[key]) : row[key] === value))) : sliced;
 }
 
+async function listShiftDeliveries(sort = '-shift_date', limit = 5000, offset = 0, filters = {}) {
+  const rows = await callSecureRpc('app_shift_deliveries_list', {
+    p_date_from: filters.date_from || null,
+    p_date_to: filters.date_to || null,
+    p_branch: filters.branch || 'all',
+    p_limit: Math.min(Math.max(Number(limit || 1000), 1), 5000),
+    p_offset: Math.max(Number(offset || 0), 0),
+  });
+  const filtered = (Array.isArray(rows) ? rows : []).filter((row) => Object.entries(filters).every(([key, value]) => ['date_from', 'date_to'].includes(key) || (Array.isArray(value) ? value.includes(row[key]) : row[key] === value)));
+  return sort ? sortRowsClient(filtered, sort) : filtered;
+}
+
 const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense', 'TargetGoal']);
 async function callSpecialEntity(entity, action, id = null, data = {}) { return callSecureRpc('app_special_entity_action', { p_entity: entity, p_action: action, p_id: id, p_data: data }); }
 
@@ -105,6 +117,13 @@ function entityClient(entity) {
     list: (sort, limit, offset) => listPurchaseInvoices(sort, limit, offset),
     filter: (filters = {}, sort, limit, offset) => listPurchaseInvoices(sort, limit, offset, filters),
     get: async (id) => (await listPurchaseInvoices('-created_at', 5000, 0)).find((row) => row.id === id) || null,
+    create: (data) => callDataApi({ action: 'create', entity, data }), update: (id, data) => callDataApi({ action: 'update', entity, id, data }), delete: (id) => callDataApi({ action: 'delete', entity, id }),
+    bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }), bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }), subscribe: () => () => {},
+  };
+  if (entity === 'ShiftDelivery') return {
+    list: (sort, limit, offset) => listShiftDeliveries(sort, limit, offset),
+    filter: (filters = {}, sort, limit, offset) => listShiftDeliveries(sort, limit, offset, filters),
+    get: async (id) => (await listShiftDeliveries('-shift_date', 5000, 0)).find((row) => row.id === id) || null,
     create: (data) => callDataApi({ action: 'create', entity, data }), update: (id, data) => callDataApi({ action: 'update', entity, id, data }), delete: (id) => callDataApi({ action: 'delete', entity, id }),
     bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }), bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }), subscribe: () => () => {},
   };
