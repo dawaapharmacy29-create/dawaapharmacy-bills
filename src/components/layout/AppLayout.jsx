@@ -4,11 +4,11 @@ import {
   HandCoins, ClipboardList, ShieldCheck, UserCheck, FlaskConical, RotateCcw, PackageX,
   ShoppingBag, PackageSearch, Clock, FileSearch, AlertTriangle, Database, ArrowLeftRight,
   GitBranch, Activity, ListChecks, UserRoundCheck, BrainCircuit, PackageCheck, Landmark,
-  Zap, Building2, Scale, ChevronDown, Search, X, Layers3, BadgeCheck
+  Zap, Building2, Scale, ChevronDown, Search, X, Layers3, BadgeCheck, DatabaseZap
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, base44ReviewApi } from "@/api/base44Client";
 import { cn } from "@/lib/utils";
 import { useUserRole } from "@/lib/useUserRole";
 import SmartAlerts from "@/components/layout/SmartAlerts";
@@ -91,6 +91,7 @@ const navGroups = [
       { label: "متابعة الجودة", items: [
         { path: "/review-needed-invoices", label: "فواتير تحتاج مراجعة", icon: AlertTriangle },
         { path: "/data-review", label: "مركز مراجعة البيانات", icon: Database, adminOnly: true },
+        { path: "/base44-sync-review", label: "مراجعة مزامنة Base44", icon: DatabaseZap, adminOnly: true, badgeKey: "base44Sync" },
         { path: "/activity-log", label: "سجل العمليات", icon: ClipboardList },
         { path: "/security-audit", label: "سجل الأمان", icon: ShieldCheck, adminOnly: true },
       ]},
@@ -167,7 +168,16 @@ export default function AppLayout() {
     retry: 1,
   });
 
-  const badgeCounts = { invoices: pendingInvoices.length, shifts: pendingShifts.length };
+  const { data: base44SyncSummary } = useQuery({
+    queryKey: ["base44-sync-pending-count"],
+    queryFn: () => base44ReviewApi.pendingList({ status: "pending", limit: 1 }),
+    enabled: isAdmin,
+    staleTime: 30000,
+    refetchInterval: 60000,
+    retry: 1,
+  });
+
+  const badgeCounts = { invoices: pendingInvoices.length, shifts: pendingShifts.length, base44Sync: Number(base44SyncSummary?.pending_total || 0) };
 
   const isActive = (path) => {
     const [pathname, query] = path.split("?");

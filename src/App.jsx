@@ -56,6 +56,7 @@ const TeamMergeCenter = lazy(() => import('./pages/TeamMergeCenter'));
 const SystemStatus = lazy(() => import('./pages/SystemStatus'));
 const BranchPerformanceCenter = lazy(() => import('./pages/BranchPerformanceCenter'));
 const SalesPurchasesReport = lazy(() => import('./pages/SalesPurchasesReport'));
+const Base44SyncReview = lazy(() => import('./pages/Base44SyncReview'));
 
 function PageLoading() {
   return <div dir="rtl" className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
@@ -106,6 +107,7 @@ const AuthenticatedApp = () => {
     <Route path="/supplier-rules-backfill" element={<SupplierRulesBackfill />} />
     <Route path="/review-needed-invoices" element={<ReviewNeededInvoices />} />
     <Route path="/data-review" element={<DataReviewCenter />} />
+    <Route path="/base44-sync-review" element={<Base44SyncReview />} />
     <Route path="/branch-settlements" element={<BranchSettlements />} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
     <Route path="/purchase-center" element={<SmartPurchaseUnifiedCenter />} />
