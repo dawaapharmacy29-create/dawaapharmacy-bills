@@ -10,6 +10,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { useUserRole } from '@/lib/useUserRole';
 import BranchSelector from '@/components/dashboard/BranchSelector';
 import DailyProgressIndicator from '@/components/dashboard/DailyProgressIndicator';
+import SalesProfitOverview from '@/components/dashboard/SalesProfitOverview';
+import SalesTrendChart from '@/components/dashboard/SalesTrendChart';
 
 const BRANCHES = ['دواء الشامي', 'دواء شكري'];
 const fmt = (value) => Number(value || 0).toLocaleString('ar-EG', { maximumFractionDigits: 0 });
@@ -139,6 +141,9 @@ export default function FastDashboard() {
           <Stat label="المرتجعات" value={fmt(data.returned_value)} icon={GitBranch} />
           <Stat label="انتظار المراجعة" value={fmt(data.pending_count)} suffix="فاتورة" icon={AlertTriangle} className={Number(data.pending_count) ? 'border-amber-200 bg-amber-50/30' : ''} />
         </div>
+
+        <SalesProfitOverview dateFrom={dateFrom} dateTo={dateTo} branch={branch} />
+        <SalesTrendChart dateFrom={dateFrom} dateTo={dateTo} branch={branch} />
 
         <Card className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
