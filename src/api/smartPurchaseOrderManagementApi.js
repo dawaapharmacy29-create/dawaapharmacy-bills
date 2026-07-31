@@ -1,4 +1,5 @@
 import { base44 } from '@/api/base44Client';
+import { smartPurchaseUnifiedApi } from '@/api/smartPurchaseUnifiedApi';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
@@ -17,7 +18,7 @@ function errorText(value, fallback) {
   try { return JSON.stringify(value); } catch { return fallback; }
 }
 
-async function rpc(action, payload = {}) {
+async function legacyRpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
   const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_order_management`, {
@@ -58,7 +59,7 @@ async function fallbackOrders() {
 }
 
 async function withFallback(action, payload, fallback) {
-  try { return await rpc(action, payload); }
+  try { return await legacyRpc(action, payload); }
   catch (error) {
     if ([400, 404].some((code) => String(error.message).includes(String(code))) || /Could not find|schema cache|function/i.test(error.message)) return fallback();
     throw error;
@@ -82,12 +83,16 @@ export const smartPurchaseOrderManagementApi = {
       supplier_reason: '', notes: order.notes || '',
     }] };
   }),
-  listOffers: (filters = {}) => rpc('list_offers', filters),
-  importOffers: (payload) => rpc('import_offers', payload),
-  updateItem: (payload) => rpc('update_item', payload),
+  listOffers: (filters = {}) => legacyRpc('list_offers', filters),
+  importOffers: (payload) => legacyRpc('import_offers', payload),
+
+  // تحديث الأصناف يمر حصريًا عبر الدالة الموحدة الحديثة؛
+  // هذا يمنع خطأ ss.session_token والتحديث الجزئي لخطة الميزانية.
+  updateItem: (payload) => smartPurchaseUnifiedApi.updateItem(payload),
+
   optimizeSuppliers: async (orderId) => {
     try {
-      return await rpc('optimize_suppliers', { order_id: orderId });
+      return await legacyRpc('optimize_suppliers', { order_id: orderId });
     } catch (error) {
       const message = String(error?.message || '');
       if (/session_token does not exist|no_supplier_offers/i.test(message)) {
@@ -100,5 +105,5 @@ export const smartPurchaseOrderManagementApi = {
       throw error;
     }
   },
-  approveOrder: (orderId) => rpc('approve_order', { order_id: orderId }),
+  approveOrder: (orderId) => smartPurchaseUnifiedApi.approveOrder(orderId),
 };
