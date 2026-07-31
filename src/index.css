@@ -76,61 +76,45 @@
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-
-  html {
-    overflow-x: hidden;
-    font-size: 16px;
-  }
-
-  body {
-    @apply bg-background text-foreground;
-    min-width: 320px;
-    overflow-x: hidden;
-  }
+  * { @apply border-border outline-ring/50; }
+  html { overflow-x: hidden; font-size: 16px; }
+  body { @apply bg-background text-foreground; min-width: 320px; overflow-x: hidden; }
 }
 
-/* مركز الطلبية: تخطيط ثابت ومتجاوب بدون تصغير عام للتطبيق. */
 @media (min-width: 768px) {
-  main > .flex-1 > div[dir="rtl"].p-4 {
+  main > .flex-1 > div[dir="rtl"] {
     width: 100%;
     max-width: none;
     padding: 0.85rem 1rem 1.5rem;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 .rounded-2xl {
-    border-radius: 0.8rem;
-  }
-
-  body > #root > div > aside {
-    width: 15rem !important;
-  }
+  main > .flex-1 > div[dir="rtl"] .rounded-2xl { border-radius: 0.8rem; }
+  body > #root > div > aside { width: 15rem !important; }
 }
 
-/* إعادة بناء توزيع مركز الطلبية: شريط الطلبات أعلى الصفحة وتفاصيل بعرض كامل. */
-@media (min-width: 1024px) {
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] {
+/* مركز الطلبية: تحويل عمود الطلبيات إلى شريط أفقي وإعطاء التفاصيل العرض الكامل. */
+@media (min-width: 768px) {
+  main > .flex-1 > div[dir="rtl"] > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] {
     display: flex !important;
     flex-direction: column !important;
     gap: 0.75rem !important;
-    min-width: 0;
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside {
+  main > .flex-1 > div[dir="rtl"] > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside {
     width: 100% !important;
     max-width: none !important;
     position: static !important;
     padding: 0.65rem !important;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > h2 {
+  main > .flex-1 > div[dir="rtl"] > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > h2 {
     margin: 0 0 0.45rem !important;
     font-size: 0.9rem;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div {
+  main > .flex-1 > div[dir="rtl"] > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div {
     display: flex !important;
     flex-direction: row !important;
     gap: 0.55rem !important;
@@ -141,67 +125,40 @@
     scrollbar-width: thin;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div > button {
-    flex: 0 0 235px !important;
-    min-width: 235px !important;
+  main > .flex-1 > div[dir="rtl"] > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div > button {
+    flex: 0 0 225px !important;
+    min-width: 225px !important;
     padding: 0.65rem 0.8rem !important;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > main {
+  main > .flex-1 > div[dir="rtl"] > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > main {
     width: 100% !important;
     min-width: 0 !important;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 table {
-    font-size: 0.83rem;
-  }
-
-  main > .flex-1 > div[dir="rtl"].p-4 table th,
-  main > .flex-1 > div[dir="rtl"].p-4 table td {
+  main > .flex-1 > div[dir="rtl"] table { font-size: 0.83rem; }
+  main > .flex-1 > div[dir="rtl"] table th,
+  main > .flex-1 > div[dir="rtl"] table td {
     padding-top: 0.55rem;
     padding-bottom: 0.55rem;
     white-space: nowrap;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 section:has(> table) {
-    max-height: calc(100vh - 11rem);
+  main > .flex-1 > div[dir="rtl"] section:has(> table) {
+    width: 100%;
+    max-height: calc(100vh - 9rem);
     overflow: auto;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 section:has(> table) thead {
+  main > .flex-1 > div[dir="rtl"] section:has(> table) thead {
     position: sticky;
     top: 0;
     z-index: 10;
   }
 }
 
-/* الشاشات المتوسطة: الطلبات في شريط أفقي أيضًا لمنع ضغط تفاصيل الطلبية. */
-@media (min-width: 768px) and (max-width: 1023px) {
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] {
-    display: flex !important;
-    flex-direction: column !important;
-  }
-
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div {
-    display: flex !important;
-    overflow-x: auto !important;
-    max-height: none !important;
-    gap: 0.5rem;
-  }
-
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div > button {
-    flex: 0 0 220px;
-  }
-}
-
 @media (max-width: 767px) {
   html { font-size: 16px; }
-
-  main > .flex-1 > div[dir="rtl"].p-4 {
-    padding: 0.75rem;
-  }
-
-  main > .flex-1 > div[dir="rtl"].p-4 button {
-    min-height: 2.75rem;
-  }
+  main > .flex-1 > div[dir="rtl"] { padding: 0.75rem; }
+  main > .flex-1 > div[dir="rtl"] button { min-height: 2.75rem; }
 }
