@@ -10,14 +10,12 @@
     --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 3.9%;
-    /* Brand teal — matches the logo (#0f9d8f icon / #0f766e wordmark) instead of the default shadcn near-black. */
     --primary: 175 84% 32%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 96.1%;
     --secondary-foreground: 0 0% 9%;
     --muted: 0 0% 96.1%;
     --muted-foreground: 0 0% 45.1%;
-    /* Soft teal tint for hover/active backgrounds (ghost buttons, menu hover) instead of neutral gray. */
     --accent: 175 45% 95%;
     --accent-foreground: 175 84% 20%;
     --destructive: 0 84.2% 60.2%;
@@ -70,21 +68,89 @@
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-accent: 175 30% 16%;
+    --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
-
-
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
 
+  html {
+    overflow-x: hidden;
+  }
+
   body {
     @apply bg-background text-foreground;
+    min-width: 320px;
+    overflow-x: hidden;
+  }
+}
+
+/* مركز الطلبية: استغلال أفضل لمساحة اللابتوب بدون التأثير على سهولة الاستخدام بالموبايل. */
+@media (min-width: 768px) {
+  main > .flex-1 > div[dir="rtl"].p-4 {
+    width: 100%;
+    max-width: none;
+    padding: 0.875rem 1rem 1.5rem;
+    gap: 0.75rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[285px_1fr\] {
+    grid-template-columns: minmax(220px, 250px) minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 .rounded-2xl {
+    border-radius: 0.75rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 .p-4 {
+    padding: 0.75rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 h1 {
+    font-size: 1.45rem;
+    line-height: 1.8rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 h2 {
+    line-height: 1.5rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 table {
+    font-size: 0.78rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 table th,
+  main > .flex-1 > div[dir="rtl"].p-4 table td {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
+}
+
+@media (min-width: 1280px) and (max-width: 1700px) {
+  main > .flex-1 > div[dir="rtl"].p-4 {
+    font-size: 0.94rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 button,
+  main > .flex-1 > div[dir="rtl"].p-4 input,
+  main > .flex-1 > div[dir="rtl"].p-4 select {
+    min-height: 2.25rem;
+  }
+}
+
+@media (max-width: 767px) {
+  main > .flex-1 > div[dir="rtl"].p-4 {
+    padding: 0.75rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 button {
+    min-height: 2.75rem;
   }
 }
