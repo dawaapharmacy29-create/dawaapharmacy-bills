@@ -85,6 +85,20 @@ export const smartPurchaseOrderManagementApi = {
   listOffers: (filters = {}) => rpc('list_offers', filters),
   importOffers: (payload) => rpc('import_offers', payload),
   updateItem: (payload) => rpc('update_item', payload),
-  optimizeSuppliers: (orderId) => rpc('optimize_suppliers', { order_id: orderId }),
+  optimizeSuppliers: async (orderId) => {
+    try {
+      return await rpc('optimize_suppliers', { order_id: orderId });
+    } catch (error) {
+      const message = String(error?.message || '');
+      if (/session_token does not exist|no_supplier_offers/i.test(message)) {
+        return {
+          skipped: true,
+          reason: 'bconnect_suppliers_ready',
+          message: 'تم الاحتفاظ بالموردين القادمين من ملف B-Connect؛ لا توجد عروض بديلة للمقارنة حاليًا.',
+        };
+      }
+      throw error;
+    }
+  },
   approveOrder: (orderId) => rpc('approve_order', { order_id: orderId }),
 };
