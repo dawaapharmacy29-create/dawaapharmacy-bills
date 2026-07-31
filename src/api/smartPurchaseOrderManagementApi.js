@@ -26,7 +26,15 @@ async function rpc(action, payload = {}) {
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) throw new Error(errorText(data?.error || data?.message || data, `فشل الطلب (${response.status})`));
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      order_not_found: 'الطلبية غير موجودة.',
+      no_supplier_offers: 'لا توجد عروض موردين مسجلة تسمح بالمقارنة التلقائية.',
+      items_without_supplier: 'يوجد أصناف بدون مورد.',
+      forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+    };
+    throw new Error(messages[data?.error] || errorText(data?.error || data?.message || data, `فشل الطلب (${response.status})`));
+  }
   return data.data;
 }
 
@@ -76,7 +84,7 @@ export const smartPurchaseOrderManagementApi = {
   }),
   listOffers: (filters = {}) => rpc('list_offers', filters),
   importOffers: (payload) => rpc('import_offers', payload),
-  updateItem: () => Promise.reject(new Error('تعديل الطلبية القديمة غير متاح من هذه الصفحة حاليًا. استخدم صفحة الطلب الأصلية.')),
-  optimizeSuppliers: () => Promise.reject(new Error('التحسين التلقائي يحتاج طلبية منشأة من مركز الطلبية الذكي.')),
-  approveOrder: () => Promise.reject(new Error('الاعتماد من هذه الصفحة متاح فقط للطلبيات الذكية الجديدة.')),
+  updateItem: (payload) => rpc('update_item', payload),
+  optimizeSuppliers: (orderId) => rpc('optimize_suppliers', { order_id: orderId }),
+  approveOrder: (orderId) => rpc('approve_order', { order_id: orderId }),
 };
