@@ -109,8 +109,53 @@ async function listShiftDeliveries(sort = '-shift_date', limit = 5000, offset = 
   return sort ? sortRowsClient(filtered, sort) : filtered;
 }
 
-const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense', 'TargetGoal']);
+const SPECIAL_ENTITIES = new Set(['CustomerOrder', 'Expense']);
 async function callSpecialEntity(entity, action, id = null, data = {}) { return callSecureRpc('app_special_entity_action', { p_entity: entity, p_action: action, p_id: id, p_data: data }); }
+
+async function listTargetGoals(sort, limit, offset, filters = {}) {
+  const [monthlyGoals, dailyLimits] = await Promise.all([
+    callSecureRpc('app_special_entity_action', { p_entity: 'TargetGoal', p_action: 'list', p_id: null, p_data: {} }),
+    callDataApi({ action: 'list', entity: 'DailyPurchaseLimit', sort: '-updated_at', limit: 5000, offset: 0 }),
+  ]);
+  const rows = [
+    ...(Array.isArray(monthlyGoals) ? monthlyGoals : []),
+    ...(Array.isArray(dailyLimits) ? dailyLimits.map((row) => ({ ...row, goal_type: 'daily_purchase_limit' })) : []),
+  ];
+  const filtered = rows.filter((row) => Object.entries(filters).every(([key, value]) => Array.isArray(value) ? value.includes(row[key]) : row[key] === value));
+  const sorted = sort ? sortRowsClient(filtered, sort) : filtered;
+  const start = Number(offset || 0);
+  return sorted.slice(start, limit ? start + Number(limit) : undefined);
+}
+
+function targetGoalClient() {
+  return {
+    list: (sort, limit, offset) => listTargetGoals(sort, limit, offset),
+    filter: (filters = {}, sort, limit, offset) => listTargetGoals(sort, limit, offset, filters),
+    get: async (id) => (await listTargetGoals('-updated_at', 5000, 0)).find((row) => row.id === id) || null,
+    create: (data) => data?.goal_type === 'daily_purchase_limit'
+      ? callDataApi({ action: 'create', entity: 'DailyPurchaseLimit', data: { ...data, goal_type: 'daily_purchase_limit' } })
+      : callSpecialEntity('TargetGoal', 'create', null, data),
+    update: (id, data) => data?.goal_type === 'daily_purchase_limit'
+      ? callDataApi({ action: 'update', entity: 'DailyPurchaseLimit', id, data: { ...data, goal_type: 'daily_purchase_limit' } })
+      : callSpecialEntity('TargetGoal', 'update', id, data),
+    delete: async (id) => {
+      const row = await (async () => (await listTargetGoals('-updated_at', 5000, 0)).find((item) => item.id === id))();
+      return row?.goal_type === 'daily_purchase_limit'
+        ? callDataApi({ action: 'delete', entity: 'DailyPurchaseLimit', id })
+        : callSpecialEntity('TargetGoal', 'delete', id, {});
+    },
+    bulkCreate: async (items) => Promise.all(items.map((item) => item?.goal_type === 'daily_purchase_limit'
+      ? callDataApi({ action: 'create', entity: 'DailyPurchaseLimit', data: item })
+      : callSpecialEntity('TargetGoal', 'create', null, item))),
+    bulkUpdate: async (items) => Promise.all(items.map((item) => {
+      const payload = item.data || item;
+      return payload?.goal_type === 'daily_purchase_limit'
+        ? callDataApi({ action: 'update', entity: 'DailyPurchaseLimit', id: String(item.id), data: payload })
+        : callSpecialEntity('TargetGoal', 'update', String(item.id), payload);
+    })),
+    subscribe: () => () => {},
+  };
+}
 
 function entityClient(entity) {
   if (entity === 'PurchaseInvoice') return {
@@ -127,6 +172,7 @@ function entityClient(entity) {
     create: (data) => callDataApi({ action: 'create', entity, data }), update: (id, data) => callDataApi({ action: 'update', entity, id, data }), delete: (id) => callDataApi({ action: 'delete', entity, id }),
     bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }), bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }), subscribe: () => () => {},
   };
+  if (entity === 'TargetGoal') return targetGoalClient();
   if (SPECIAL_ENTITIES.has(entity)) return {
     list: async (sort, limit, offset) => { const rows = await callSpecialEntity(entity, 'list'); const sorted = sort ? sortRowsClient(rows, sort) : (Array.isArray(rows) ? rows : []); const start = Number(offset || 0); return sorted.slice(start, limit ? start + Number(limit) : undefined); },
     filter: async (filters = {}, sort, limit, offset) => { const rows = await callSpecialEntity(entity, 'list'); const filtered = (Array.isArray(rows) ? rows : []).filter((row) => Object.entries(filters).every(([key, value]) => Array.isArray(value) ? value.includes(row[key]) : row[key] === value)); const sorted = sort ? sortRowsClient(filtered, sort) : filtered; const start = Number(offset || 0); return sorted.slice(start, limit ? start + Number(limit) : undefined); },
