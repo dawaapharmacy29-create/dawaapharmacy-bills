@@ -143,16 +143,19 @@ export default function SmartPurchaseCenter() {
   }, [selectedImport]);
 
   return <div dir="rtl" className="p-4 md:p-6 space-y-5">
-    <div>
-      <h1 className="text-2xl font-bold text-slate-900">طلبيات المشتريات الذكية</h1>
-      <p className="text-sm text-slate-500 mt-1">استيراد Excel، تحليل الاستهلاك، ربط طلبات العملاء، اقتراح الكمية وتصدير الطلبية.</p>
+    <div className="flex items-center gap-3">
+      <div className="rounded-xl bg-teal-50 p-2.5"><FileSpreadsheet className="h-6 w-6 text-teal-600" /></div>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">طلبيات المشتريات الذكية</h1>
+        <p className="text-sm text-slate-500 mt-1">استيراد Excel، تحليل الاستهلاك، ربط طلبات العملاء، اقتراح الكمية وتصدير الطلبية.</p>
+      </div>
     </div>
 
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5" />{error}</div>}
-    {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-700">{message}</div>}
+    {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
 
     <section className="rounded-2xl border bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2 mb-4"><FileSpreadsheet className="w-5 h-5 text-emerald-600"/><h2 className="font-bold">استيراد ملف المبيعات والمخزون</h2></div>
+      <div className="flex items-center gap-2 mb-4"><FileSpreadsheet className="w-5 h-5 text-teal-600"/><h2 className="font-bold">استيراد ملف المبيعات والمخزون</h2></div>
       <div className="grid md:grid-cols-4 gap-3">
         <label className="text-sm">الفرع<select value={branch} onChange={(e)=>setBranch(e.target.value)} className="mt-1 w-full rounded-lg border p-2"><option>دواء الشامي</option><option>دواء شكري</option></select></label>
         <label className="text-sm">فترة التغطية بالأيام<input type="number" value={coverageDays} onChange={(e)=>setCoverageDays(Number(e.target.value))} className="mt-1 w-full rounded-lg border p-2"/></label>
@@ -161,7 +164,7 @@ export default function SmartPurchaseCenter() {
       </div>
       {preview.length > 0 && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
         <span className="text-sm">{fileName} — {preview.length} صف</span>
-        <button disabled={loading} onClick={importFile} className="rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold flex items-center gap-2"><Upload className="w-4 h-4"/>استيراد وتحليل</button>
+        <button disabled={loading} onClick={importFile} className="rounded-lg bg-teal-600 px-4 py-2 text-white font-semibold flex items-center gap-2"><Upload className="w-4 h-4"/>استيراد وتحليل</button>
       </div>}
     </section>
 
@@ -169,7 +172,7 @@ export default function SmartPurchaseCenter() {
       <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit">
         <div className="flex justify-between items-center mb-3"><h2 className="font-bold">دفعات التحليل</h2><button onClick={refresh}><RefreshCw className="w-4 h-4"/></button></div>
         <div className="space-y-2 max-h-[520px] overflow-auto">
-          {imports.map((x)=><button key={x.id} onClick={()=>openImport(x.id)} className="w-full text-right rounded-xl border p-3 hover:bg-emerald-50">
+          {imports.map((x)=><button key={x.id} onClick={()=>openImport(x.id)} className="w-full text-right rounded-xl border p-3 hover:bg-teal-50">
             <div className="font-semibold text-sm">{x.file_name}</div><div className="text-xs text-slate-500 mt-1">{x.branch} • {x.valid_count} صنف</div>
           </button>)}
           {!imports.length && <p className="text-sm text-slate-400 p-3">لا توجد دفعات بعد.</p>}
@@ -183,11 +186,11 @@ export default function SmartPurchaseCenter() {
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={exportAnalysis} className="rounded-lg border bg-white px-4 py-2 font-semibold flex gap-2"><Download className="w-4 h-4"/>تصدير التحليل Excel</button>
-            <button onClick={createOrder} disabled={loading} className="rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold flex gap-2"><ShoppingCart className="w-4 h-4"/>إنشاء الطلبية وتصديرها</button>
+            <button onClick={createOrder} disabled={loading} className="rounded-lg bg-teal-600 px-4 py-2 text-white font-semibold flex gap-2"><ShoppingCart className="w-4 h-4"/>إنشاء الطلبية وتصديرها</button>
           </div>
           <div className="rounded-2xl border bg-white overflow-hidden shadow-sm">
             <div className="overflow-auto max-h-[620px]"><table className="w-full text-sm min-w-[1050px]"><thead className="sticky top-0 bg-slate-100"><tr>{['الكود','الصنف','الرصيد','مبيعات 30','متوسط يومي','أيام تغطية','طلبات عملاء','المقترح','الأولوية','المورد','سعر متوقع','الإجمالي'].map(h=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>
-              {selectedImport.items.map((x)=><tr key={x.id} className="border-t hover:bg-slate-50"><td className="p-3">{x.product_code||'-'}</td><td className="p-3 font-semibold">{x.product_name}</td><td className="p-3">{x.current_stock}</td><td className="p-3">{x.sales_30}</td><td className="p-3">{Number(x.avg_daily_usage||0).toFixed(2)}</td><td className="p-3">{Number(x.coverage_days||0).toFixed(1)}</td><td className="p-3">{x.customer_requests_count}</td><td className="p-3 font-bold text-emerald-700">{x.recommended_quantity}</td><td className="p-3"><span className="rounded-full bg-amber-100 px-2 py-1 text-xs">{x.priority_label}</span></td><td className="p-3">{x.preferred_supplier||'غير محدد'}</td><td className="p-3">{money(x.expected_unit_cost)}</td><td className="p-3 font-semibold">{money(x.expected_total)}</td></tr>)}
+              {selectedImport.items.map((x)=><tr key={x.id} className="border-t hover:bg-slate-50"><td className="p-3">{x.product_code||'-'}</td><td className="p-3 font-semibold">{x.product_name}</td><td className="p-3">{x.current_stock}</td><td className="p-3">{x.sales_30}</td><td className="p-3">{Number(x.avg_daily_usage||0).toFixed(2)}</td><td className="p-3">{Number(x.coverage_days||0).toFixed(1)}</td><td className="p-3">{x.customer_requests_count}</td><td className="p-3 font-bold text-teal-700">{x.recommended_quantity}</td><td className="p-3"><span className="rounded-full bg-amber-100 px-2 py-1 text-xs">{x.priority_label}</span></td><td className="p-3">{x.preferred_supplier||'غير محدد'}</td><td className="p-3">{money(x.expected_unit_cost)}</td><td className="p-3 font-semibold">{money(x.expected_total)}</td></tr>)}
             </tbody></table></div>
           </div>
         </> : <div className="rounded-2xl border bg-white p-12 text-center text-slate-500"><PackageCheck className="mx-auto mb-3 w-10 h-10"/>ارفع ملفًا جديدًا أو اختر دفعة تحليل سابقة.</div>}

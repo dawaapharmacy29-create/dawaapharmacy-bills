@@ -81,14 +81,14 @@ export default function SmartPurchaseReceiving() {
   };},[receipt]);
 
   return <div dir="rtl" className="p-4 md:p-6 space-y-5">
-    <div><h1 className="text-2xl font-bold text-slate-900">استلام ومطابقة طلبيات المشتريات</h1><p className="text-sm text-slate-500 mt-1">مقارنة المطلوب بالمستلم والمفوتر، تقييم السعر، ومعرفة العملاء المنتظرين.</p></div>
+    <div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><PackageCheck className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold text-slate-900">استلام ومطابقة طلبيات المشتريات</h1><p className="text-sm text-slate-500 mt-1">مقارنة المطلوب بالمستلم والمفوتر، تقييم السعر، ومعرفة العملاء المنتظرين.</p></div></div>
     {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5"/>{error}</div>}
-    {message&&<div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-700">{message}</div>}
+    {message&&<div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
 
     <div className="grid lg:grid-cols-[320px_1fr] gap-4">
       <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit">
         <div className="flex justify-between items-center mb-3"><h2 className="font-bold">الطلبيات</h2><button onClick={refresh}><RefreshCw className="w-4 h-4"/></button></div>
-        <div className="space-y-2 max-h-[650px] overflow-auto">{orders.map(o=><button key={o.id} onClick={()=>chooseOrder(o.id)} className="w-full rounded-xl border p-3 text-right hover:bg-emerald-50">
+        <div className="space-y-2 max-h-[650px] overflow-auto">{orders.map(o=><button key={o.id} onClick={()=>chooseOrder(o.id)} className="w-full rounded-xl border p-3 text-right hover:bg-teal-50">
           <div className="font-semibold text-sm">{o.order_number}</div><div className="text-xs text-slate-500 mt-1">{o.branch} • {o.items_count} صنف</div><div className="text-xs mt-1">المتوقع: {money(o.expected_total)} ج • المستلم: {money(o.received_total)} ج</div>
         </button>)}{!orders.length&&<p className="text-sm text-slate-400 p-3">لا توجد طلبيات بعد.</p>}</div>
       </aside>
@@ -104,7 +104,7 @@ export default function SmartPurchaseReceiving() {
               <label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={e=>setReceiptDate(e.target.value)} className="mt-1 w-full rounded-lg border p-2"/></label>
               <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={e=>e.target.files?.[0]&&readFile(e.target.files[0])} className="mt-1 block w-full text-sm"/></label>
             </div>
-            {preview.length>0&&<div className="mt-4 flex flex-wrap justify-between gap-3 rounded-xl bg-slate-50 p-3"><span className="text-sm">{fileName} — {preview.length} صنف</span><button disabled={loading} onClick={importReceipt} className="rounded-lg bg-emerald-600 px-4 py-2 text-white font-semibold flex gap-2"><Upload className="w-4 h-4"/>تسجيل الاستلام والمطابقة</button></div>}
+            {preview.length>0&&<div className="mt-4 flex flex-wrap justify-between gap-3 rounded-xl bg-slate-50 p-3"><span className="text-sm">{fileName} — {preview.length} صنف</span><button disabled={loading} onClick={importReceipt} className="rounded-lg bg-teal-600 px-4 py-2 text-white font-semibold flex gap-2"><Upload className="w-4 h-4"/>تسجيل الاستلام والمطابقة</button></div>}
           </section>
 
           {receipt&&<>
@@ -113,7 +113,7 @@ export default function SmartPurchaseReceiving() {
               <div className="flex flex-wrap justify-between gap-3"><div><h3 className="font-bold">تقييم الاستلام والسعر</h3><p className="text-sm text-slate-500 mt-1">اكتمال {receipt.receipt.completion_rate}% • تقييم السعر {Number(receipt.receipt.price_score||0).toFixed(1)}/100 • تقييم المورد {Number(receipt.receipt.supplier_score||0).toFixed(1)}/100</p></div><button onClick={exportReport} className="rounded-lg bg-slate-900 px-4 py-2 text-white font-semibold flex gap-2"><FileSpreadsheet className="w-4 h-4"/>تصدير تقرير Excel</button></div>
               <div className="grid md:grid-cols-4 gap-3 mt-4 text-sm"><div>المتوقع: <b>{money(receipt.receipt.expected_total)} ج</b></div><div>المفوتر: <b>{money(receipt.receipt.invoiced_total)} ج</b></div><div>فرق القيمة: <b>{money(receipt.receipt.value_variance)} ج</b></div><div>فرق السعر: <b>{money(receipt.receipt.price_variance)} ج</b></div></div>
             </section>
-            <div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف','المطلوب','المستلم','المفوتر','السعر المتوقع','السعر الفعلي','فرق القيمة','النتيجة'].map(h=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>{receipt.items.map(x=><tr key={x.id} className="border-t"><td className="p-3 font-medium">{x.product_name}<div className="text-xs text-slate-400">{x.product_code}</div></td><td className="p-3">{x.ordered_quantity}</td><td className="p-3">{x.received_quantity}</td><td className="p-3">{x.invoiced_quantity}</td><td className="p-3">{money(x.expected_unit_cost)}</td><td className="p-3">{money(x.actual_unit_cost)}</td><td className="p-3">{money(x.value_variance)}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${x.match_status==='سليم'?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-800'}`}>{x.match_status}</span></td></tr>)}</tbody></table></div>
+            <div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف','المطلوب','المستلم','المفوتر','السعر المتوقع','السعر الفعلي','فرق القيمة','النتيجة'].map(h=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>{receipt.items.map(x=><tr key={x.id} className="border-t"><td className="p-3 font-medium">{x.product_name}<div className="text-xs text-slate-400">{x.product_code}</div></td><td className="p-3">{x.ordered_quantity}</td><td className="p-3">{x.received_quantity}</td><td className="p-3">{x.invoiced_quantity}</td><td className="p-3">{money(x.expected_unit_cost)}</td><td className="p-3">{money(x.actual_unit_cost)}</td><td className="p-3">{money(x.value_variance)}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${x.match_status==='سليم'?'bg-teal-100 text-teal-700':'bg-amber-100 text-amber-800'}`}>{x.match_status}</span></td></tr>)}</tbody></table></div>
           </>}
         </> : <div className="rounded-2xl border border-dashed bg-white p-12 text-center text-slate-400"><PackageCheck className="w-10 h-10 mx-auto mb-3"/>اختر طلبية لبدء الاستلام والمطابقة.</div>}
       </main>

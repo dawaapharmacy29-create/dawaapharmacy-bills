@@ -122,15 +122,15 @@ export default function SmartPurchaseInsights() {
   ] : [], [evaluation]);
 
   return <div dir="rtl" className="p-4 md:p-6 space-y-5">
-    <div><h1 className="text-2xl font-bold">تقييم وتحسين المشتريات</h1><p className="text-sm text-slate-500 mt-1">تحسين الميزانية، تقييم الموردين، تقييم الطلبية، ومتابعة العملاء بعد وصول الأصناف.</p></div>
+    <div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><BarChart3 className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">تقييم وتحسين المشتريات</h1><p className="text-sm text-slate-500 mt-1">تحسين الميزانية، تقييم الموردين، تقييم الطلبية، ومتابعة العملاء بعد وصول الأصناف.</p></div></div>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5" />{error}</div>}
-    {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-700">{message}</div>}
+    {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
 
     <section className="rounded-2xl border bg-white p-4 shadow-sm flex flex-wrap gap-3 items-end">
       <label className="text-sm min-w-64">الطلبية<select value={orderId} onChange={e => setOrderId(e.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="">اختر الطلبية</option>{orders.map(o => <option key={o.id} value={o.id}>{o.order_number} — {o.branch} — {o.status}</option>)}</select></label>
       <label className="text-sm">الميزانية<input type="number" value={budget} onChange={e => setBudget(num(e.target.value))} className="mt-1 w-44 rounded-lg border p-2" /></label>
       <button disabled={loading || !orderId} onClick={previewBudget} className="rounded-lg bg-violet-600 text-white px-4 py-2 font-semibold flex gap-2"><Sparkles className="w-4 h-4" />معاينة خطة الميزانية</button>
-      <button disabled={loading || !plan?.items?.length} onClick={applyPlan} className="rounded-lg bg-emerald-600 text-white px-4 py-2 font-semibold flex gap-2"><CheckCircle2 className="w-4 h-4" />تطبيق الخطة</button>
+      <button disabled={loading || !plan?.items?.length} onClick={applyPlan} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2"><CheckCircle2 className="w-4 h-4" />تطبيق الخطة</button>
       <button onClick={exportReport} className="rounded-lg border px-4 py-2 font-semibold flex gap-2"><Download className="w-4 h-4" />تصدير التقرير</button>
     </section>
 
