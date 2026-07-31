@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FilePlus2, RefreshCw, Search, SlidersHorizontal } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FilePlus2, RefreshCw, Search, SlidersHorizontal, Receipt } from 'lucide-react';
 import { performanceApi } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,6 +12,13 @@ import { Badge } from '@/components/ui/badge';
 const BRANCHES = ['دواء الشامي', 'دواء شكري'];
 const fmt = (value) => Number(value || 0).toLocaleString('ar-EG', { maximumFractionDigits: 2 });
 const statusLabels = { draft: 'مسودة', submitted: 'بانتظار المراجعة', reviewed: 'تمت المراجعة', returned: 'مرتجعة للتصحيح', approved: 'معتمدة' };
+const statusColors = {
+  draft: 'bg-gray-100 text-gray-700 border-gray-200',
+  submitted: 'bg-amber-100 text-amber-800 border-amber-200',
+  reviewed: 'bg-blue-100 text-blue-800 border-blue-200',
+  returned: 'bg-red-100 text-red-800 border-red-200',
+  approved: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+};
 
 export default function FastPurchaseInvoices() {
   const [page, setPage] = useState(1);
@@ -71,9 +78,12 @@ export default function FastPurchaseInvoices() {
   return (
     <div dir="rtl" className="space-y-4 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">فواتير الشراء — عرض سريع</h1>
-          <p className="mt-1 text-sm text-gray-500">قائمة سريعة من الخادم — يتم تحميل الصفحة المطلوبة فقط. للفلاتر التفصيلية استخدم "الإدارة المتقدمة".</p>
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-teal-50 p-2.5"><Receipt className="h-6 w-6 text-teal-600" /></div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">فواتير الشراء — عرض سريع</h1>
+            <p className="mt-1 text-sm text-gray-500">قائمة سريعة من الخادم — يتم تحميل الصفحة المطلوبة فقط. للفلاتر التفصيلية استخدم "الإدارة المتقدمة".</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching} className="gap-2"><RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> تحديث</Button>
@@ -120,7 +130,7 @@ export default function FastPurchaseInvoices() {
               </thead>
               <tbody>
                 {rows.map((invoice) => <tr key={invoice.id} className="border-b hover:bg-teal-50/40">
-                  <td className="p-3 font-mono font-bold">{invoice.system_invoice_number || '—'}</td><td className="p-3 font-mono text-xs">{invoice.supplier_invoice_number || '—'}</td><td className="p-3 font-semibold">{invoice.supplier_name || 'بدون مورد'}</td><td className="p-3">{invoice.branch || '—'}</td><td className="p-3 whitespace-nowrap">{invoice.invoice_date || '—'}</td><td className="p-3 font-bold">{fmt(invoice.total_value)} ج</td><td className="p-3">{fmt(invoice.returned_value)} ج</td><td className="p-3">{invoice.payment_type || '—'}</td><td className="p-3">{invoice.entered_by_name || invoice.entered_by || '—'}</td><td className="p-3"><Badge variant="outline">{statusLabels[invoice.workflow_status] || invoice.status || '—'}</Badge></td>
+                  <td className="p-3 font-mono font-bold">{invoice.system_invoice_number || '—'}</td><td className="p-3 font-mono text-xs">{invoice.supplier_invoice_number || '—'}</td><td className="p-3 font-semibold">{invoice.supplier_name || 'بدون مورد'}</td><td className="p-3">{invoice.branch || '—'}</td><td className="p-3 whitespace-nowrap">{invoice.invoice_date || '—'}</td><td className="p-3 font-bold">{fmt(invoice.total_value)} ج</td><td className="p-3">{fmt(invoice.returned_value)} ج</td><td className="p-3">{invoice.payment_type || '—'}</td><td className="p-3">{invoice.entered_by_name || invoice.entered_by || '—'}</td><td className="p-3"><Badge className={`border ${statusColors[invoice.workflow_status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>{statusLabels[invoice.workflow_status] || invoice.status || '—'}</Badge></td>
                 </tr>)}
                 {!rows.length && <tr><td colSpan={10} className="p-12 text-center text-gray-400">لا توجد فواتير مطابقة للفلاتر الحالية.</td></tr>}
               </tbody>
