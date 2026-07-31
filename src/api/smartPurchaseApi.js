@@ -41,17 +41,38 @@ function preparePurchaseCandidates(payload = {}) {
   const coverageDays = Math.max(1, Number(payload.coverage_days || 7));
   const safetyDays = Math.max(0, Number(payload.safety_days || 0));
   const sourceRows = Array.isArray(payload.rows) ? payload.rows : [];
-  const candidates = buildPurchaseCandidates(sourceRows, { coverage_days: coverageDays });
+  let candidates = buildPurchaseCandidates(sourceRows, { coverage_days: coverageDays });
+
+  if (payload.enforce_budget) {
+    const budgetByKey = new Map(sourceRows.map((row) => [
+      String(row.product_code || row.product_name || '').trim().toLowerCase(),
+      Math.max(0, Math.floor(Number(row.budget_quantity || 0))),
+    ]));
+    candidates = candidates.map((row) => {
+      const key = String(row.product_code || row.product_name || '').trim().toLowerCase();
+      const budgetQuantity = budgetByKey.get(key);
+      const suggestedQuantity = Number.isFinite(budgetQuantity)
+        ? Math.min(row.suggested_quantity, budgetQuantity)
+        : row.suggested_quantity;
+      return {
+        ...row,
+        suggested_quantity: suggestedQuantity,
+        approved_quantity: suggestedQuantity,
+        budget_quantity: suggestedQuantity,
+        budget_limit: Number(payload.budget_limit || 0),
+      };
+    }).filter((row) => row.suggested_quantity > 0);
+  }
 
   if (!candidates.length) {
-    throw new Error('لا توجد أصناف تحتاج شراء للوصول إلى أيام التغطية المحددة بعد خصم الرصيد والكمية المنتظر وصولها.');
+    throw new Error('لا توجد أصناف تحتاج شراء للوصول إلى أيام التغطية أو داخل الميزانية المحددة.');
   }
 
   return {
     ...payload,
     coverage_days: coverageDays,
     safety_days: safetyDays,
-    calculation_method: 'unified_final_coverage_v3',
+    calculation_method: payload.enforce_budget ? 'unified_budget_coverage_v3' : 'unified_final_coverage_v3',
     source_rows_count: sourceRows.length,
     filtered_rows_count: candidates.length,
     rows: candidates,
