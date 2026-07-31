@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Ban, Calendar, FileText, GitBranch, Package, Pencil, Receipt, RefreshCw, Stethoscope, TrendingUp, Wallet } from 'lucide-react';
+import { AlertTriangle, Ban, Calendar, FileText, FilePlus2, GitBranch, Package, Pencil, Receipt, RefreshCw, RotateCcw, ShoppingBag, FlaskConical, Stethoscope, TrendingUp, Wallet, Clock, Building2 } from 'lucide-react';
 import { base44, performanceApi } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -44,10 +44,41 @@ function Stat({ label, value, suffix = 'ج', icon: Icon, className = '' }) {
   return <Card className={`p-4 ${className}`}><div className="flex items-center gap-3"><div className="rounded-xl bg-gray-50 p-2.5"><Icon className="h-5 w-5 text-teal-700" /></div><div><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-xl font-bold text-gray-900">{value}{suffix && ` ${suffix}`}</p></div></div></Card>;
 }
 
+const QUICK_ACTIONS = [
+  { to: '/shift-delivery', label: 'تسليم شيفت', icon: Clock, color: 'from-indigo-500 to-indigo-600' },
+  { to: '/invoices/new', label: 'إضافة فاتورة شراء', icon: FilePlus2, color: 'from-blue-500 to-blue-600' },
+  { to: '/customer-orders', label: 'طلب عميل جديد', icon: ShoppingBag, color: 'from-teal-500 to-teal-600' },
+  { to: '/pharmacy-orders', label: 'طلب صيدلية جديد', icon: FlaskConical, color: 'from-cyan-500 to-cyan-600' },
+  { to: '/returns', label: 'مرتجع جديد', icon: RotateCcw, color: 'from-pink-500 to-rose-600' },
+  { to: '/expenses', label: 'إضافة مصروف', icon: Receipt, color: 'from-orange-500 to-amber-600' },
+  { to: '/medicine-list', label: 'تسجيل مبيعات اللسته', icon: Stethoscope, color: 'from-emerald-500 to-green-600' },
+  { to: '/suppliers', label: 'إضافة مورد', icon: Building2, color: 'from-slate-600 to-slate-700' },
+];
+
+function QuickActionsGrid() {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {QUICK_ACTIONS.map((action) => {
+        const Icon = action.icon;
+        return (
+          <Link
+            key={action.to}
+            to={action.to}
+            className={`group flex flex-col items-center justify-center gap-2 rounded-2xl bg-gradient-to-br ${action.color} p-4 text-center shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md`}
+          >
+            <div className="rounded-full bg-white/20 p-2.5 transition-colors group-hover:bg-white/30"><Icon className="h-5 w-5 text-white" /></div>
+            <span className="text-sm font-bold text-white">{action.label}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function FastDashboard() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { isAdmin } = useUserRole();
+  const { isAdmin, user } = useUserRole();
   const [searchParams, setSearchParams] = useSearchParams();
   const branch = searchParams.get('branch') || 'all';
   const initial = useMemo(() => presetRange('week'), []);
@@ -119,6 +150,12 @@ export default function FastDashboard() {
         <div><h1 className="text-2xl font-bold text-gray-900">الصفحة الرئيسية</h1><p className="mt-1 text-sm text-gray-500">الداشبورد يحسب البيانات القديمة والجديدة مباشرة ويتحدث تلقائيًا كل دقيقة.</p></div>
         <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching} className="gap-2"><RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> تحديث</Button><Button asChild variant="outline"><Link to="/dashboard/advanced">التحليل التفصيلي</Link></Button></div>
       </div>
+
+      <Card className="overflow-hidden border-0 bg-gradient-to-l from-teal-50 via-white to-cyan-50 p-5 shadow-sm">
+        <p className="text-lg font-bold text-gray-900">أهلًا بيك{user?.name ? <>، <span className="text-teal-700">{user.name}</span></> : ''} 👋</p>
+        <p className="mt-1 text-sm text-gray-500">إجراءات سريعة لأكتر المهام اليومية استخدامًا — كل زرار يودّيك للصفحة على طول.</p>
+        <div className="mt-4"><QuickActionsGrid /></div>
+      </Card>
 
       <Card className="space-y-4 p-4">
         <div className="flex flex-wrap gap-2">{[['today','يومي'],['week','أسبوعي'],['month','شهري'],['custom','فترة مخصصة']].map(([key,label]) => <Button key={key} size="sm" variant={period === key ? 'default' : 'outline'} onClick={() => applyPeriod(key)}>{label}</Button>)}</div>
