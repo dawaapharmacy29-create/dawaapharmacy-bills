@@ -78,7 +78,6 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    box-sizing: border-box;
   }
 
   html {
@@ -91,120 +90,118 @@
     min-width: 320px;
     overflow-x: hidden;
   }
-
-  #root,
-  #root > div,
-  main,
-  main > div,
-  main .flex-1 {
-    min-width: 0;
-  }
 }
 
-/* مركز الطلبية: تصميم ثابت بدل تغيير Zoom الصفحة حسب دقة الشاشة. */
-main > .flex-1 > div[dir="rtl"].p-4 {
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  padding: clamp(0.75rem, 1vw, 1.25rem);
-  overflow-x: clip;
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 > * {
-  min-width: 0;
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 .rounded-2xl {
-  border-radius: 0.85rem;
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 h1 {
-  font-size: clamp(1.35rem, 1.7vw, 1.8rem);
-  line-height: 1.3;
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 h2 {
-  font-size: clamp(1.05rem, 1.25vw, 1.3rem);
-  line-height: 1.35;
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 button,
-main > .flex-1 > div[dir="rtl"].p-4 input,
-main > .flex-1 > div[dir="rtl"].p-4 select {
-  min-height: 2.35rem;
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 table {
-  font-size: clamp(0.78rem, 0.72vw, 0.9rem);
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 table thead {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-}
-
-main > .flex-1 > div[dir="rtl"].p-4 table th,
-main > .flex-1 > div[dir="rtl"].p-4 table td {
-  padding-top: 0.6rem;
-  padding-bottom: 0.6rem;
-  vertical-align: middle;
-}
-
-/* شاشة اللابتوب: قائمة الطلبات صغيرة والتفاصيل تأخذ المساحة الرئيسية. */
-@media (min-width: 1180px) {
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[310px_1fr\],
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[285px_1fr\] {
-    grid-template-columns: minmax(210px, 245px) minmax(0, 1fr) !important;
-    gap: 0.9rem !important;
-    align-items: start;
+/* مركز الطلبية: تخطيط ثابت ومتجاوب بدون تصغير عام للتطبيق. */
+@media (min-width: 768px) {
+  main > .flex-1 > div[dir="rtl"].p-4 {
+    width: 100%;
+    max-width: none;
+    padding: 0.85rem 1rem 1.5rem;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[310px_1fr\] > aside,
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[285px_1fr\] > aside {
-    position: sticky;
-    top: 0.75rem;
-    max-height: calc(100vh - 1.5rem);
-    overflow: auto;
-  }
-
-  main > .flex-1 > div[dir="rtl"].p-4 section.overflow-auto {
-    max-height: calc(100vh - 15rem);
+  main > .flex-1 > div[dir="rtl"].p-4 .rounded-2xl {
+    border-radius: 0.8rem;
   }
 
   body > #root > div > aside {
-    width: clamp(14rem, 14vw, 16rem) !important;
-    flex: 0 0 auto;
+    width: 15rem !important;
   }
 }
 
-/* الشاشات المتوسطة: نلغي العمودين قبل أن تضيق التفاصيل. */
-@media (min-width: 768px) and (max-width: 1179px) {
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[310px_1fr\],
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[285px_1fr\] {
-    grid-template-columns: 1fr !important;
+/* إعادة بناء توزيع مركز الطلبية: شريط الطلبات أعلى الصفحة وتفاصيل بعرض كامل. */
+@media (min-width: 1024px) {
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    min-width: 0;
   }
 
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[310px_1fr\] > aside > div,
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[285px_1fr\] > aside > div {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.6rem;
-    max-height: 18rem;
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside {
+    width: 100% !important;
+    max-width: none !important;
+    position: static !important;
+    padding: 0.65rem !important;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > h2 {
+    margin: 0 0 0.45rem !important;
+    font-size: 0.9rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 0.55rem !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    max-height: none !important;
+    padding: 0.1rem 0 0.35rem;
+    scrollbar-width: thin;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div > button {
+    flex: 0 0 235px !important;
+    min-width: 235px !important;
+    padding: 0.65rem 0.8rem !important;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > main {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 table {
+    font-size: 0.83rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 table th,
+  main > .flex-1 > div[dir="rtl"].p-4 table td {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    white-space: nowrap;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 section:has(> table) {
+    max-height: calc(100vh - 11rem);
+    overflow: auto;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 section:has(> table) thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+}
+
+/* الشاشات المتوسطة: الطلبات في شريط أفقي أيضًا لمنع ضغط تفاصيل الطلبية. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div {
+    display: flex !important;
+    overflow-x: auto !important;
+    max-height: none !important;
+    gap: 0.5rem;
+  }
+
+  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[250px_minmax\(0\,1fr\)\] > aside > div > button {
+    flex: 0 0 220px;
   }
 }
 
 @media (max-width: 767px) {
+  html { font-size: 16px; }
+
   main > .flex-1 > div[dir="rtl"].p-4 {
-    padding: 0.7rem;
+    padding: 0.75rem;
   }
 
   main > .flex-1 > div[dir="rtl"].p-4 button {
     min-height: 2.75rem;
-  }
-
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[310px_1fr\],
-  main > .flex-1 > div[dir="rtl"].p-4 > .grid.lg\:grid-cols-\[285px_1fr\] {
-    grid-template-columns: 1fr !important;
   }
 }
