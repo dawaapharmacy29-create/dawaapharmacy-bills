@@ -5,6 +5,7 @@ import MedicineDashboard from "@/components/medicine/MedicineDashboard";
 import MedicineSalesTab from "@/components/medicine/MedicineSalesTab";
 import MedicineItemsAdmin from "@/components/medicine/MedicineItemsAdmin";
 import { useUserRole } from "@/lib/useUserRole";
+import { Pill } from "lucide-react";
 
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
 
@@ -99,9 +100,12 @@ export default function MedicineList() {
 
   return (
     <div dir="rtl" className="p-4 md:p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">أدوية اللسته</h1>
-        <p className="text-gray-500 text-sm mt-0.5">متابعة مبيعات الأصناف الأسبوعية</p>
+      <div className="flex items-center gap-3">
+        <div className="rounded-xl bg-teal-50 p-2.5"><Pill className="h-6 w-6 text-teal-600" /></div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">أدوية اللسته</h1>
+          <p className="text-gray-500 text-sm mt-0.5">متابعة مبيعات الأصناف الأسبوعية</p>
+        </div>
       </div>
 
       <Tabs defaultValue="dashboard">

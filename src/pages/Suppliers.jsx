@@ -9,7 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, Phone, MapPin, Clock, CreditCard, Building2, Ban, Search, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Phone, MapPin, Clock, CreditCard, Building2, Ban, Search, X, Users, Wallet, Landmark } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { logActivity } from "@/lib/activityLogger";
 import { useUserRole } from "@/lib/useUserRole";
 import { fuzzyMatch } from "@/lib/fuzzySearch";
@@ -37,6 +38,7 @@ const paymentTypeColor = {
 };
 
 const PAYMENT_TYPES = ["كاش", "آجل", "انستا", "فودافون"];
+const PAYMENT_CHART_COLORS = { "كاش": "#10b981", "آجل": "#f97316", "انستا": "#ec4899", "فودافون": "#ef4444", "غير محدد": "#94a3b8" };
 
 export default function Suppliers() {
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -129,12 +131,24 @@ export default function Suppliers() {
   });
   const sorted = useMemo(() => sortData(filtered), [filtered, sortData]);
 
+  const externalCount = suppliers.filter((s) => (s.supplier_type || "external_supplier") === "external_supplier").length;
+  const internalCount = suppliers.length - externalCount;
+  const creditCount = suppliers.filter((s) => s.payment_type === "آجل").length;
+  const paymentBreakdown = useMemo(() => {
+    const map = {};
+    suppliers.forEach((s) => { const key = s.payment_type || "غير محدد"; map[key] = (map[key] || 0) + 1; });
+    return Object.entries(map).map(([name, value]) => ({ name, value, color: PAYMENT_CHART_COLORS[name] || "#94a3b8" })).sort((a, b) => b.value - a.value);
+  }, [suppliers]);
+
   return (
     <div dir="rtl" className="p-4 md:p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">الموردين</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{suppliers.length} مورد مسجل</p>
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-blue-50 p-2.5"><Building2 className="h-6 w-6 text-blue-600" /></div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">الموردين</h1>
+            <p className="text-gray-500 text-sm mt-0.5">{suppliers.length} مورد مسجل</p>
+          </div>
         </div>
         {isManager && (
           <Button onClick={openNew} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
@@ -142,6 +156,38 @@ export default function Suppliers() {
           </Button>
         )}
       </div>
+
+      {suppliers.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-3">
+          <Card className="flex items-center gap-3 p-4">
+            <div className="rounded-lg bg-blue-50 p-2"><Users className="h-5 w-5 text-blue-600" /></div>
+            <div><p className="text-xs text-gray-500">موردين خارجيين · فروع داخلية</p><p className="text-lg font-bold text-gray-800">{externalCount} <span className="text-sm font-normal text-gray-400">· {internalCount}</span></p></div>
+          </Card>
+          <Card className="flex items-center gap-3 p-4">
+            <div className="rounded-lg bg-orange-50 p-2"><Clock className="h-5 w-5 text-orange-600" /></div>
+            <div><p className="text-xs text-gray-500">موردين بالآجل</p><p className="text-lg font-bold text-gray-800">{creditCount}</p></div>
+          </Card>
+          {paymentBreakdown.length > 0 && (
+            <Card className="flex items-center gap-3 p-3">
+              <div className="h-14 w-14 shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={paymentBreakdown} dataKey="value" nameKey="name" innerRadius={18} outerRadius={27} paddingAngle={2}>
+                      {paymentBreakdown.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v, n) => [`${v} مورد`, n]} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                {paymentBreakdown.map((p) => (
+                  <span key={p.name} className="flex items-center gap-1"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color }} />{p.name} ({p.value})</span>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="relative">
