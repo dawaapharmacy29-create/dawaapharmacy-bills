@@ -47,10 +47,23 @@ function validProductName(value) {
   return !/^\d{10,}$/.test(name.replace(/\s/g, ''));
 }
 
+function estimateDailyUsage(row) {
+  const sales30 = Math.max(0, number(row.sales_30));
+  const sales90 = Math.max(0, number(row.sales_90));
+  const recentDaily = sales30 > 0 ? sales30 / 30 : 0;
+  const longDaily = sales90 > 0 ? sales90 / 90 : 0;
+
+  // عند وجود تاريخ 30 و90 يومًا نستخدم متوسطًا مرجحًا بدل اختيار أعلى رقم؛
+  // هذا يمنع تضخيم الطلبية بسبب ارتفاع مؤقت في شهر واحد، مع إعطاء وزن أكبر للحركة الحديثة.
+  if (recentDaily > 0 && longDaily > 0) return (recentDaily * 0.6) + (longDaily * 0.4);
+  if (recentDaily > 0) return recentDaily;
+  if (longDaily > 0) return longDaily;
+  return Math.max(0, number(row.avg_daily_usage));
+}
+
 function preparePurchaseCandidates(payload = {}) {
   const coverageDays = Math.max(1, number(payload.coverage_days) || 21);
   const safetyDays = Math.max(0, number(payload.safety_days) || 0);
-  const planningDays = coverageDays + safetyDays;
   const rows = Array.isArray(payload.rows) ? payload.rows : [];
 
   const candidates = rows
@@ -58,16 +71,17 @@ function preparePurchaseCandidates(payload = {}) {
     .map((row) => {
       const currentStock = Math.max(0, number(row.current_stock));
       const pendingIncoming = Math.max(0, number(row.pending_incoming));
-      const sales30 = Math.max(0, number(row.sales_30));
-      const sales90 = Math.max(0, number(row.sales_90));
-      const averageDaily = Math.max(
-        0,
-        number(row.avg_daily_usage),
-        sales30 > 0 ? sales30 / 30 : 0,
-        sales90 > 0 ? sales90 / 90 : 0,
-      );
-      const targetStock = Math.ceil(averageDaily * planningDays);
-      const suggestedQuantity = Math.max(0, targetStock - currentStock - pendingIncoming);
+      const averageDaily = estimateDailyUsage(row);
+
+      // أيام التغطية هي الهدف النهائي للمخزون بعد إضافة الطلبية.
+      // مثال: اختيار 7 أيام يعني أن (الرصيد + المنتظر + المطلوب) يستهدف 7 أيام فقط.
+      // أيام الأمان تُحفظ كمعلومة تشغيلية ولا تُضاف مرة ثانية إلى كمية الشراء.
+      const targetStock = Math.ceil(averageDaily * coverageDays);
+      const availableStock = currentStock + pendingIncoming;
+      const suggestedQuantity = Math.max(0, targetStock - availableStock);
+      const projectedCoverageDays = averageDaily > 0
+        ? (availableStock + suggestedQuantity) / averageDaily
+        : 0;
 
       return {
         ...row,
@@ -75,16 +89,23 @@ function preparePurchaseCandidates(payload = {}) {
         pending_incoming: pendingIncoming,
         avg_daily_usage: averageDaily,
         suggested_quantity: suggestedQuantity,
+        target_coverage_days: coverageDays,
+        safety_days: safetyDays,
+        projected_coverage_days: projectedCoverageDays,
+        calculation_method: 'final_coverage_target_v2',
       };
     })
-    .filter((row) => row.suggested_quantity > 0);
+    .filter((row) => row.suggested_quantity > 0 && row.avg_daily_usage > 0);
 
   if (!candidates.length) {
-    throw new Error('لا توجد أصناف تحتاج شراء وفق الرصيد والمبيعات وأيام التغطية الحالية.');
+    throw new Error('لا توجد أصناف تحتاج شراء للوصول إلى أيام التغطية المحددة بعد خصم الرصيد والكمية المنتظر وصولها.');
   }
 
   return {
     ...payload,
+    coverage_days: coverageDays,
+    safety_days: safetyDays,
+    calculation_method: 'final_coverage_target_v2',
     source_rows_count: rows.length,
     filtered_rows_count: candidates.length,
     rows: candidates,
