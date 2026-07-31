@@ -39,6 +39,34 @@ async function legacyRpc(action, payload = {}) {
   return data.data;
 }
 
+async function atomicUpdateItem(payload = {}) {
+  const sessionToken = token();
+  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_apply_budget_plan`, {
+    method: 'POST',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      p_session_token: sessionToken,
+      p_order_id: payload.order_id,
+      p_items: [{ id: payload.id, approved_quantity: Number(payload.approved_quantity || 0) }],
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) {
+    const code = data?.error || data?.message;
+    const messages = {
+      invalid_session: 'الجلسة غير صالحة. سجل الدخول مرة أخرى.',
+      items_table_not_found: 'تعذر تحديد جدول أصناف الطلبية في قاعدة البيانات.',
+      apply_failed: data?.message || 'تعذر تثبيت كمية الصنف.',
+    };
+    if (response.status === 404 || /Could not find the function|schema cache/i.test(String(code || ''))) {
+      throw new Error('تحديث خطة الميزانية غير مفعّل في قاعدة البيانات بعد. يلزم تطبيق Migration الطلبيات الجديدة أولًا.');
+    }
+    throw new Error(messages[code] || errorText(code || data, `فشل تحديث الصنف (${response.status})`));
+  }
+  return data.data;
+}
+
 async function fallbackOrders() {
   const [pharmacy, replenishment] = await Promise.allSettled([
     base44.entities.PharmacyOrder.list('-created_date', 2000, 0),
@@ -85,11 +113,7 @@ export const smartPurchaseOrderManagementApi = {
   }),
   listOffers: (filters = {}) => legacyRpc('list_offers', filters),
   importOffers: (payload) => legacyRpc('import_offers', payload),
-
-  // تحديث الأصناف يمر حصريًا عبر الدالة الموحدة الحديثة؛
-  // هذا يمنع خطأ ss.session_token والتحديث الجزئي لخطة الميزانية.
-  updateItem: (payload) => smartPurchaseUnifiedApi.updateItem(payload),
-
+  updateItem: atomicUpdateItem,
   optimizeSuppliers: async (orderId) => {
     try {
       return await legacyRpc('optimize_suppliers', { order_id: orderId });
