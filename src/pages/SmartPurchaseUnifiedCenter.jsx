@@ -8,31 +8,34 @@ import {AlertTriangle,CheckCircle2,Download,FileSpreadsheet,RefreshCw,Send,Spark
 const money=v=>new Intl.NumberFormat('ar-EG',{maximumFractionDigits:2}).format(Number(v||0));
 const STATUS_STEPS=['مسودة','تم التحليل','معتمدة','تم الإرسال للمورد','وصلت جزئيًا','وصلت بالكامل','تمت مطابقة الفاتورة','مغلقة'];
 const normStatus=s=>s==='draft'?'مسودة':s||'مسودة';
-const MAPPING_KEY='dawaa_purchase_excel_mappings_v1';
-const FIELD_LABELS={product_code:'كود الصنف',product_name:'اسم الصنف',current_stock:'الرصيد الحالي',sales_30:'مبيعات 30 يوم',sales_60:'مبيعات 60 يوم',sales_90:'مبيعات 90 يوم',avg_daily_usage:'متوسط الاستهلاك اليومي',old_discount:'الخصم السابق',last_purchase_price:'آخر سعر شراء',preferred_supplier:'المورد',pending_incoming:'الكمية المنتظر وصولها'};
+const MAPPING_KEY='dawaa_purchase_excel_mappings_v2';
+const FIELD_LABELS={product_code:'كود الصنف',product_name:'اسم الصنف',current_stock:'الرصيد الحالي',sales_30:'مبيعات آخر 30 يوم',sales_60:'مبيعات آخر 60 يوم',sales_90:'مبيعات آخر 90 يوم',avg_daily_usage:'متوسط الاستهلاك اليومي',old_discount:'الخصم السابق',last_purchase_price:'آخر سعر شراء',preferred_supplier:'المورد / الشركة',pending_incoming:'الكمية المنتظر وصولها'};
 const aliases={
-  product_code:['كود الصنف','كود','code','item code','product code','itemcode'],
-  product_name:['اسم الصنف','الصنف','name','item name','product name','description','item','اسم المنتج'],
+  product_code:['كود الصنف','الكود','كود','code','item code','product code','itemcode'],
+  product_name:['اسم الصنف','اسم','الاسم','الإسم','الصنف','name','item name','product name','description','item','اسم المنتج'],
   current_stock:['الرصيد الحالي','الرصيد','stock','current stock','balance','qty balance'],
   sales_30:['مبيعات 30 يوم','مبيعات 30','sales 30','sales_30','qty sold','sales qty'],
   sales_60:['مبيعات 60 يوم','مبيعات 60','sales 60','sales_60'],
   sales_90:['مبيعات 90 يوم','مبيعات 90','sales 90','sales_90'],
   avg_daily_usage:['متوسط الاستهلاك اليومي','متوسط الاستهلاك','avg daily usage','daily average','daily usage'],
   old_discount:['الخصم السابق','نسبة الخصم','discount','old discount'],
-  last_purchase_price:['آخر سعر شراء','سعر الشراء','purchase price','last purchase price','cost'],
-  preferred_supplier:['المورد','المورد السابق','supplier','preferred supplier','vendor'],
+  last_purchase_price:['آخر سعر شراء','سعر الشراء','السعر','purchase price','last purchase price','cost','price'],
+  preferred_supplier:['المورد','المورد السابق','الشركة','اسم الشركة','supplier','preferred supplier','vendor','company'],
   pending_incoming:['كمية منتظر وصولها','منتظر وصول','pending incoming','incoming qty','on order'],
 };
 const norm=v=>String(v??'').trim().toLowerCase().replace(/[\s_\-]+/g,' ');
 const num=v=>{const n=Number(String(v??'').replace(/[,٪%جنيه]/g,'').trim());return Number.isFinite(n)?n:0;};
-function autoMapping(headers){const out={};Object.keys(FIELD_LABELS).forEach(field=>{out[field]=headers.find(h=>(aliases[field]||[]).some(a=>norm(h)===norm(a)))||headers.find(h=>(aliases[field]||[]).some(a=>norm(h).includes(norm(a))||norm(a).includes(norm(h))))||'';});return out;}
+const monthKey=h=>{const m=String(h||'').trim().match(/^(20\d{2})[\/-](0?[1-9]|1[0-2])$/);return m?Number(`${m[1]}${String(m[2]).padStart(2,'0')}`):0;};
+function monthlyHeaders(headers){return headers.filter(h=>monthKey(h)>0).sort((a,b)=>monthKey(b)-monthKey(a));}
+function isBConnect(headers){const n=headers.map(norm);return n.some(x=>['الكود','كود'].includes(x))&&n.some(x=>['الإسم','الاسم','اسم'].includes(x))&&n.includes('الرصيد')&&monthlyHeaders(headers).length>0;}
+function autoMapping(headers){
+  const out={};Object.keys(FIELD_LABELS).forEach(field=>{out[field]=headers.find(h=>(aliases[field]||[]).some(a=>norm(h)===norm(a)))||headers.find(h=>(aliases[field]||[]).some(a=>norm(h).includes(norm(a))||norm(a).includes(norm(h))))||'';});
+  const months=monthlyHeaders(headers);if(months.length){out.sales_30=months[0]||'';out.sales_60=months[1]||'';out.sales_90=months[2]||'';}
+  return out;
+}
 function signature(headers){return headers.map(norm).sort().join('|');}
 function loadMappings(){try{return JSON.parse(localStorage.getItem(MAPPING_KEY)||'{}');}catch{return {};}}
-function workbookBySupplier(order){
-  const groups={};
-  (order.items||[]).filter(x=>Number(x.approved_quantity||0)>0).forEach(x=>{const supplier=x.supplier_name||'بدون مورد';(groups[supplier]??=[]).push({'كود الصنف':x.product_code||'','اسم الصنف':x.product_name,'الكمية':Number(x.approved_quantity||0),'سعر الوحدة المتوقع':Number(x.expected_unit_cost||0),'الإجمالي':Number(x.approved_quantity||0)*Number(x.expected_unit_cost||0),'ملاحظات':x.notes||''});});
-  const wb=XLSX.utils.book_new();Object.entries(groups).forEach(([name,rows])=>{const ws=XLSX.utils.json_to_sheet(rows);ws['!dir']='rtl';ws['!cols']=[14,34,12,18,18,28].map(wch=>({wch}));XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));});XLSX.writeFile(wb,`${order.order.order_number}_حسب_المورد.xlsx`);
-}
+function workbookBySupplier(order){const groups={};(order.items||[]).filter(x=>Number(x.approved_quantity||0)>0).forEach(x=>{const supplier=x.supplier_name||'بدون مورد';(groups[supplier]??=[]).push({'كود الصنف':x.product_code||'','اسم الصنف':x.product_name,'الكمية':Number(x.approved_quantity||0),'سعر الوحدة المتوقع':Number(x.expected_unit_cost||0),'الإجمالي':Number(x.approved_quantity||0)*Number(x.expected_unit_cost||0),'ملاحظات':x.notes||''});});const wb=XLSX.utils.book_new();Object.entries(groups).forEach(([name,rows])=>{const ws=XLSX.utils.json_to_sheet(rows);ws['!dir']='rtl';ws['!cols']=[14,34,12,18,18,28].map(wch=>({wch}));XLSX.utils.book_append_sheet(wb,ws,name.slice(0,31));});XLSX.writeFile(wb,`${order.order.order_number}_حسب_المورد.xlsx`);}
 
 export default function SmartPurchaseUnifiedCenter(){
   const [data,setData]=useState({orders:[],treasuries:[],pending_actions:{}});const [selected,setSelected]=useState(null);
@@ -51,28 +54,23 @@ export default function SmartPurchaseUnifiedCenter(){
   async function markSent(){if(selected)await run(()=>unified.markSent(selected.order.id),'تم تسجيل إرسال الطلبية للموردين.');}
 
   function buildPreview(rows,nextMapping){
-    const parsed=rows.map((r,index)=>({row_number:index+2,product_code:String(r[nextMapping.product_code]??'').trim(),product_name:String(r[nextMapping.product_name]??'').trim(),current_stock:num(r[nextMapping.current_stock]),sales_30:num(r[nextMapping.sales_30]),sales_60:num(r[nextMapping.sales_60]),sales_90:num(r[nextMapping.sales_90]),avg_daily_usage:num(r[nextMapping.avg_daily_usage]),old_discount:num(r[nextMapping.old_discount]),last_purchase_price:num(r[nextMapping.last_purchase_price]),preferred_supplier:String(r[nextMapping.preferred_supplier]??'').trim(),pending_incoming:num(r[nextMapping.pending_incoming])}));
+    const months=monthlyHeaders(Object.keys(rows[0]||{}));
+    const parsed=rows.map((r,index)=>{
+      const monthly=months.map(h=>num(r[h]));
+      const sales30=months.length?monthly[0]||0:num(r[nextMapping.sales_30]);
+      const sales60=months.length?monthly.slice(0,2).reduce((s,v)=>s+v,0):num(r[nextMapping.sales_60]);
+      const sales90=months.length?monthly.slice(0,3).reduce((s,v)=>s+v,0):num(r[nextMapping.sales_90]);
+      const mappedAvg=num(r[nextMapping.avg_daily_usage]);
+      return {row_number:index+2,product_code:String(r[nextMapping.product_code]??'').trim(),product_name:String(r[nextMapping.product_name]??'').trim(),current_stock:num(r[nextMapping.current_stock]),sales_30:sales30,sales_60:sales60,sales_90:sales90,avg_daily_usage:mappedAvg>0?mappedAvg:(sales90>0?sales90/90:0),old_discount:num(r[nextMapping.old_discount]),last_purchase_price:num(r[nextMapping.last_purchase_price]),preferred_supplier:String(r[nextMapping.preferred_supplier]??'').trim(),pending_incoming:num(r[nextMapping.pending_incoming])};
+    });
     const errors=[];parsed.forEach(r=>{if(!r.product_name)errors.push(`صف ${r.row_number}: اسم الصنف غير موجود`);if(r.current_stock<0)errors.push(`صف ${r.row_number}: الرصيد الحالي سالب`);});
     const merged=new Map();parsed.filter(r=>r.product_name).forEach(r=>{const key=r.product_code||norm(r.product_name);if(merged.has(key)){const old=merged.get(key);merged.set(key,{...old,current_stock:Math.max(old.current_stock,r.current_stock),sales_30:old.sales_30+r.sales_30,sales_60:old.sales_60+r.sales_60,sales_90:old.sales_90+r.sales_90,pending_incoming:old.pending_incoming+r.pending_incoming});}else merged.set(key,r);});
-    setPreview([...merged.values()]);setPreviewErrors(errors);
-    return {rows:parsed.length,valid:merged.size,errors:errors.length};
+    setPreview([...merged.values()]);setPreviewErrors(errors);return {rows:parsed.length,valid:merged.size,errors:errors.length,bconnect:months.length>0};
   }
-  async function readFile(file){
-    setError('');setMessage('');setFileName(file.name);
-    try{
-      const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});const cols=Object.keys(rows[0]||{});
-      if(!rows.length||!cols.length)throw new Error('الملف فارغ أو لا يحتوي على عناوين أعمدة.');
-      const saved=loadMappings()[signature(cols)];const next=saved||autoMapping(cols);setRawRows(rows);setHeaders(cols);setMapping(next);setMappingSource(saved?'تم تطبيق قالب محفوظ تلقائيًا':'تم التعرف على الأعمدة تلقائيًا');
-      const stats=buildPreview(rows,next);setMessage(`تمت قراءة ${stats.rows} صف وتجميعها إلى ${stats.valid} صنف صالح. ${saved?'تم استخدام قالب الأعمدة المحفوظ.':'راجع ربط الأعمدة قبل الإنشاء.'}`);
-    }catch(e){setError(`تعذر قراءة الملف: ${e.message}`);setPreview([]);setRawRows([]);setHeaders([]);}
-  }
+  async function readFile(file){setError('');setMessage('');setFileName(file.name);try{const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:'',raw:true});const cols=Object.keys(rows[0]||{});if(!rows.length||!cols.length)throw new Error('الملف فارغ أو لا يحتوي على عناوين أعمدة.');const saved=loadMappings()[signature(cols)];const next=saved||autoMapping(cols);setRawRows(rows);setHeaders(cols);setMapping(next);const bconnect=isBConnect(cols);setMappingSource(saved?'تم تطبيق قالب محفوظ تلقائيًا':bconnect?'تم التعرف تلقائيًا على تصميم ملف B-Connect وأعمدة الشهور':'تم التعرف على الأعمدة تلقائيًا');const stats=buildPreview(rows,next);setMessage(`تمت قراءة ${stats.rows} صف وتجميعها إلى ${stats.valid} صنف صالح.${bconnect?' تم احتساب مبيعات 30 و60 و90 يوم تراكميًا من أعمدة الشهور.':''} ${saved?'تم استخدام قالب الأعمدة المحفوظ.':'راجع ربط الأعمدة قبل الإنشاء.'}`);}catch(e){setError(`تعذر قراءة الملف: ${e.message}`);setPreview([]);setRawRows([]);setHeaders([]);}}
   function changeMapping(field,value){const next={...mapping,[field]:value};setMapping(next);buildPreview(rawRows,next);setMappingSource('تم تعديل ربط الأعمدة يدويًا — احفظ القالب لاستخدامه لاحقًا');}
   function saveMapping(){if(!headers.length)return;const all=loadMappings();all[signature(headers)]=mapping;localStorage.setItem(MAPPING_KEY,JSON.stringify(all));setMappingSource('تم حفظ قالب الأعمدة على هذا الجهاز');setMessage('تم حفظ قالب الأعمدة، وسيتم تطبيقه تلقائيًا على الملفات بنفس العناوين.');}
-  async function importAndCreate(){
-    if(!mapping.product_name)return setError('حدد عمود اسم الصنف أولًا.');
-    if(!preview.length)return setError('ارفع ملف Excel صالح أولًا.');
-    await run(async()=>{const imported=await smartPurchaseApi.importRows({file_name:fileName,branch,coverage_days:coverageDays,safety_days:safetyDays,rows:preview});const created=await smartPurchaseApi.createOrder({import_id:imported.id,branch,title:`طلبية ${branch}`});setPreview([]);setPreviewErrors([]);setFileName('');setShowImport(false);setRawRows([]);setHeaders([]);return created;},'تم تحليل الملف وإنشاء الطلبية وفتحها للمراجعة.');
-  }
+  async function importAndCreate(){if(!mapping.product_name)return setError('حدد عمود اسم الصنف أولًا.');if(!preview.length)return setError('ارفع ملف Excel صالح أولًا.');await run(async()=>{const imported=await smartPurchaseApi.importRows({file_name:fileName,branch,coverage_days:coverageDays,safety_days:safetyDays,rows:preview});const created=await smartPurchaseApi.createOrder({import_id:imported.id,branch,title:`طلبية ${branch}`});setPreview([]);setPreviewErrors([]);setFileName('');setShowImport(false);setRawRows([]);setHeaders([]);return created;},'تم تحليل الملف وإنشاء الطلبية وفتحها للمراجعة.');}
 
   async function updateOne(item,patch){await management.updateItem({id:item.id,order_id:selected.order.id,...patch});}
   async function applyBulkQuantity(){if(!selected)return;const pct=Math.max(0,Number(bulkPercent||0))/100;const rows=visibleItems;setLoading(true);setError('');try{for(const item of rows){await updateOne(item,{approved_quantity:Math.max(0,Math.round(Number(item.requested_quantity||item.approved_quantity||0)*pct))});}setMessage(`تم تحديث كميات ${rows.length} صنف بنسبة ${bulkPercent}%.`);await refresh();}catch(e){setError(e.message);}finally{setLoading(false);}}
@@ -85,17 +83,17 @@ export default function SmartPurchaseUnifiedCenter(){
   const status=normStatus(selected?.order?.status);const stepIndex=Math.max(0,STATUS_STEPS.indexOf(status));
 
   return <div dir="rtl" className="p-4 md:p-6 space-y-5">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><ShoppingCart className="h-6 w-6 text-teal-600"/></div><div><h1 className="text-2xl font-bold">مركز الطلبية السريع</h1><p className="text-sm text-slate-500 mt-1">ارفع الملف، راجع الكميات والموردين، اعتمد وصدّر من شاشة واحدة.</p></div></div><div className="flex gap-2"><button onClick={()=>setShowImport(v=>!v)} className="rounded-lg bg-teal-600 text-white px-4 py-2 flex gap-2"><Upload className="w-4 h-4"/>طلبية جديدة من Excel</button><button onClick={()=>refresh()} className="rounded-lg border bg-white px-4 py-2 flex gap-2"><RefreshCw className="w-4 h-4"/>تحديث</button></div></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><ShoppingCart className="h-6 w-6 text-teal-600"/></div><div><h1 className="text-2xl font-bold">مركز الطلبية السريع</h1><p className="text-sm text-slate-500 mt-1">يدعم ملفات B-Connect مباشرة: الكود، الاسم، الشركة، السعر، الرصيد ومبيعات الشهور.</p></div></div><div className="flex gap-2"><button onClick={()=>setShowImport(v=>!v)} className="rounded-lg bg-teal-600 text-white px-4 py-2 flex gap-2"><Upload className="w-4 h-4"/>طلبية جديدة من Excel</button><button onClick={()=>refresh()} className="rounded-lg border bg-white px-4 py-2 flex gap-2"><RefreshCw className="w-4 h-4"/>تحديث</button></div></div>
     {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5"/>{error}</div>}{message&&<div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
 
     {showImport&&<section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm space-y-4">
-      <div className="flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-teal-600"/><h2 className="font-bold">إنشاء طلبية جديدة من Excel</h2></div>
+      <div className="flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-teal-600"/><h2 className="font-bold">إنشاء طلبية جديدة من Excel أو B-Connect</h2></div>
       <div className="grid md:grid-cols-4 gap-3"><label className="text-sm">الفرع<select value={branch} onChange={e=>setBranch(e.target.value)} className="mt-1 w-full rounded-lg border p-2"><option>دواء الشامي</option><option>دواء شكري</option></select></label><label className="text-sm">أيام التغطية<input type="number" min="1" value={coverageDays} onChange={e=>setCoverageDays(Number(e.target.value))} className="mt-1 w-full rounded-lg border p-2"/></label><label className="text-sm">أيام مخزون الأمان<input type="number" min="0" value={safetyDays} onChange={e=>setSafetyDays(Number(e.target.value))} className="mt-1 w-full rounded-lg border p-2"/></label><label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={e=>e.target.files?.[0]&&readFile(e.target.files[0])} className="mt-1 block w-full text-sm"/></label></div>
       {headers.length>0&&<div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-bold text-blue-900">ربط أعمدة الملف</h3><p className="text-xs text-blue-700">{mappingSource}</p></div><button onClick={saveMapping} className="rounded-lg bg-white border border-blue-200 px-3 py-2 text-sm font-semibold flex gap-2"><Save className="w-4 h-4"/>حفظ القالب</button></div><div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">{Object.entries(FIELD_LABELS).map(([field,label])=><label key={field} className="text-xs font-semibold text-slate-600">{label}{field==='product_name'&&<span className="text-red-600"> *</span>}<select value={mapping[field]||''} onChange={e=>changeMapping(field,e.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2 text-sm"><option value="">غير موجود</option>{headers.map(h=><option key={h} value={h}>{h}</option>)}</select></label>)}</div></div>}
       {preview.length>0&&<><div className="grid sm:grid-cols-4 gap-2">{[['الملف',fileName],['الأصناف الصالحة',preview.length],['ملاحظات الصفوف',previewErrors.length],['الفرع',branch]].map(([l,v])=><div key={l} className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">{l}</div><div className="font-bold mt-1 truncate">{v}</div></div>)}</div>
-      {(importWarnings.zeroPrice||importWarnings.noSupplier||importWarnings.noCode||importWarnings.noDemand)&&<div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">{importWarnings.noDemand&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">لا يوجد عمود مبيعات 30 يوم أو متوسط استهلاك؛ التحليل لن يكون دقيقًا.</div>}{importWarnings.zeroPrice>0&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{importWarnings.zeroPrice} صنف بدون سعر شراء، ويمكن تحديد السعر لاحقًا.</div>}{importWarnings.noSupplier>0&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{importWarnings.noSupplier} صنف بدون مورد.</div>}{importWarnings.noCode>0&&<div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{importWarnings.noCode} صنف بدون كود؛ سيتم الاعتماد على الاسم.</div>}</div>}
+      {(importWarnings.zeroPrice||importWarnings.noSupplier||importWarnings.noCode||importWarnings.noDemand)&&<div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">{importWarnings.noDemand&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">لا يوجد عمود مبيعات أو متوسط استهلاك؛ التحليل لن يكون دقيقًا.</div>}{importWarnings.zeroPrice>0&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{importWarnings.zeroPrice} صنف بدون سعر شراء، ويمكن تحديد السعر لاحقًا.</div>}{importWarnings.noSupplier>0&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{importWarnings.noSupplier} صنف بدون مورد أو شركة.</div>}{importWarnings.noCode>0&&<div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{importWarnings.noCode} صنف بدون كود؛ سيتم الاعتماد على الاسم.</div>}</div>}
       {previewErrors.length>0&&<details className="rounded-xl border border-amber-200 bg-amber-50 p-3"><summary className="cursor-pointer font-semibold text-amber-800">عرض ملاحظات الملف ({previewErrors.length})</summary><div className="mt-2 max-h-36 overflow-auto text-sm text-amber-800 space-y-1">{previewErrors.slice(0,50).map((x,i)=><div key={i}>{x}</div>)}</div></details>}
-      <div className="overflow-auto rounded-xl border"><table className="min-w-[850px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود','الصنف','الرصيد','مبيعات 30','متوسط يومي','السعر','المورد'].map(h=><th key={h} className="p-2 text-right">{h}</th>)}</tr></thead><tbody>{preview.slice(0,20).map((x,i)=><tr key={`${x.product_code}-${i}`} className="border-t"><td className="p-2">{x.product_code||'—'}</td><td className="p-2 font-semibold">{x.product_name}</td><td className="p-2">{x.current_stock}</td><td className="p-2">{x.sales_30}</td><td className="p-2">{x.avg_daily_usage}</td><td className="p-2">{money(x.last_purchase_price)}</td><td className="p-2">{x.preferred_supplier||'—'}</td></tr>)}</tbody></table></div>
+      <div className="overflow-auto rounded-xl border"><table className="min-w-[950px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود','الصنف','الرصيد','مبيعات 30','مبيعات 60','مبيعات 90','متوسط يومي','السعر','المورد/الشركة'].map(h=><th key={h} className="p-2 text-right">{h}</th>)}</tr></thead><tbody>{preview.slice(0,20).map((x,i)=><tr key={`${x.product_code}-${i}`} className="border-t"><td className="p-2">{x.product_code||'—'}</td><td className="p-2 font-semibold">{x.product_name}</td><td className="p-2">{x.current_stock}</td><td className="p-2">{money(x.sales_30)}</td><td className="p-2">{money(x.sales_60)}</td><td className="p-2">{money(x.sales_90)}</td><td className="p-2">{money(x.avg_daily_usage)}</td><td className="p-2">{money(x.last_purchase_price)}</td><td className="p-2">{x.preferred_supplier||'—'}</td></tr>)}</tbody></table></div>
       <button disabled={loading||!mapping.product_name||importWarnings.noDemand} onClick={importAndCreate} className="rounded-lg bg-teal-600 px-5 py-2.5 text-white font-bold flex items-center gap-2 disabled:opacity-50"><ShoppingCart className="w-4 h-4"/>تحليل وإنشاء الطلبية</button></>}
     </section>}
 
