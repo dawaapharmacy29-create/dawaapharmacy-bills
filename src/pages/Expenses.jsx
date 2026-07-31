@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, BarChart2, List } from "lucide-react";
+import { Plus, Pencil, Trash2, BarChart2, List, Wallet, Printer, Zap, Droplet, Users, Wrench, Wifi, Package, Sparkles, MoreHorizontal, Receipt, TrendingDown } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { logActivity } from "@/lib/activityLogger";
 import { useUserRole } from "@/lib/useUserRole";
 import ExpensesReport from "@/components/expenses/ExpensesReport";
@@ -38,6 +39,19 @@ const branchColor = {
 };
 
 const PAYMENT_METHODS = ["كاش", "انستا/فودافون"];
+
+const CATEGORY_META = {
+  "طباعة": { icon: Printer, color: "#6366f1" },
+  "كهرباء": { icon: Zap, color: "#f59e0b" },
+  "مياه": { icon: Droplet, color: "#0ea5e9" },
+  "رواتب": { icon: Users, color: "#8b5cf6" },
+  "صيانة": { icon: Wrench, color: "#f97316" },
+  "نت": { icon: Wifi, color: "#14b8a6" },
+  "نثريات": { icon: Package, color: "#84cc16" },
+  "نظافة": { icon: Sparkles, color: "#ec4899" },
+  "أخرى": { icon: MoreHorizontal, color: "#94a3b8" },
+};
+const categoryMeta = (cat) => CATEGORY_META[cat] || CATEGORY_META["أخرى"];
 
 const emptyForm = { description: "", amount: "", branch: "", category: "", payment_method: "", date: new Date().toISOString().split("T")[0], team_member_name: "", notes: "" };
 
@@ -117,13 +131,29 @@ export default function Expenses() {
   });
   const filtered = useMemo(() => sortData(filteredRaw), [filteredRaw, sortData]);
   const total = filtered.reduce((s, e) => s + (e.amount || 0), 0);
+  const avgExpense = filtered.length ? total / filtered.length : 0;
+
+  const categoryBreakdown = useMemo(() => {
+    const map = {};
+    filtered.forEach((e) => {
+      const cat = e.category || "أخرى";
+      map[cat] = (map[cat] || 0) + (e.amount || 0);
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value, color: categoryMeta(name).color }))
+      .sort((a, b) => b.value - a.value);
+  }, [filtered]);
+  const topCategory = categoryBreakdown[0];
 
   return (
     <div dir="rtl" className="p-4 md:p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">المصروفات</h1>
-          <p className="text-gray-500 text-sm mt-0.5">إجمالي: {total.toLocaleString("ar-EG")} ج</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-red-50 p-2.5"><Wallet className="h-6 w-6 text-red-600" /></div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">المصروفات</h1>
+            <p className="text-gray-500 text-sm mt-0.5">إجمالي: <span className="font-bold text-red-600">{total.toLocaleString("ar-EG")} ج</span></p>
+          </div>
         </div>
         {isManager && (
           <Button onClick={openNew} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
@@ -131,6 +161,27 @@ export default function Expenses() {
           </Button>
         )}
       </div>
+
+      {activeTab === "list" && filtered.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-3">
+          <Card className="flex items-center gap-3 p-4">
+            <div className="rounded-lg bg-red-50 p-2"><TrendingDown className="h-5 w-5 text-red-600" /></div>
+            <div><p className="text-xs text-gray-500">إجمالي المصروفات</p><p className="text-lg font-bold text-gray-800">{total.toLocaleString("ar-EG")} ج</p></div>
+          </Card>
+          <Card className="flex items-center gap-3 p-4">
+            <div className="rounded-lg bg-teal-50 p-2"><Receipt className="h-5 w-5 text-teal-600" /></div>
+            <div><p className="text-xs text-gray-500">عدد المصروفات · متوسط القيمة</p><p className="text-lg font-bold text-gray-800">{filtered.length} <span className="text-sm font-normal text-gray-400">· {avgExpense.toLocaleString("ar-EG", { maximumFractionDigits: 0 })} ج</span></p></div>
+          </Card>
+          {topCategory && (
+            <Card className="flex items-center gap-3 p-4">
+              <div className="rounded-lg p-2" style={{ backgroundColor: `${topCategory.color}1a` }}>
+                {(() => { const Icon = categoryMeta(topCategory.name).icon; return <Icon className="h-5 w-5" style={{ color: topCategory.color }} />; })()}
+              </div>
+              <div><p className="text-xs text-gray-500">أكبر بند مصروفات</p><p className="text-lg font-bold text-gray-800">{topCategory.name} <span className="text-sm font-normal text-gray-400">· {topCategory.value.toLocaleString("ar-EG")} ج</span></p></div>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
@@ -166,6 +217,37 @@ export default function Expenses() {
         onReset={resetSort}
       />
 
+      {categoryBreakdown.length > 1 && (
+        <Card className="p-4">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">توزيع المصروفات حسب النوع</h2>
+          <div className="flex flex-col items-center gap-4 md:flex-row">
+            <div className="h-48 w-48 shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={categoryBreakdown} dataKey="value" nameKey="name" innerRadius={45} outerRadius={70} paddingAngle={2}>
+                    {categoryBreakdown.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => `${Number(v).toLocaleString("ar-EG")} ج`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid w-full flex-1 grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+              {categoryBreakdown.map((c) => {
+                const Icon = categoryMeta(c.name).icon;
+                const pct = total > 0 ? (c.value / total) * 100 : 0;
+                return (
+                  <div key={c.name} className="flex items-center gap-1.5 text-xs">
+                    <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: c.color }} />
+                    <span className="truncate text-gray-600">{c.name}</span>
+                    <span className="mr-auto font-semibold text-gray-800">{pct.toFixed(0)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Card className="overflow-hidden">
         {isLoading ? (
           <div className="text-center py-12 text-gray-400">جاري التحميل...</div>
@@ -192,7 +274,14 @@ export default function Expenses() {
                     <TableCell className="font-medium">{e.description}</TableCell>
                     <TableCell className="font-semibold text-red-600">{(e.amount || 0).toLocaleString("ar-EG")} ج</TableCell>
                     <TableCell><Badge className={`${branchColor[e.branch]} border-0 text-xs`}>{e.branch}</Badge></TableCell>
-                    <TableCell className="text-gray-600 text-sm">{e.category || "—"}</TableCell>
+                    <TableCell className="text-gray-600 text-sm">
+                      {e.category ? (
+                        <span className="flex items-center gap-1.5">
+                          {(() => { const Icon = categoryMeta(e.category).icon; return <Icon className="h-3.5 w-3.5" style={{ color: categoryMeta(e.category).color }} />; })()}
+                          {e.category}
+                        </span>
+                      ) : "—"}
+                    </TableCell>
                     <TableCell className="text-gray-500 text-sm">{e.date || "—"}</TableCell>
                     <TableCell className="text-gray-600 text-sm">{e.payment_method || "—"}</TableCell>
                     <TableCell className="text-gray-600 text-sm">{e.team_member_name || "—"}</TableCell>
