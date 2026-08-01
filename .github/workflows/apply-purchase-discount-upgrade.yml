@@ -1,0 +1,38 @@
+name: Apply purchase discount upgrade
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/apply-purchase-discount-ui.cjs'
+      - 'scripts/apply-purchase-discount-planning.cjs'
+      - '.github/workflows/apply-purchase-discount-upgrade.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply purchase center upgrade
+        run: |
+          node scripts/apply-purchase-discount-ui.cjs
+          node scripts/apply-purchase-discount-planning.cjs
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet; then
+            echo 'No generated changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/SmartPurchaseUnifiedCenter.jsx src/api/smartPurchaseOrderManagementApi.js src/lib/purchasePlanning.js
+          git commit -m 'تطوير فرز وخصومات وتكلفة الطلبيات [skip ci]'
+          git push
