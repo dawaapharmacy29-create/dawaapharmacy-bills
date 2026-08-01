@@ -1,0 +1,1 @@
+node scripts/finalize_purchase_creation_stage.cjs
