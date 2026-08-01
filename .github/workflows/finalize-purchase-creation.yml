@@ -1,0 +1,34 @@
+name: Finalize purchase creation stage
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/codex-triggers/finalize_purchase_creation_run_*.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply purchase creation changes
+        run: node scripts/finalize_purchase_creation_stage.cjs
+      - name: Commit generated changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/SmartPurchaseUnifiedCenter.jsx src/api/smartPurchaseUnifiedApi.js
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+          else
+            git commit -m "إنهاء مرحلة إنشاء الطلبية وفصل الموردين"
+            git push
+          fi
