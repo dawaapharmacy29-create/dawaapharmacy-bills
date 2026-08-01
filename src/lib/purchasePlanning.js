@@ -9,7 +9,7 @@ function discountPercent(item = {}) {
 }
 
 function netPurchasePrice(item = {}) {
-  const publicPrice = netPurchasePrice(item);
+  const publicPrice = Math.max(0, toNumber(item.expected_unit_cost || item.last_purchase_price));
   return publicPrice * (1 - (discountPercent(item) / 100));
 }
 
@@ -149,7 +149,6 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
     } else {
       const weightedTotal = source.reduce((sum, item) => sum + (item.desired * item.price * item.weight), 0);
 
-      // توزيع نسبي على كامل الطلبية: كل صنف يأخذ نسبة من احتياجه بدل استهلاك الميزانية من أعلى القائمة.
       source.forEach((item) => {
         const key = item.id || normalizeProductKey(item);
         const allocatedValue = weightedTotal > 0
@@ -165,7 +164,6 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
       }, 0);
       let remaining = Math.max(0, budget - spent);
 
-      // نحاول الاحتفاظ بوحدة واحدة على الأقل من أكبر عدد ممكن من الأصناف المهمة.
       const missingBaseline = [...source]
         .filter((item) => (quantities.get(item.id || normalizeProductKey(item)) || 0) === 0)
         .sort((a, b) => Number(isCritical(b)) - Number(isCritical(a)) || b.weight - a.weight || a.price - b.price);
@@ -175,7 +173,6 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
         remaining -= item.price;
       }
 
-      // توزيع الباقي على أكبر فجوة نسبية عن الكمية الأصلية، مع ترجيح الأهمية.
       let progressed = true;
       while (progressed && remaining > 0) {
         progressed = false;
