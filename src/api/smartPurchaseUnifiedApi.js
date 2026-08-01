@@ -47,6 +47,7 @@ export const smartPurchaseUnifiedApi = {
   getOrder: (id) => rpc('get_order', { id }),
   updateItem: (payload) => rpc('update_item', payload),
   updateItems: (orderId, items) => rpc('update_items', { order_id: orderId, items }),
+  updateOrderTitle: (orderId, title) => standaloneRpc('smart_purchase_update_order_title', { p_order_id: orderId, p_title: title }),
   approveOrder: async (orderId) => {
     try { return await standaloneRpc('smart_purchase_approve_without_supplier', { p_order_id: orderId }); }
     catch (error) {
