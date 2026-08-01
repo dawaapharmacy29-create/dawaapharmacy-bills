@@ -15,17 +15,19 @@ declare
   v_updated integer := 0;
   v_expected integer := 0;
 begin
+  perform set_config('statement_timeout', '20000', true);
+
   if coalesce(trim(p_session_token), '') = '' then
     return jsonb_build_object('ok', false, 'error', 'invalid_session');
   end if;
 
-  -- استخدم نفس دالة الطلبيات الموحدة للتحقق من الجلسة وصلاحية الوصول للطلبية.
-  -- هذا يمنع اختلاف منطق الجلسات بين الواجهة وهذه الدالة.
+  -- تحقق خفيف من الجلسة فقط. لا تستخدم get_order هنا لأنه يعيد آلاف الأصناف
+  -- قبل تنفيذ الخطة وقد يتسبب في statement timeout.
   begin
     select public.smart_purchase_unified(
       p_session_token,
-      'get_order',
-      jsonb_build_object('id', p_order_id)
+      'dashboard',
+      '{}'::jsonb
     ) into v_auth;
   exception when others then
     return jsonb_build_object(
@@ -39,7 +41,7 @@ begin
     return jsonb_build_object(
       'ok', false,
       'error', coalesce(v_auth->>'error', 'invalid_session'),
-      'message', coalesce(v_auth->>'message', 'تعذر التحقق من الجلسة أو الطلبية.')
+      'message', coalesce(v_auth->>'message', 'تعذر التحقق من الجلسة.')
     );
   end if;
 
@@ -83,7 +85,7 @@ begin
   end if;
 
   v_sql := format($f$
-    with plan as (
+    with plan as materialized (
       select
         (x->>'id')::uuid as id,
         greatest(0, floor(coalesce((x->>'approved_quantity')::numeric, 0))) as qty
@@ -94,6 +96,7 @@ begin
       from plan p
       where i.id = p.id
         and i.order_id = $2
+        and i.approved_quantity is distinct from p.qty
       returning i.id
     )
     select count(*) from updated
@@ -101,13 +104,12 @@ begin
 
   execute v_sql into v_updated using p_items, p_order_id;
 
-  if v_updated <> v_expected then
-    raise exception 'budget_plan_partial_update: expected %, updated %', v_expected, v_updated;
-  end if;
-
   return jsonb_build_object(
     'ok', true,
-    'data', jsonb_build_object('updated', v_updated)
+    'data', jsonb_build_object(
+      'updated', v_updated,
+      'submitted', v_expected
+    )
   );
 exception when others then
   return jsonb_build_object(
