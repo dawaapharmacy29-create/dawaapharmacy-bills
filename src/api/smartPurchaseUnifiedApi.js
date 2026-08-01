@@ -6,6 +6,18 @@ function token() {
   catch { return ''; }
 }
 
+async function standaloneRpc(functionName, body) {
+  const sessionToken = token();
+  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+    method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_session_token: sessionToken, ...body }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) throw new Error(data?.message || data?.error || `فشل الطلب (${response.status})`);
+  return data.data;
+}
+
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
@@ -35,7 +47,13 @@ export const smartPurchaseUnifiedApi = {
   getOrder: (id) => rpc('get_order', { id }),
   updateItem: (payload) => rpc('update_item', payload),
   updateItems: (orderId, items) => rpc('update_items', { order_id: orderId, items }),
-  approveOrder: (orderId) => rpc('approve_order', { order_id: orderId }),
+  approveOrder: async (orderId) => {
+    try { return await standaloneRpc('smart_purchase_approve_without_supplier', { p_order_id: orderId }); }
+    catch (error) {
+      if (/Could not find the function|schema cache|404/i.test(String(error?.message || ''))) return rpc('approve_order', { order_id: orderId });
+      throw error;
+    }
+  },
   approveAndReserve: (payload) => rpc('approve_order', { order_id: payload.order_id }),
   returnToReview: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
   releaseReservation: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
