@@ -48,7 +48,13 @@ async function atomicUpdateItem(payload = {}) {
     body: JSON.stringify({
       p_session_token: sessionToken,
       p_order_id: payload.order_id,
-      p_items: [{ id: payload.id, approved_quantity: Number(payload.approved_quantity || 0) }],
+      p_items: [{
+        id: payload.id,
+        ...(payload.approved_quantity !== undefined ? { approved_quantity: Number(payload.approved_quantity || 0) } : {}),
+        ...(payload.expected_discount !== undefined ? { expected_discount: Number(payload.expected_discount || 0) } : {}),
+        ...(payload.expected_unit_cost !== undefined ? { expected_unit_cost: Number(payload.expected_unit_cost || 0) } : {}),
+        ...(payload.supplier_name !== undefined ? { supplier_name: String(payload.supplier_name || '') } : {}),
+      }],
     }),
   });
   const data = await response.json().catch(() => ({}));

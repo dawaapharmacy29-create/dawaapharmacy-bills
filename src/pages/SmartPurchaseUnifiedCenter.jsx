@@ -5,7 +5,7 @@ import { smartPurchaseOrderManagementApi as management } from '@/api/smartPurcha
 import { smartPurchaseApi } from '@/api/smartPurchaseApi';
 import {
   AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Send,
-  Upload, ShoppingCart, SlidersHorizontal, Save, WalletCards, Calculator, Eye,
+  Upload, ShoppingCart, SlidersHorizontal, Save, WalletCards, Calculator, Eye, ArrowUpDown,
 } from 'lucide-react';
 import {
   buildBudgetPlan,
@@ -66,8 +66,24 @@ function autoMapping(headers) {
   return mapping;
 }
 function itemPrice(item) { return Math.max(0, number(item.expected_unit_cost || item.last_purchase_price)); }
+function itemDiscount(item) {
+  const value = number(item.expected_discount);
+  return value > 0 ? Math.min(100, value) : 20;
+}
+function netUnitPrice(item) { return itemPrice(item) * (1 - (itemDiscount(item) / 100)); }
 function itemQuantity(item) { return Math.max(0, number(item.approved_quantity)); }
-function itemTotal(item) { return itemQuantity(item) * itemPrice(item); }
+function itemTotal(item) { return itemQuantity(item) * netUnitPrice(item); }
+function sortValue(item, field) {
+  if (field === 'quantity') return itemQuantity(item);
+  if (field === 'public_price') return itemPrice(item);
+  if (field === 'net_price') return netUnitPrice(item);
+  if (field === 'total') return itemTotal(item);
+  return 0;
+}
+function SortableHeader({ label, field, sortConfig, onSort }) {
+  const active = sortConfig.field === field;
+  return <th className="p-2 text-right"><button type="button" onClick={() => onSort(field)} className={`inline-flex items-center gap-1 font-bold hover:text-teal-700 ${active ? 'text-teal-700' : ''}`}><ArrowUpDown className="w-3.5 h-3.5" />{label}{active ? (sortConfig.direction === 'asc' ? ' ↑' : ' ↓') : ''}</button></th>;
+}
 function finalCoverage(item) {
   const usage = estimateDailyUsage(item);
   if (usage <= 0) return 0;
@@ -91,13 +107,13 @@ function exportWorkbook(payload) {
     ['بيانات الطلبية', ''], ['رقم الطلبية', order.order_number || ''], ['الفرع', order.branch || ''],
     ['الحالة', normStatus(order.status)], ['عدد الأصناف', items.length],
     ['إجمالي الكميات', items.reduce((sum, item) => sum + itemQuantity(item), 0)],
-    ['عدد الموردين', groups.size], ['إجمالي التكلفة المتوقعة', total],
+    ['عدد الموردين', groups.size], ['إجمالي تكلفة الصيدلية بعد الخصم', total],
     ['تاريخ التصدير', new Date().toLocaleString('ar-EG')],
   ]);
   summary['!dir'] = 'rtl'; summary['!cols'] = [{ wch: 28 }, { wch: 28 }];
   const supplierSheet = XLSX.utils.json_to_sheet([...groups.values()].sort((a, b) => b.total - a.total).map((group) => ({
     'المورد / الشركة': group.supplier, 'عدد الأصناف': group.items, 'إجمالي الكميات': group.quantity,
-    'إجمالي التكلفة المتوقعة': group.total, 'نسبة من الطلبية %': total > 0 ? Number(((group.total / total) * 100).toFixed(2)) : 0,
+    'إجمالي تكلفة الصيدلية بعد الخصم': group.total, 'نسبة من تكلفة الطلبية %': total > 0 ? Number(((group.total / total) * 100).toFixed(2)) : 0,
   })));
   supplierSheet['!dir'] = 'rtl'; supplierSheet['!autofilter'] = { ref: supplierSheet['!ref'] || 'A1:E1' };
   const allSheet = XLSX.utils.json_to_sheet(items.map((item) => ({
@@ -105,8 +121,9 @@ function exportWorkbook(payload) {
     'المورد / الشركة': item.supplier_name || 'غير محدد', 'الكمية المطلوبة': number(item.requested_quantity),
     'الكمية المعتمدة': itemQuantity(item), 'الرصيد الحالي': number(item.current_stock),
     'المنتظر وصوله': number(item.pending_incoming), 'متوسط الاستهلاك اليومي': Number(estimateDailyUsage(item).toFixed(3)),
-    'التغطية النهائية بالأيام': Number(finalCoverage(item).toFixed(1)), 'سعر الوحدة المتوقع': itemPrice(item),
-    'إجمالي الصنف المتوقع': itemTotal(item), 'طلبات العملاء': number(item.customer_requests_count), 'ملاحظات': item.notes || '',
+    'التغطية النهائية بالأيام': Number(finalCoverage(item).toFixed(1)), 'سعر الجمهور': itemPrice(item),
+    'الخصم %': itemDiscount(item), 'سعر الصيدلية بعد الخصم': Number(netUnitPrice(item).toFixed(2)),
+    'إجمالي الصنف بعد الخصم': Number(itemTotal(item).toFixed(2)), 'طلبات العملاء': number(item.customer_requests_count), 'ملاحظات': item.notes || '',
   })));
   allSheet['!dir'] = 'rtl'; allSheet['!autofilter'] = { ref: allSheet['!ref'] || 'A1:M1' }; allSheet['!freeze'] = { ySplit: 1 };
   const workbook = XLSX.utils.book_new();
@@ -146,6 +163,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [onlyUrgent, setOnlyUrgent] = useState(false);
   const [onlyCustomers, setOnlyCustomers] = useState(false);
   const [hideZero, setHideZero] = useState(true);
+  const [sortConfig, setSortConfig] = useState({ field: 'quantity', direction: 'desc' });
 
   async function refresh(openId) {
     setLoading(true); setError('');
@@ -271,7 +289,13 @@ export default function SmartPurchaseUnifiedCenter() {
     if (onlyUrgent && number(item.priority_score) < 50 && !String(item.priority_label || '').includes('عاجل')) return false;
     if (onlyCustomers && number(item.customer_requests_count) <= 0) return false;
     return true;
-  }), [items, hideZero, onlyUrgent, onlyCustomers]);
+  }).sort((a, b) => {
+    const delta = sortValue(a, sortConfig.field) - sortValue(b, sortConfig.field);
+    return sortConfig.direction === 'asc' ? delta : -delta;
+  }), [items, hideZero, onlyUrgent, onlyCustomers, sortConfig]);
+  function toggleSort(field) {
+    setSortConfig((current) => ({ field, direction: current.field === field && current.direction === 'desc' ? 'asc' : 'desc' }));
+  }
   const budgetPlan = useMemo(() => number(budgetLimit) > 0 ? buildBudgetPlan(items, number(budgetLimit)) : null, [items, budgetLimit]);
 
   async function updateOne(item, patch) { return management.updateItem({ id: item.id, order_id: selected.order.id, ...patch }); }
@@ -332,11 +356,11 @@ export default function SmartPurchaseUnifiedCenter() {
       <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{(data.orders || []).map((order) => <button key={order.id} onClick={() => openOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-semibold">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {normStatus(order.status)}</div><div className="font-bold mt-1">{money(order.approved_total || order.expected_total)} ج</div></button>)}</div></aside>
       <main className="min-w-0 space-y-3">{selected ? <>
         <section className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-bold">{selected.order.order_number}</h2><p className="text-sm text-slate-500">{selected.order.branch} • {status}</p></div><div className="flex gap-2"><button onClick={() => exportWorkbook(selected)} className="rounded-lg border px-3 py-2 flex gap-2"><Download className="w-4 h-4" />تصدير ملف موحد</button>{status === 'معتمدة' && <button onClick={() => run(() => unified.markSent(selected.order.id), 'تم تسجيل إرسال الطلبية.')} className="rounded-lg bg-blue-600 text-white px-3 py-2 flex gap-2"><Send className="w-4 h-4" />تم الإرسال</button>}</div></div><div className="mt-4 flex overflow-x-auto">{STATUS_STEPS.map((step, index) => <div key={step} className="min-w-[115px] flex-1"><div className={`h-2 ${index <= stepIndex ? 'bg-teal-500' : 'bg-slate-200'}`} /><div className={`text-[11px] mt-1 ${index <= stepIndex ? 'font-bold text-teal-700' : 'text-slate-400'}`}>{step}</div></div>)}</div></section>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['الأصناف', totals.items], ['الكميات', totals.quantity], ['الموردون', totals.suppliers], ['بدون مورد', totals.missing], ['التكلفة المتوقعة', `${money(totals.total)} ج`]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['الأصناف', totals.items], ['الكميات', totals.quantity], ['الموردون', totals.suppliers], ['بدون مورد', totals.missing], ['تكلفة الصيدلية بعد الخصم', `${money(totals.total)} ج`]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3"><h3 className="font-bold flex items-center gap-2"><WalletCards className="w-5 h-5" />التحكم المالي الذكي</h3><div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3"><label className="text-sm">الميزانية القصوى<input type="number" value={budgetLimit} onChange={(event) => { setBudgetLimit(event.target.value); setBudgetPreviewVisible(false); }} className="mt-1 w-full rounded-lg border bg-white p-2" /></label><div className="rounded-xl bg-white border p-3"><div className="text-xs text-slate-500">التكلفة الحالية</div><div className="font-bold text-lg">{money(totals.total)} ج</div></div><button onClick={() => setBudgetPreviewVisible(true)} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold flex justify-center items-center gap-2"><Eye className="w-5 h-5" />معاينة التوزيع</button><button onClick={applyBudgetPlan} disabled={!budgetPreviewVisible || loading || ['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="rounded-xl bg-emerald-700 text-white px-4 py-3 font-bold flex justify-center items-center gap-2 disabled:opacity-50"><Calculator className="w-5 h-5" />تطبيق الخطة</button></div>{budgetPreviewVisible && budgetPlan && <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[['التكلفة بعد الضبط', `${money(budgetPlan.total)} ج`], ['المتبقي', `${money(budgetPlan.remaining)} ج`], ['الأصناف', budgetPlan.active_items], ['الكميات', budgetPlan.total_quantity], ['المخفضة', budgetPlan.reduced_items], ['المصفرة', budgetPlan.zeroed_items]].map(([label, value]) => <div key={label} className="rounded-lg bg-white border p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}</section>
         <section className="rounded-2xl border bg-white p-3 space-y-3"><h3 className="font-bold flex items-center gap-2"><SlidersHorizontal className="w-5 h-5" />فلاتر وتعديل المورد</h3><div className="flex flex-wrap items-end gap-3"><label className="text-xs">المورد<input value={bulkSupplier} onChange={(event) => setBulkSupplier(event.target.value)} className="mt-1 block w-48 rounded-lg border p-2" /></label><button onClick={assignSupplier} className="rounded-lg border px-3 py-2">تعيين للظاهر</button><label className="flex gap-2 text-sm"><input type="checkbox" checked={hideZero} onChange={(event) => setHideZero(event.target.checked)} />إخفاء الصفر</label><label className="flex gap-2 text-sm"><input type="checkbox" checked={onlyUrgent} onChange={(event) => setOnlyUrgent(event.target.checked)} />العاجل فقط</label><label className="flex gap-2 text-sm"><input type="checkbox" checked={onlyCustomers} onChange={(event) => setOnlyCustomers(event.target.checked)} />طلبات العملاء فقط</label></div></section>
         <div className="flex gap-2">{!['معتمدة', 'تم الإرسال للمورد'].includes(status) ? <button onClick={() => run(() => unified.approveOrder(selected.order.id), 'تم اعتماد الطلبية.')} disabled={loading || totals.missing > 0 || totals.total <= 0} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" />اعتماد الطلبية</button> : <button onClick={() => run(() => unified.returnToReview(selected.order.id), 'تمت إعادة الطلبية للمراجعة.')} className="rounded-lg border border-amber-300 px-4 py-2">إعادة للمراجعة</button>}</div>
-        <section className="rounded-2xl border bg-white overflow-auto"><table className="min-w-[1450px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'الرصيد', 'المنتظر', 'المطلوب', 'المعتمد', 'متوسط يومي', 'التغطية النهائية', 'المورد', 'السعر', 'الإجمالي', 'طلبات العملاء'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{visibleItems.map((item) => <tr key={item.id} className="border-t"><td className="p-2"><div className="font-semibold">{item.product_name}</div><div className="text-xs text-slate-400">{item.product_code || 'بدون كود'}</div></td><td className="p-2">{number(item.current_stock)}</td><td className="p-2">{number(item.pending_incoming)}</td><td className="p-2">{number(item.requested_quantity)}</td><td className="p-2"><input type="number" min="0" defaultValue={item.approved_quantity} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.approved_quantity)) run(() => updateOne(item, { approved_quantity: value }), 'تم تحديث الكمية.'); }} className="w-20 rounded-lg border p-2 font-bold" /></td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs ${finalCoverage(item) < 3 ? 'bg-red-50 text-red-700' : finalCoverage(item) > 14 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{finalCoverage(item).toFixed(1)} يوم</span></td><td className="p-2"><input defaultValue={item.supplier_name || ''} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = event.target.value.trim(); if (value !== (item.supplier_name || '')) run(() => updateOne(item, { supplier_name: value }), 'تم تحديث المورد.'); }} className="w-40 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min="0" step="0.01" defaultValue={item.expected_unit_cost} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.expected_unit_cost)) run(() => updateOne(item, { expected_unit_cost: value }), 'تم تحديث السعر.'); }} className="w-24 rounded-lg border p-2" /></td><td className="p-2 font-bold">{money(itemTotal(item))} ج</td><td className="p-2">{number(item.customer_requests_count)}</td></tr>)}</tbody></table></section>
+        <section className="rounded-2xl border bg-white overflow-auto"><table className="min-w-[1750px] w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">الرصيد</th><th className="p-2 text-right">المنتظر</th><th className="p-2 text-right">المطلوب</th><SortableHeader label="المعتمد" field="quantity" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">متوسط يومي</th><th className="p-2 text-right">التغطية النهائية</th><th className="p-2 text-right">المورد</th><SortableHeader label="سعر الجمهور" field="public_price" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">الخصم %</th><SortableHeader label="سعر الصيدلية" field="net_price" sortConfig={sortConfig} onSort={toggleSort} /><SortableHeader label="الإجمالي" field="total" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">طلبات العملاء</th></tr></thead><tbody>{visibleItems.map((item) => <tr key={item.id} className="border-t"><td className="p-2"><div className="font-semibold">{item.product_name}</div><div className="text-xs text-slate-400">{item.product_code || 'بدون كود'}</div></td><td className="p-2">{number(item.current_stock)}</td><td className="p-2">{number(item.pending_incoming)}</td><td className="p-2">{number(item.requested_quantity)}</td><td className="p-2"><input type="number" min="0" defaultValue={item.approved_quantity} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.approved_quantity)) run(() => updateOne(item, { approved_quantity: value }), 'تم تحديث الكمية.'); }} className="w-20 rounded-lg border p-2 font-bold" /></td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs ${finalCoverage(item) < 3 ? 'bg-red-50 text-red-700' : finalCoverage(item) > 14 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{finalCoverage(item).toFixed(1)} يوم</span></td><td className="p-2"><input defaultValue={item.supplier_name || ''} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = event.target.value.trim(); if (value !== (item.supplier_name || '')) run(() => updateOne(item, { supplier_name: value }), 'تم تحديث المورد.'); }} className="w-40 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min="0" step="0.01" defaultValue={item.expected_unit_cost} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.expected_unit_cost)) run(() => updateOne(item, { expected_unit_cost: value }), 'تم تحديث سعر الجمهور.'); }} className="w-24 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min="0" max="100" step="0.1" defaultValue={itemDiscount(item)} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = Math.min(100, Math.max(0, number(event.target.value))); if (value !== itemDiscount(item)) run(() => updateOne(item, { expected_discount: value }), 'تم تحديث خصم الصنف.'); }} className="w-20 rounded-lg border p-2" /></td><td className="p-2 font-semibold">{money(netUnitPrice(item))} ج</td><td className="p-2 font-bold text-teal-800">{money(itemTotal(item))} ج</td><td className="p-2">{number(item.customer_requests_count)}</td></tr>)}</tbody></table></section>
       </> : <section className="rounded-2xl border border-dashed bg-white p-12 text-center text-slate-400"><FileSpreadsheet className="w-10 h-10 mx-auto mb-3" />اختر طلبية أو أنشئ طلبية جديدة.</section>}</main>
     </div>
   </div>;

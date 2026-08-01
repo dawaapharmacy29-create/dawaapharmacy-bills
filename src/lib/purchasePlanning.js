@@ -3,6 +3,16 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+function discountPercent(item = {}) {
+  const value = toNumber(item.expected_discount);
+  return value > 0 ? Math.min(100, value) : 20;
+}
+
+function netPurchasePrice(item = {}) {
+  const publicPrice = netPurchasePrice(item);
+  return publicPrice * (1 - (discountPercent(item) / 100));
+}
+
 export function normalizeProductKey(row = {}) {
   const code = String(row.product_code || '').trim();
   if (code) return `code:${code}`;
@@ -57,7 +67,8 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
     suggested_quantity: suggestedQuantity,
     projected_stock: projectedStock,
     projected_coverage_days: projectedCoverageDays,
-    calculation_method: 'unified_final_coverage_v4',
+    expected_discount: toNumber(row.expected_discount) > 0 ? Math.min(100, toNumber(row.expected_discount)) : 20,
+    calculation_method: 'unified_final_coverage_v5_discounted',
   };
 }
 
@@ -123,7 +134,7 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
   const budget = Math.max(0, toNumber(budgetValue));
   const source = rows
     .map((item) => {
-      const price = Math.max(0, toNumber(item.expected_unit_cost || item.last_purchase_price));
+      const price = netPurchasePrice(item);
       const desired = Math.max(0, Math.floor(toNumber(item.requested_quantity || item.suggested_quantity || item.approved_quantity)));
       return { ...item, price, desired, weight: importanceWeight(item) };
     })
@@ -191,7 +202,7 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
   const plannedRows = rows.map((item) => {
     const key = item.id || normalizeProductKey(item);
     const approvedQuantity = quantities.get(key) || 0;
-    const price = Math.max(0, toNumber(item.expected_unit_cost || item.last_purchase_price));
+    const price = netPurchasePrice(item);
     const desired = Math.max(0, toNumber(item.requested_quantity || item.suggested_quantity || item.approved_quantity));
     return {
       ...item,
@@ -199,7 +210,7 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
       budget_line_total: approvedQuantity * price,
       original_desired_quantity: desired,
       budget_reduction_percent: desired > 0 ? Number((((desired - approvedQuantity) / desired) * 100).toFixed(1)) : 0,
-      budget_distribution_method: 'proportional_restructure_v2',
+      budget_distribution_method: 'proportional_restructure_discounted_v3',
     };
   });
 
@@ -221,6 +232,6 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
     reduced_items: reducedRows.length,
     zeroed_items: zeroedRows.length,
     missing_price_items: rows.filter((item) => toNumber(item.expected_unit_cost || item.last_purchase_price) <= 0).length,
-    distribution_method: 'proportional_restructure_v2',
+    distribution_method: 'proportional_restructure_discounted_v3',
   };
 }
