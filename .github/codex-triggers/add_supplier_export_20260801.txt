@@ -1,0 +1,1 @@
+node scripts/add_supplier_export.cjs
