@@ -63,10 +63,10 @@ async function atomicUpdateItem(payload = {}) {
     const messages = {
       invalid_session: 'الجلسة غير صالحة. سجل الدخول مرة أخرى.',
       items_table_not_found: 'تعذر تحديد جدول أصناف الطلبية في قاعدة البيانات.',
-      apply_failed: data?.message || 'تعذر تثبيت كمية الصنف.',
+      apply_failed: data?.message || 'تعذر تثبيت تعديل الصنف.',
     };
     if (response.status === 404 || /Could not find the function|schema cache/i.test(String(code || ''))) {
-      throw new Error('تحديث خطة الميزانية غير مفعّل في قاعدة البيانات بعد. يلزم تطبيق Migration الطلبيات الجديدة أولًا.');
+      throw new Error('تحديث أصناف الطلبية غير مفعّل في قاعدة البيانات بعد.');
     }
     throw new Error(messages[code] || errorText(code || data, `فشل تحديث الصنف (${response.status})`));
   }
@@ -92,31 +92,38 @@ async function fallbackOrders() {
   }));
 }
 
-async function withFallback(action, payload, fallback) {
-  try { return await legacyRpc(action, payload); }
-  catch (error) {
-    if ([400, 404].some((code) => String(error.message).includes(String(code))) || /Could not find|schema cache|function/i.test(error.message)) return fallback();
-    throw error;
-  }
+async function unifiedOrders() {
+  const dashboard = await smartPurchaseUnifiedApi.dashboard();
+  return dashboard?.orders || [];
 }
 
 export const smartPurchaseOrderManagementApi = {
-  listOrders: () => withFallback('list_orders', {}, fallbackOrders),
-  getOrder: (id) => withFallback('get_order', { id }, async () => {
-    const order = (await fallbackOrders()).find((x) => String(x.id) === String(id));
-    if (!order) throw new Error('الطلب غير موجود.');
-    return { order, items: [{
-      id: order.id,
-      product_code: order.product_code || order.item_code || '',
-      product_name: order.product_name || order.item_name || order.name || 'صنف غير محدد',
-      requested_quantity: Number(order.requested_quantity || order.quantity || 1),
-      approved_quantity: Number(order.approved_quantity || order.quantity || 1),
-      supplier_name: order.supplier_name || order.ordered_supplier || '',
-      expected_unit_cost: Number(order.expected_unit_cost || order.unit_cost || 0),
-      expected_discount: Number(order.expected_discount || 0),
-      supplier_reason: '', notes: order.notes || '',
-    }] };
-  }),
+  listOrders: async () => {
+    try { return await unifiedOrders(); }
+    catch (error) {
+      if (/Could not find|schema cache|function|404/i.test(String(error?.message || ''))) return fallbackOrders();
+      throw error;
+    }
+  },
+  getOrder: async (id) => {
+    try { return await smartPurchaseUnifiedApi.getOrder(id); }
+    catch (error) {
+      if (!/Could not find|schema cache|function|404/i.test(String(error?.message || ''))) throw error;
+      const order = (await fallbackOrders()).find((x) => String(x.id) === String(id));
+      if (!order) throw new Error('الطلب غير موجود.');
+      return { order, items: [{
+        id: order.id,
+        product_code: order.product_code || order.item_code || '',
+        product_name: order.product_name || order.item_name || order.name || 'صنف غير محدد',
+        requested_quantity: Number(order.requested_quantity || order.quantity || 1),
+        approved_quantity: Number(order.approved_quantity || order.quantity || 1),
+        supplier_name: order.supplier_name || order.ordered_supplier || '',
+        expected_unit_cost: Number(order.expected_unit_cost || order.unit_cost || 0),
+        expected_discount: Number(order.expected_discount || 0),
+        supplier_reason: '', notes: order.notes || '',
+      }] };
+    }
+  },
   listOffers: (filters = {}) => legacyRpc('list_offers', filters),
   importOffers: (payload) => legacyRpc('import_offers', payload),
   updateItem: atomicUpdateItem,
@@ -128,8 +135,8 @@ export const smartPurchaseOrderManagementApi = {
       if (/session_token does not exist|no_supplier_offers/i.test(message)) {
         return {
           skipped: true,
-          reason: 'bconnect_suppliers_ready',
-          message: 'تم الاحتفاظ بالموردين القادمين من ملف B-Connect؛ لا توجد عروض بديلة للمقارنة حاليًا.',
+          reason: 'supplier_stage_not_ready',
+          message: 'مرحلة مقارنة الموردين مؤجلة حاليًا؛ تم الاحتفاظ بالطلبية كما هي.',
         };
       }
       throw error;
