@@ -28,6 +28,7 @@ const navGroups = [
         { path: "/sales-purchases-report", label: "المبيعات مقابل المشتريات", icon: Scale },
       ]},
       { label: "التقارير", items: [
+        { path: "/reports-center", label: "مركز التقارير", icon: BarChart3 },
         { path: "/reports", label: "التقارير الإجمالية", icon: BarChart2 },
         { path: "/reports-branch", label: "تقارير الفروع", icon: BarChart3 },
       ]},
