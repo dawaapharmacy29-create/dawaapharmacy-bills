@@ -16,6 +16,7 @@ import RoleRouteGuard from './components/auth/RoleRouteGuard';
 const FastDashboard = lazy(() => import('./pages/FastDashboard'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DailyTasksCenter = lazy(() => import('./pages/DailyTasksCenter'));
+const UnifiedInvoiceCenter = lazy(() => import('./pages/UnifiedInvoiceCenter'));
 const FastPurchaseInvoices = lazy(() => import('./pages/FastPurchaseInvoices'));
 const PurchaseInvoices = lazy(() => import('./pages/PurchaseInvoices.jsx'));
 const QuickInvoiceEntry = lazy(() => import('./pages/QuickInvoiceEntry'));
@@ -78,6 +79,7 @@ const AuthenticatedApp = () => {
     <Route path="/branch-performance" element={<BranchPerformanceCenter />} />
     <Route path="/sales-purchases-report" element={<SalesPurchasesReport />} />
     <Route path="/system-status" element={<RoleRouteGuard adminOnly><SystemStatus /></RoleRouteGuard>} />
+    <Route path="/invoice-center" element={<UnifiedInvoiceCenter />} />
     <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
     <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
     <Route path="/invoices/manage" element={<PurchaseInvoices />} />
