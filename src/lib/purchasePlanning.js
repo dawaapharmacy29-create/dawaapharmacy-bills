@@ -45,6 +45,13 @@ export function estimateDailyUsage(row = {}) {
   return recentDaily || mediumDaily || longDaily || 0;
 }
 
+function hasPriorityException(row = {}) {
+  return toNumber(row.customer_requests_count) > 0
+    || toNumber(row.priority_score) >= 50
+    || String(row.priority_label || '').includes('عاجل')
+    || row.force_include === true;
+}
+
 export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
   const targetDays = Math.max(1, toNumber(coverageDays) || 7);
   const currentStock = Math.max(0, toNumber(row.current_stock));
@@ -61,6 +68,7 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
     current_stock: currentStock,
     pending_incoming: pendingIncoming,
     avg_daily_usage: averageDaily,
+    estimated_monthly_usage: averageDaily * 30,
     target_coverage_days: targetDays,
     target_stock: targetStock,
     available_stock: availableStock,
@@ -68,7 +76,7 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
     projected_stock: projectedStock,
     projected_coverage_days: projectedCoverageDays,
     expected_discount: toNumber(row.expected_discount) > 0 ? Math.min(100, toNumber(row.expected_discount)) : 20,
-    calculation_method: 'unified_final_coverage_v5_discounted',
+    calculation_method: 'unified_final_coverage_v6_slow_mover_guard',
   };
 }
 
@@ -93,6 +101,9 @@ export function mergePurchaseRows(rows = []) {
       avg_daily_usage: Math.max(toNumber(current.avg_daily_usage), toNumber(row.avg_daily_usage)),
       last_purchase_price: toNumber(current.last_purchase_price) || toNumber(row.last_purchase_price),
       preferred_supplier: current.preferred_supplier || row.preferred_supplier,
+      customer_requests_count: Math.max(toNumber(current.customer_requests_count), toNumber(row.customer_requests_count)),
+      priority_score: Math.max(toNumber(current.priority_score), toNumber(row.priority_score)),
+      priority_label: current.priority_label || row.priority_label,
     });
   });
   return [...merged.values()];
@@ -100,25 +111,35 @@ export function mergePurchaseRows(rows = []) {
 
 export function buildPurchaseCandidates(rows = [], options = {}) {
   const coverageDays = Math.max(1, toNumber(options.coverage_days) || 7);
+  const minimumMonthlySales = Math.max(0, toNumber(options.minimum_monthly_sales ?? 2));
   return mergePurchaseRows(rows)
     .map((row) => calculatePurchaseNeed(row, coverageDays))
-    .filter((row) => row.avg_daily_usage > 0 && row.suggested_quantity > 0);
+    .filter((row) => row.avg_daily_usage > 0 && row.suggested_quantity > 0)
+    .filter((row) => row.estimated_monthly_usage >= minimumMonthlySales || hasPriorityException(row))
+    .map((row) => ({
+      ...row,
+      slow_mover_excluded_threshold: minimumMonthlySales,
+      inclusion_reason: hasPriorityException(row)
+        ? 'priority_exception'
+        : row.estimated_monthly_usage >= minimumMonthlySales
+          ? 'normal_usage'
+          : 'excluded_slow_mover',
+    }));
 }
 
 function isCritical(item) {
-  return toNumber(item.customer_requests_count) > 0
-    || toNumber(item.priority_score) >= 50
-    || String(item.priority_label || '').includes('عاجل');
+  return hasPriorityException(item);
 }
 
 function importanceWeight(item) {
-  if (toNumber(item.customer_requests_count) > 0) return 1.35;
-  if (isCritical(item)) return 1.22;
+  if (toNumber(item.customer_requests_count) > 0) return 1.45;
+  if (isCritical(item)) return 1.3;
   const usage = estimateDailyUsage(item);
   const desired = Math.max(1, toNumber(item.requested_quantity || item.suggested_quantity || item.approved_quantity));
   const stockPressure = Math.max(0, desired - toNumber(item.available_stock));
-  if (usage >= 1 || stockPressure >= desired * 0.75) return 1.08;
-  return 0.94;
+  if (usage >= 1 || stockPressure >= desired * 0.75) return 1.12;
+  if ((usage * 30) < 3) return 0.75;
+  return 0.96;
 }
 
 function itemPriority(item) {
@@ -127,10 +148,10 @@ function itemPriority(item) {
   const usage = Math.max(0, estimateDailyUsage(item));
   const desired = Math.max(1, toNumber(item.desired));
   const shortage = Math.max(0, desired - toNumber(item.current_planned));
-  return (customerRequests * 1000) + (priorityScore * 20) + (usage * 15) + ((shortage / desired) * 100);
+  return (customerRequests * 1000) + (priorityScore * 20) + (usage * 25) + ((shortage / desired) * 100);
 }
 
-export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
+export function buildBudgetPlan(rows = [], budgetValue = 0) {
   const budget = Math.max(0, toNumber(budgetValue));
   const source = rows
     .map((item) => {
@@ -148,14 +169,12 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
       source.forEach((item) => quantities.set(item.id || normalizeProductKey(item), item.desired));
     } else {
       const weightedTotal = source.reduce((sum, item) => sum + (item.desired * item.price * item.weight), 0);
-
       source.forEach((item) => {
         const key = item.id || normalizeProductKey(item);
         const allocatedValue = weightedTotal > 0
           ? budget * ((item.desired * item.price * item.weight) / weightedTotal)
           : 0;
-        const proportionalQty = Math.min(item.desired, Math.floor(allocatedValue / item.price));
-        quantities.set(key, proportionalQty);
+        quantities.set(key, Math.min(item.desired, Math.floor(allocatedValue / item.price)));
       });
 
       let spent = source.reduce((sum, item) => {
@@ -164,10 +183,10 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
       }, 0);
       let remaining = Math.max(0, budget - spent);
 
-      const missingBaseline = [...source]
-        .filter((item) => (quantities.get(item.id || normalizeProductKey(item)) || 0) === 0)
-        .sort((a, b) => Number(isCritical(b)) - Number(isCritical(a)) || b.weight - a.weight || a.price - b.price);
-      for (const item of missingBaseline) {
+      const baseline = source
+        .filter((item) => isCritical(item) && (quantities.get(item.id || normalizeProductKey(item)) || 0) === 0)
+        .sort((a, b) => b.weight - a.weight || a.price - b.price);
+      for (const item of baseline) {
         if (item.price > remaining) continue;
         quantities.set(item.id || normalizeProductKey(item), 1);
         remaining -= item.price;
@@ -181,7 +200,7 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
             const key = item.id || normalizeProductKey(item);
             const current = quantities.get(key) || 0;
             const gapRatio = Math.max(0, item.desired - current) / Math.max(1, item.desired);
-            return { ...item, key, current, gapRatio, refillScore: gapRatio * item.weight * 100 + itemPriority({ ...item, current_planned: current }) };
+            return { ...item, key, current, refillScore: gapRatio * item.weight * 100 + itemPriority({ ...item, current_planned: current }) };
           })
           .filter((item) => item.current < item.desired && item.price <= remaining)
           .sort((a, b) => b.refillScore - a.refillScore || a.price - b.price);
@@ -207,7 +226,7 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
       budget_line_total: approvedQuantity * price,
       original_desired_quantity: desired,
       budget_reduction_percent: desired > 0 ? Number((((desired - approvedQuantity) / desired) * 100).toFixed(1)) : 0,
-      budget_distribution_method: 'proportional_restructure_discounted_v3',
+      budget_distribution_method: 'priority_weighted_discounted_v4',
     };
   });
 
@@ -229,6 +248,6 @@ export function buildBudgetPlan(rows = [], budgetValue = 0, options = {}) {
     reduced_items: reducedRows.length,
     zeroed_items: zeroedRows.length,
     missing_price_items: rows.filter((item) => toNumber(item.expected_unit_cost || item.last_purchase_price) <= 0).length,
-    distribution_method: 'proportional_restructure_discounted_v3',
+    distribution_method: 'priority_weighted_discounted_v4',
   };
 }
