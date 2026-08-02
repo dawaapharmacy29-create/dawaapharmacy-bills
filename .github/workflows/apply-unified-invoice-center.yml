@@ -28,7 +28,7 @@ jobs:
         run: node .github/scripts/apply-unified-invoice-center.mjs
       - name: Install dependencies
         run: npm ci
-      - name: Build
+      - name: Build application
         run: npm run build
       - name: Commit verified changes
         run: |
