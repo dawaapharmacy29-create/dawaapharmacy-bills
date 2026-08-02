@@ -37,6 +37,7 @@ const navGroups = [
     key: "purchases", label: "المشتريات والفواتير", icon: Zap,
     sections: [
       { label: "الفواتير", items: [
+        { path: "/invoice-center", label: "مركز الفواتير الموحد", icon: Layers3 },
         { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2 },
         { path: "/invoices", label: "فواتير الشراء — عرض سريع", icon: FileText },
         { path: "/invoices/manage", label: "فواتير الشراء — تفصيلي وفلاتر", icon: FileSearch },
@@ -118,6 +119,7 @@ const navGroups = [
 const quickLinks = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
   { path: "/daily-tasks", label: "مهام اليوم", icon: ListChecks },
+  { path: "/invoice-center", label: "مركز الفواتير", icon: Layers3 },
   { path: "/invoices/new", label: "فاتورة جديدة", icon: FilePlus2 },
   { path: "/pending-invoices", label: "مراجعة الفواتير", icon: ClipboardList, badgeKey: "invoices" },
   { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock },
