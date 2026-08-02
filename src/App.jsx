@@ -22,6 +22,7 @@ const FastPurchaseInvoices = lazy(() => import('./pages/FastPurchaseInvoices'));
 const PurchaseInvoices = lazy(() => import('./pages/PurchaseInvoices.jsx'));
 const QuickInvoiceEntry = lazy(() => import('./pages/QuickInvoiceEntry'));
 const InvoiceQualityCenter = lazy(() => import('./pages/InvoiceQualityCenter'));
+const QualityReviewCenter = lazy(() => import('./pages/QualityReviewCenter'));
 const DoctorAccountCoverage = lazy(() => import('./pages/DoctorAccountCoverage'));
 const Suppliers = lazy(() => import('./pages/Suppliers.jsx'));
 const Expenses = lazy(() => import('./pages/Expenses'));
@@ -86,6 +87,7 @@ const AuthenticatedApp = () => {
     <Route path="/invoice-center" element={<UnifiedInvoiceCenter />} />
     <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
     <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
+    <Route path="/quality-center" element={<QualityReviewCenter />} />
     <Route path="/invoices/manage" element={<PurchaseInvoices />} />
     <Route path="/invoices" element={<FastPurchaseInvoices />} />
     <Route path="/suppliers" element={<Suppliers />} />
