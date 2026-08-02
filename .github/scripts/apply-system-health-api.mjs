@@ -8,4 +8,4 @@ if (!content.includes(marker)) throw new Error('base44ReviewApi marker not found
 if (!content.includes('export const systemHealthApi')) {
   fs.writeFileSync(file, content.replace(marker, addition + marker));
 }
-console.log('System health API patch applied.');
+console.log('System health API patch applied safely.');
