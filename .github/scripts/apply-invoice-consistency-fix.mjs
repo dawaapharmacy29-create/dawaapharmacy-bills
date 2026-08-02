@@ -52,3 +52,5 @@ function walk(dir) {
 }
 
 walk(path.join(root, 'src'));
+
+// Trigger marker: 2026-08-02 unified invoice repair.
