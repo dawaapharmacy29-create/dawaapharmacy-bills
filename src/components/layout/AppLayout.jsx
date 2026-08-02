@@ -69,6 +69,7 @@ const navGroups = [
     key: "finance", label: "الحسابات والتشغيل", icon: Landmark,
     sections: [
       { label: "دورة الشيفت والخزنة", items: [
+        { path: "/operations-center", label: "مركز التشغيل والخزنة", icon: Landmark },
         { path: "/shift-delivery", label: "تسجيل وتسليم الشيفت", icon: Clock },
         { path: "/treasury/shift-review", label: "مراجعة واعتماد الشيفتات", icon: BadgeCheck, managerOnly: true, badgeKey: "shifts" },
         { path: "/treasury", label: "الخزنة — العمليات اليومية", icon: Landmark },

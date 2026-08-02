@@ -42,6 +42,7 @@ const SupplierBalancesBranch = lazy(() => import('./pages/SupplierBalancesBranch
 const ReplenishmentPage = lazy(() => import('./pages/ReplenishmentPage'));
 const ShiftDelivery = lazy(() => import('./pages/ShiftDelivery'));
 const TreasuryCenter = lazy(() => import('./pages/TreasuryCenter'));
+const OperationsTreasuryCenter = lazy(() => import('./pages/OperationsTreasuryCenter'));
 const ShiftTreasuryReview = lazy(() => import('./pages/ShiftTreasuryReview'));
 const TreasuryOperations = lazy(() => import('./pages/TreasuryOperations'));
 const PurchaseOperationsReview = lazy(() => import('./pages/PurchaseOperationsReview'));
@@ -107,6 +108,7 @@ const AuthenticatedApp = () => {
     <Route path="/replenishment" element={<ReplenishmentPage />} />
     <Route path="/shift-delivery" element={<ShiftDelivery />} />
     <Route path="/treasury" element={<TreasuryCenter />} />
+    <Route path="/operations-center" element={<OperationsTreasuryCenter />} />
     <Route path="/treasury/shift-review" element={<RoleRouteGuard managerOnly><ShiftTreasuryReview /></RoleRouteGuard>} />
     <Route path="/treasury-operations" element={<RoleRouteGuard adminOnly><TreasuryOperations /></RoleRouteGuard>} />
     <Route path="/purchase-operations-review" element={<RoleRouteGuard adminOnly><PurchaseOperationsReview /></RoleRouteGuard>} />
