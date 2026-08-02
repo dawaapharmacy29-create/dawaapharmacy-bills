@@ -37,3 +37,5 @@ jobs:
           git add src/App.jsx src/components/layout/AppLayout.jsx
           git commit -m "feat: apply admin settings center" || exit 0
           git push origin HEAD:agent/admin-settings-center
+
+# verification trigger
