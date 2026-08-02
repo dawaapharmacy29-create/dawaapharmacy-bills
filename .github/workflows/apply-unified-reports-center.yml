@@ -37,3 +37,5 @@ jobs:
           git add src/App.jsx src/components/layout/AppLayout.jsx
           git commit -m "feat: apply unified reports center" || exit 0
           git push origin HEAD:agent/unified-reports-center
+
+# verification trigger
