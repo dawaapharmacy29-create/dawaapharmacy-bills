@@ -16,6 +16,7 @@ import RoleRouteGuard from './components/auth/RoleRouteGuard';
 const FastDashboard = lazy(() => import('./pages/FastDashboard'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DailyTasksCenter = lazy(() => import('./pages/DailyTasksCenter'));
+const UnifiedReportsCenter = lazy(() => import('./pages/UnifiedReportsCenter'));
 const UnifiedInvoiceCenter = lazy(() => import('./pages/UnifiedInvoiceCenter'));
 const FastPurchaseInvoices = lazy(() => import('./pages/FastPurchaseInvoices'));
 const PurchaseInvoices = lazy(() => import('./pages/PurchaseInvoices.jsx'));
@@ -76,6 +77,7 @@ const AuthenticatedApp = () => {
     <Route path="/" element={<FastDashboard />} />
     <Route path="/dashboard/advanced" element={<Dashboard />} />
     <Route path="/daily-tasks" element={<DailyTasksCenter />} />
+    <Route path="/reports-center" element={<UnifiedReportsCenter />} />
     <Route path="/branch-performance" element={<BranchPerformanceCenter />} />
     <Route path="/sales-purchases-report" element={<SalesPurchasesReport />} />
     <Route path="/system-status" element={<RoleRouteGuard adminOnly><SystemStatus /></RoleRouteGuard>} />
