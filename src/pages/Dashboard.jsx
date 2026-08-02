@@ -247,7 +247,7 @@ export default function Dashboard() {
   const totalExpenses = branchMonthExpenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
   const totalPayments = totalInvoiceValue + totalExpenses;
   const targetPercent = displayedTarget > 0 ? Math.min(Math.round((totalPayments / displayedTarget) * 100), 100) : 0;
-  const pending = invoices.filter((invoice) => invoice.status === "انتظار المراجعة").length;
+  const pending = invoices.filter((invoice) => invoice.workflow_status === 'submitted').length;
   const totalCashPurchases = branchMonthInvoices.filter((invoice) => !isInvoiceExcluded(invoice, suppliers).excluded).reduce((sum, invoice) => sum + getInvoiceCashAmount(invoice), 0);
 
   const todayNetPurchases = todayInvoices.reduce((sum, invoice) => sum + getInvoiceNetAmount(invoice, suppliers), 0);

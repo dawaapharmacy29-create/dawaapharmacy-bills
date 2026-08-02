@@ -1,3 +1,4 @@
+import { getCanonicalWorkflowStatus } from '@/lib/invoiceWorkflowStatus';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 const ENV_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -134,7 +135,7 @@ async function listPurchaseInvoices(sort, limit = 10000, offset = 0, filters = {
     if (!batch.length || page >= Number(result?.total_pages || 1)) break;
     page += 1;
   }
-  const sliced = rows.slice(0, Number(limit || rows.length));
+  const sliced = rows.slice(0, Number(limit || rows.length)).map((row) => ({ ...row, workflow_status: getCanonicalWorkflowStatus(row) }));
   return Object.keys(filters).length
     ? sliced.filter((row) => Object.entries(filters).every(([key, value]) => ['date_from', 'date_to', 'search'].includes(key) || (Array.isArray(value) ? value.includes(row[key]) : row[key] === value)))
     : sliced;
