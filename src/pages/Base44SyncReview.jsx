@@ -89,7 +89,7 @@ export default function Base44SyncReview() {
           <div className="rounded-xl bg-amber-50 p-2.5"><DatabaseZap className="h-6 w-6 text-amber-700" /></div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">مراجعة مزامنة Base44</h1>
-            <p className="mt-1 text-sm text-gray-500">سجلات مالية (شيفت، دفعات موردين، فواتير شراء) جاية من Base44 ومنتظرة مراجعتك قبل أي اعتماد.</p>
+            <p className="mt-1 text-sm text-gray-500">مراقبة الفروقات والاستثناءات الواردة من Base44 إلى Supabase. فواتير الشراء العادية تُطبّق تلقائيًا، بينما الحذف والتعارضات الحساسة تتوقف للمراجعة الآمنة.</p>
           </div>
         </div>
         <Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching} className="gap-2">
@@ -100,7 +100,7 @@ export default function Base44SyncReview() {
       <Card className="border-amber-200 bg-amber-50 p-4">
         <div className="flex items-start gap-2 text-sm text-amber-800">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>هذه الشاشة للمراجعة والتوثيق فقط — تحديد الحالة هنا لا يدخل أو يعدّل أي سجل مالي في النظام تلقائيًا. لو السجل محتاج يتضاف فعليًا، لازم يتراجع ويتسجل يدويًا في الشاشة المناسبة (تسليم الشيفت، دفعات الموردين، فواتير الشراء) لحد ما نبني آلية اعتماد تلقائي منفصلة لاحقًا.</p>
+          <p>المزامنة الرسمية تعمل في اتجاه واحد فقط: Base44 ← المصدر التشغيلي، ثم Supabase/Vercel للمراجعة والتحليل. التغييرات لا تُرسل من Vercel إلى Base44. الحذف والتعارضات لا تُطبق تلقائيًا حفاظًا على البيانات.</p>
         </div>
       </Card>
 

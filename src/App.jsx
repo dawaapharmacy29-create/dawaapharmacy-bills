@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
 import AppErrorBoundary from './components/system/AppErrorBoundary';
+import RoleRouteGuard from './components/auth/RoleRouteGuard';
 
 // كل الصفحات بتتحمّل عند الحاجة فقط (lazy) بدل ما تتحمّل كلها مع أول فتح للتطبيق.
 // ده بيقلل حجم التحميل الأولي جدًا (كان يتضمن كل صفحات المشتريات والتقارير ومكتبات
@@ -74,7 +75,7 @@ const AuthenticatedApp = () => {
     <Route path="/dashboard/advanced" element={<Dashboard />} />
     <Route path="/branch-performance" element={<BranchPerformanceCenter />} />
     <Route path="/sales-purchases-report" element={<SalesPurchasesReport />} />
-    <Route path="/system-status" element={<SystemStatus />} />
+    <Route path="/system-status" element={<RoleRouteGuard adminOnly><SystemStatus /></RoleRouteGuard>} />
     <Route path="/invoices/new" element={<QuickInvoiceEntry />} />
     <Route path="/invoices/quality" element={<InvoiceQualityCenter />} />
     <Route path="/invoices/manage" element={<PurchaseInvoices />} />
@@ -84,10 +85,10 @@ const AuthenticatedApp = () => {
     <Route path="/reports" element={<Reports />} />
     <Route path="/supplier-balances" element={<SupplierBalances />} />
     <Route path="/activity-log" element={<ActivityLog />} />
-    <Route path="/user-management" element={<UserManagement />} />
-    <Route path="/doctor-account-coverage" element={<DoctorAccountCoverage />} />
+    <Route path="/user-management" element={<RoleRouteGuard adminOnly><UserManagement /></RoleRouteGuard>} />
+    <Route path="/doctor-account-coverage" element={<RoleRouteGuard adminOnly><DoctorAccountCoverage /></RoleRouteGuard>} />
     <Route path="/team-members" element={<TeamMembers />} />
-    <Route path="/team-merge" element={<TeamMergeCenter />} />
+    <Route path="/team-merge" element={<RoleRouteGuard adminOnly><TeamMergeCenter /></RoleRouteGuard>} />
     <Route path="/pending-invoices" element={<PendingInvoices />} />
     <Route path="/medicine-list" element={<MedicineList />} />
     <Route path="/returns" element={<Returns />} />
@@ -100,15 +101,15 @@ const AuthenticatedApp = () => {
     <Route path="/replenishment" element={<ReplenishmentPage />} />
     <Route path="/shift-delivery" element={<ShiftDelivery />} />
     <Route path="/treasury" element={<TreasuryCenter />} />
-    <Route path="/treasury/shift-review" element={<ShiftTreasuryReview />} />
-    <Route path="/treasury-operations" element={<TreasuryOperations />} />
-    <Route path="/purchase-operations-review" element={<PurchaseOperationsReview />} />
-    <Route path="/security-audit" element={<SecurityAuditPage />} />
-    <Route path="/supplier-rules-backfill" element={<SupplierRulesBackfill />} />
+    <Route path="/treasury/shift-review" element={<RoleRouteGuard managerOnly><ShiftTreasuryReview /></RoleRouteGuard>} />
+    <Route path="/treasury-operations" element={<RoleRouteGuard adminOnly><TreasuryOperations /></RoleRouteGuard>} />
+    <Route path="/purchase-operations-review" element={<RoleRouteGuard adminOnly><PurchaseOperationsReview /></RoleRouteGuard>} />
+    <Route path="/security-audit" element={<RoleRouteGuard adminOnly><SecurityAuditPage /></RoleRouteGuard>} />
+    <Route path="/supplier-rules-backfill" element={<RoleRouteGuard adminOnly><SupplierRulesBackfill /></RoleRouteGuard>} />
     <Route path="/review-needed-invoices" element={<ReviewNeededInvoices />} />
-    <Route path="/data-review" element={<DataReviewCenter />} />
-    <Route path="/base44-sync-review" element={<Base44SyncReview />} />
-    <Route path="/branch-settlements" element={<BranchSettlements />} />
+    <Route path="/data-review" element={<RoleRouteGuard adminOnly><DataReviewCenter /></RoleRouteGuard>} />
+    <Route path="/base44-sync-review" element={<RoleRouteGuard adminOnly><Base44SyncReview /></RoleRouteGuard>} />
+    <Route path="/branch-settlements" element={<RoleRouteGuard adminOnly><BranchSettlements /></RoleRouteGuard>} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
     <Route path="/purchase-center" element={<SmartPurchaseUnifiedCenter />} />
     <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
