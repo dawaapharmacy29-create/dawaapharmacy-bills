@@ -107,6 +107,7 @@ const navGroups = [
     key: "admin", label: "الإدارة والإعدادات", icon: ShieldCheck,
     sections: [
       { label: "المستخدمون", items: [
+        { path: "/admin-center", label: "مركز الإدارة والإعدادات", icon: ShieldCheck, adminOnly: true },
         { path: "/team-members", label: "فريق العمل", icon: UserCheck },
         { path: "/user-management", label: "المستخدمون والصلاحيات", icon: Users, adminOnly: true },
         { path: "/doctor-account-coverage", label: "تغطية حسابات الدكاترة", icon: UserRoundCheck, adminOnly: true },

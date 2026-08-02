@@ -60,6 +60,7 @@ const SmartPurchaseOrderManagement = lazy(() => import('./pages/SmartPurchaseOrd
 const SmartPurchaseInsights = lazy(() => import('./pages/SmartPurchaseInsights'));
 const SmartPurchaseUnifiedCenter = lazy(() => import('./pages/SmartPurchaseUnifiedCenter'));
 const TeamMergeCenter = lazy(() => import('./pages/TeamMergeCenter'));
+const AdminSettingsCenter = lazy(() => import('./pages/AdminSettingsCenter'));
 const SystemStatus = lazy(() => import('./pages/SystemStatus'));
 const BranchPerformanceCenter = lazy(() => import('./pages/BranchPerformanceCenter'));
 const SalesPurchasesReport = lazy(() => import('./pages/SalesPurchasesReport'));
@@ -98,6 +99,7 @@ const AuthenticatedApp = () => {
     <Route path="/user-management" element={<RoleRouteGuard adminOnly><UserManagement /></RoleRouteGuard>} />
     <Route path="/doctor-account-coverage" element={<RoleRouteGuard adminOnly><DoctorAccountCoverage /></RoleRouteGuard>} />
     <Route path="/team-members" element={<TeamMembers />} />
+    <Route path="/admin-center" element={<RoleRouteGuard adminOnly><AdminSettingsCenter /></RoleRouteGuard>} />
     <Route path="/team-merge" element={<RoleRouteGuard adminOnly><TeamMergeCenter /></RoleRouteGuard>} />
     <Route path="/pending-invoices" element={<PendingInvoices />} />
     <Route path="/medicine-list" element={<MedicineList />} />
