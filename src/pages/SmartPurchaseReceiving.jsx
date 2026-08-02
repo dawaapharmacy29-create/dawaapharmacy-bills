@@ -1,122 +1,69 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { smartPurchaseReceivingApi } from '@/api/smartPurchaseReceivingApi';
-import { AlertTriangle, Download, FileSpreadsheet, PackageCheck, RefreshCw, Upload } from 'lucide-react';
+import { AlertTriangle, Download, FileSpreadsheet, PackageCheck, RefreshCw, Save, WandSparkles } from 'lucide-react';
+import { smartPurchaseReceivingApi as api } from '@/api/smartPurchaseReceivingApi';
 
-const aliases = {
-  product_code: ['كود الصنف','كود','code','item code','product code'],
-  product_name: ['اسم الصنف','الصنف','name','item name','product name'],
-  received_quantity: ['الكمية المستلمة','المستلم','received','received qty'],
-  invoiced_quantity: ['الكمية المفوترة','المفوتر','invoiced','invoice qty'],
-  bonus_quantity: ['البونص','bonus','free qty'],
-  actual_unit_cost: ['سعر الوحدة الفعلي','السعر الفعلي','actual unit cost','unit cost'],
-  actual_discount: ['الخصم الفعلي','actual discount','discount'],
-  actual_total: ['الإجمالي الفعلي','actual total','total'],
-  notes: ['ملاحظات','notes'],
+const num = (value) => { const parsed = Number(String(value ?? '').replace(/[,٪%جنيه]/g, '').trim()); return Number.isFinite(parsed) ? parsed : 0; };
+const money = (value) => new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(num(value));
+const cleanName = (value) => String(value ?? '').toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').trim().replace(/\s+/g, ' ');
+const safeFileName = (value) => String(value || 'طلبية').replace(/[\\/:*?"<>|]+/g, '-').trim();
+const ALIASES = {
+  product_code: ['كود الصنف', 'الكود', 'كود', 'code', 'item code', 'product code'],
+  product_name: ['اسم الصنف', 'الصنف', 'الاسم', 'name', 'item name', 'product name', 'description'],
+  quantity: ['الكمية', 'الكميه', 'الكمية المطلوبة', 'الكمية المتاحة', 'المتاح', 'quantity', 'qty', 'available'],
+  price: ['السعر', 'سعر الجمهور', 'سعر الوحدة', 'price', 'unit price', 'list price'],
 };
-const norm = (v) => String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-const num = (v) => { const n = Number(String(v ?? '').replace(/[,٪%جنيه]/g, '').trim()); return Number.isFinite(n) ? n : 0; };
-function findValue(row, key) { const keys = Object.keys(row); const found = keys.find((k) => (aliases[key] || [key]).some((a) => norm(k) === norm(a))); return found ? row[found] : ''; }
-function money(v) { return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(v || 0)); }
-function download(rows, name, sheet='البيانات') { const ws=XLSX.utils.json_to_sheet(rows); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,sheet); XLSX.writeFile(wb,name); }
+function findValue(row, field) { const keys = Object.keys(row || {}); const wanted = ALIASES[field] || []; const exact = keys.find((key) => wanted.some((alias) => cleanName(key) === cleanName(alias))); if (exact) return row[exact]; const partial = keys.find((key) => wanted.some((alias) => cleanName(key).includes(cleanName(alias)))); return partial ? row[partial] : ''; }
+function editDistance(a, b) { const left = cleanName(a); const right = cleanName(b); const matrix = Array.from({ length: left.length + 1 }, () => Array(right.length + 1).fill(0)); for (let i = 0; i <= left.length; i += 1) matrix[i][0] = i; for (let j = 0; j <= right.length; j += 1) matrix[0][j] = j; for (let i = 1; i <= left.length; i += 1) { for (let j = 1; j <= right.length; j += 1) { matrix[i][j] = left[i - 1] === right[j - 1] ? matrix[i - 1][j - 1] : 1 + Math.min(matrix[i - 1][j], matrix[i][j - 1], matrix[i - 1][j - 1]); } } return matrix[left.length][right.length]; }
+function nameSimilarity(a, b) { const left = cleanName(a); const right = cleanName(b); if (!left || !right) return 0; if (left === right) return 1; const chars = 1 - (editDistance(left, right) / Math.max(left.length, right.length)); const leftTokens = new Set(left.split(' ')); const rightTokens = new Set(right.split(' ')); const shared = [...leftTokens].filter((token) => rightTokens.has(token)).length; const tokenScore = shared / Math.max(leftTokens.size, rightTokens.size, 1); return Math.max(0, (chars * 0.65) + (tokenScore * 0.35)); }
+function activeQuantity(item) { return Math.max(0, num(item.approved_quantity || item.requested_quantity)); }
+function publicPrice(item) { return Math.max(0, num(item.expected_unit_cost || item.last_purchase_price)); }
+function orderTitle(order = {}) { return order.title || order.name || order.order_name || order.order_number || 'طلبية'; }
+function parseWorkbook(file) { return file.arrayBuffer().then((buffer) => { const workbook = XLSX.read(buffer, { type: 'array' }); const sheet = workbook.Sheets[workbook.SheetNames[0]]; const raw = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true }); return raw.map((row, index) => ({ row_number: index + 2, product_code: String(findValue(row, 'product_code') || '').trim(), product_name: String(findValue(row, 'product_name') || '').trim(), quantity: Math.max(0, num(findValue(row, 'quantity'))), price: Math.max(0, num(findValue(row, 'price'))), source: row })).filter((row) => row.product_code || row.product_name); }); }
+function matchRows(orderItems, uploadedRows) {
+  const used = new Set();
+  const matches = orderItems.map((item) => {
+    let index = -1; let confidence = 0; let method = 'none';
+    if (item.product_code) { index = uploadedRows.findIndex((row, rowIndex) => !used.has(rowIndex) && row.product_code && String(row.product_code) === String(item.product_code)); if (index >= 0) { confidence = 1; method = 'code'; } }
+    if (index < 0) { index = uploadedRows.findIndex((row, rowIndex) => !used.has(rowIndex) && cleanName(row.product_name) === cleanName(item.product_name)); if (index >= 0) { confidence = 0.98; method = 'name'; } }
+    if (index < 0) { let best = { index: -1, score: 0 }; uploadedRows.forEach((row, rowIndex) => { if (used.has(rowIndex)) return; const score = nameSimilarity(item.product_name, row.product_name); if (score > best.score) best = { index: rowIndex, score }; }); if (best.score >= 0.72) { index = best.index; confidence = best.score; method = 'fuzzy'; } }
+    if (index >= 0) used.add(index);
+    return { item, row: index >= 0 ? uploadedRows[index] : null, confidence, method };
+  });
+  const unexpected = uploadedRows.map((row, index) => ({ row, index })).filter(({ index }) => !used.has(index)).map(({ row }) => { const closest = orderItems.reduce((best, item) => { const score = nameSimilarity(item.product_name, row.product_name); return score > best.score ? { item, score } : best; }, { item: null, score: 0 }); return { ...row, closest_item: closest.item, similarity: closest.score }; });
+  return { matches, unexpected };
+}
+function downloadWorkbook(sheets, fileName) { const workbook = XLSX.utils.book_new(); Object.entries(sheets).forEach(([name, sheetRows]) => { const sheet = XLSX.utils.json_to_sheet(sheetRows); sheet['!dir'] = 'rtl'; sheet['!freeze'] = { ySplit: 1 }; if (sheet['!ref']) sheet['!autofilter'] = { ref: sheet['!ref'] }; XLSX.utils.book_append_sheet(workbook, sheet, name.slice(0, 31)); }); XLSX.writeFile(workbook, fileName); }
 
 export default function SmartPurchaseReceiving() {
-  const [orders,setOrders]=useState([]); const [selectedOrder,setSelectedOrder]=useState(null); const [preview,setPreview]=useState([]);
-  const [fileName,setFileName]=useState(''); const [supplierName,setSupplierName]=useState(''); const [invoiceNumber,setInvoiceNumber]=useState('');
-  const [receiptDate,setReceiptDate]=useState(new Date().toISOString().slice(0,10)); const [receipt,setReceipt]=useState(null);
-  const [loading,setLoading]=useState(false); const [error,setError]=useState(''); const [message,setMessage]=useState('');
+  const [orders, setOrders] = useState([]); const [selected, setSelected] = useState(null); const [mode, setMode] = useState('supplier_response'); const [responseType, setResponseType] = useState('available'); const [supplierName, setSupplierName] = useState(''); const [fileName, setFileName] = useState(''); const [rows, setRows] = useState([]); const [loading, setLoading] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState('');
+  async function refresh() { setLoading(true); setError(''); try { setOrders(await api.listOrders() || []); } catch (err) { setError(err.message); } finally { setLoading(false); } }
+  useEffect(() => { refresh(); }, []);
+  async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); try { setSelected(await api.getOrder(id)); } catch (err) { setError(err.message); } finally { setLoading(false); } }
+  async function readFile(file) { setError(''); setMessage(''); setFileName(file.name); try { const parsed = await parseWorkbook(file); if (!parsed.length) throw new Error('لم يتم التعرف على أصناف داخل الملف.'); setRows(parsed); setMessage(`تمت قراءة ${parsed.length} صنف من الملف.`); } catch (err) { setRows([]); setError(`تعذر قراءة الملف: ${err.message}`); } }
+  const orderItems = useMemo(() => (selected?.items || []).filter((item) => activeQuantity(item) > 0), [selected]);
+  const matching = useMemo(() => matchRows(orderItems, rows), [orderItems, rows]);
+  const supplierResult = useMemo(() => { if (!selected || !rows.length) return null; const details = matching.matches.map(({ item, row, confidence, method }) => { const ordered = activeQuantity(item); let confirmed = 0; let remaining = 0; if (responseType === 'missing') { remaining = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; confirmed = ordered - remaining; } else { confirmed = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; remaining = Math.max(0, ordered - confirmed); } return { item, row, ordered, confirmed, remaining, confidence, method, status: remaining <= 0 ? 'متاح بالكامل' : confirmed > 0 ? 'متاح جزئيًا' : 'غير متاح' }; }); return { details, remaining: details.filter((row) => row.remaining > 0), confirmed: details.filter((row) => row.confirmed > 0), unexpected: matching.unexpected }; }, [selected, rows, matching, responseType]);
+  const receiptResult = useMemo(() => { if (!selected || !rows.length) return null; const details = matching.matches.map(({ item, row, confidence, method }) => { const ordered = activeQuantity(item); const received = row ? row.quantity : 0; const expectedPrice = publicPrice(item); const actualPrice = row ? row.price : 0; let status = 'سليم'; if (!row) status = 'لم يصل'; else if (received < ordered) status = 'كمية ناقصة'; else if (received > ordered) status = 'كمية زائدة'; else if (method === 'fuzzy' && confidence < 0.9) status = 'اسم مختلف يحتاج مراجعة'; if (row && actualPrice > 0 && expectedPrice > 0 && Math.abs(actualPrice - expectedPrice) > 0.01) status = status === 'سليم' ? 'فرق سعر' : `${status} + فرق سعر`; return { item, row, ordered, received, difference: received - ordered, expectedPrice, actualPrice, valueDifference: (received * actualPrice) - (ordered * expectedPrice), confidence, method, status }; }); const unexpected = matching.unexpected.map((row) => ({ ...row, status: row.similarity >= 0.45 ? 'صنف مختلف محتمل' : 'صنف غير مطلوب' })); return { details, unexpected }; }, [selected, rows, matching]);
+  const currentResult = mode === 'supplier_response' ? supplierResult : receiptResult;
+  async function saveSnapshot() { if (!selected?.order?.id || !currentResult) return; setLoading(true); setError(''); try { await api.saveWorkflowSnapshot({ order_id: selected.order.id, workflow_type: mode, response_type: mode === 'supplier_response' ? responseType : null, supplier_name: supplierName, file_name: fileName, summary: mode === 'supplier_response' ? { confirmed_items: supplierResult.confirmed.length, remaining_items: supplierResult.remaining.length, unexpected_items: supplierResult.unexpected.length } : { matched_items: receiptResult.details.length, issue_items: receiptResult.details.filter((row) => row.status !== 'سليم').length, unexpected_items: receiptResult.unexpected.length }, details: currentResult }); setMessage('تم حفظ نتيجة المراجعة داخل سجل الطلبية.'); } catch (err) { setError(err.message); } finally { setLoading(false); } }
+  function exportRemaining() { if (!supplierResult) return; const exportRows = supplierResult.remaining.map(({ item, remaining }) => ({ 'اسم الصنف': item.product_name || '', 'سعر الجمهور': publicPrice(item), 'الكمية المطلوبة': remaining })); downloadWorkbook({ 'المتبقي لمورد آخر': exportRows }, `${safeFileName(orderTitle(selected.order))}_المتبقي_لمورد_آخر.xlsx`); }
+  function exportReceiptReport() { if (!receiptResult) return; const summary = [{ 'البيان': 'اسم الطلبية', 'القيمة': orderTitle(selected.order) }, { 'البيان': 'الكود المرجعي', 'القيمة': selected.order.order_number || '' }, { 'البيان': 'عدد الأصناف المطلوبة', 'القيمة': receiptResult.details.length }, { 'البيان': 'أصناف سليمة', 'القيمة': receiptResult.details.filter((row) => row.status === 'سليم').length }, { 'البيان': 'أصناف بها ملاحظات', 'القيمة': receiptResult.details.filter((row) => row.status !== 'سليم').length }, { 'البيان': 'أصناف غير متوقعة', 'القيمة': receiptResult.unexpected.length }]; const details = receiptResult.details.map((row) => ({ 'الصنف المطلوب': row.item.product_name || '', 'الكود': row.item.product_code || '', 'الكمية المطلوبة': row.ordered, 'الصنف الموجود بالملف': row.row?.product_name || '', 'الكمية المستلمة': row.received, 'فرق الكمية': row.difference, 'السعر المتوقع': row.expectedPrice, 'السعر الفعلي': row.actualPrice, 'فرق القيمة': Number(row.valueDifference.toFixed(2)), 'طريقة المطابقة': row.method, 'نسبة الثقة %': Number((row.confidence * 100).toFixed(1)), 'النتيجة': row.status })); const unexpected = receiptResult.unexpected.map((row) => ({ 'الصنف الموجود بالملف': row.product_name, 'الكود': row.product_code, 'الكمية': row.quantity, 'السعر': row.price, 'أقرب صنف مطلوب': row.closest_item?.product_name || '', 'نسبة التشابه %': Number((row.similarity * 100).toFixed(1)), 'النتيجة': row.status })); downloadWorkbook({ 'الملخص': summary, 'مطابقة الأصناف': details, 'أصناف غير متوقعة': unexpected }, `${safeFileName(orderTitle(selected.order))}_تقرير_الاستلام_والمطابقة.xlsx`); }
+  const supplierStats = supplierResult ? { confirmed: supplierResult.confirmed.length, remaining: supplierResult.remaining.length, unexpected: supplierResult.unexpected.length } : null;
+  const receiptStats = receiptResult ? { ok: receiptResult.details.filter((row) => row.status === 'سليم').length, issues: receiptResult.details.filter((row) => row.status !== 'سليم').length, unexpected: receiptResult.unexpected.length } : null;
 
-  async function refresh(){ try{ setOrders(await smartPurchaseReceivingApi.listOrders() || []);}catch(e){setError(e.message);} }
-  useEffect(()=>{refresh();},[]);
-  async function chooseOrder(id){ setLoading(true); setError(''); try{ setSelectedOrder(await smartPurchaseReceivingApi.getOrder(id)); setReceipt(null); setPreview([]);}catch(e){setError(e.message);} finally{setLoading(false);} }
-
-  function exportTemplate(){
-    if(!selectedOrder?.items?.length) return;
-    const rows=selectedOrder.items.map(x=>({
-      'كود الصنف':x.product_code||'', 'اسم الصنف':x.product_name, 'المورد':x.supplier_name||'',
-      'الكمية المطلوبة':x.approved_quantity||x.requested_quantity||0, 'الكمية المستلمة':'', 'الكمية المفوترة':'',
-      'البونص':'', 'سعر الوحدة المتوقع':x.expected_unit_cost||0, 'سعر الوحدة الفعلي':'', 'الخصم الفعلي':'', 'الإجمالي الفعلي':'', 'ملاحظات':''
-    }));
-    download(rows,`${selectedOrder.order.order_number}_قالب_الاستلام.xlsx`,'الاستلام');
-  }
-
-  async function readFile(file){
-    setError(''); setMessage(''); setFileName(file.name);
-    const buf=await file.arrayBuffer(); const wb=XLSX.read(buf,{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
-    const raw=XLSX.utils.sheet_to_json(ws,{defval:''});
-    const rows=raw.map(r=>({
-      product_code:String(findValue(r,'product_code')||'').trim(), product_name:String(findValue(r,'product_name')||'').trim(),
-      received_quantity:num(findValue(r,'received_quantity')), invoiced_quantity:num(findValue(r,'invoiced_quantity')) || num(findValue(r,'received_quantity')),
-      bonus_quantity:num(findValue(r,'bonus_quantity')), actual_unit_cost:num(findValue(r,'actual_unit_cost')),
-      actual_discount:num(findValue(r,'actual_discount')), actual_total:num(findValue(r,'actual_total')), notes:String(findValue(r,'notes')||'').trim(),
-    })).filter(r=>r.product_name||r.product_code);
-    setPreview(rows); setMessage(`تمت قراءة ${rows.length} صنف من ملف الاستلام.`);
-  }
-
-  async function importReceipt(){
-    if(!selectedOrder?.order?.id) return setError('اختر طلبية أولًا.'); if(!preview.length) return setError('ارفع ملف الاستلام أولًا.');
-    setLoading(true); setError('');
-    try{
-      const r=await smartPurchaseReceivingApi.importReceipt({order_id:selectedOrder.order.id,supplier_name:supplierName,supplier_invoice_number:invoiceNumber,receipt_date:receiptDate,file_name:fileName,rows:preview});
-      const full=await smartPurchaseReceivingApi.getReceipt(r.receipt_id); setReceipt(full); setPreview([]); setFileName('');
-      setMessage('تم تسجيل الاستلام والمطابقة وتقييم السعر بنجاح.'); await refresh(); setSelectedOrder(await smartPurchaseReceivingApi.getOrder(selectedOrder.order.id));
-    }catch(e){setError(e.message);} finally{setLoading(false);}
-  }
-
-  function exportReport(){
-    if(!receipt) return;
-    const rows=(receipt.items||[]).map(x=>({
-      'كود الصنف':x.product_code,'اسم الصنف':x.product_name,'المطلوب':x.ordered_quantity,'المستلم':x.received_quantity,'المفوتر':x.invoiced_quantity,
-      'البونص':x.bonus_quantity,'السعر المتوقع':x.expected_unit_cost,'السعر الفعلي':x.actual_unit_cost,'التكلفة الفعلية بعد البونص':x.effective_unit_cost,
-      'فرق الكمية':x.quantity_variance,'فرق كمية الفاتورة':x.invoice_quantity_variance,'فرق السعر':x.price_variance,'فرق القيمة':x.value_variance,'النتيجة':x.match_status,'ملاحظات':x.notes||''
-    }));
-    const customers=(receipt.customers||[]).map(x=>({'الصنف':x.product_name,'العميل':x.customer_name,'كود العميل':x.customer_code,'الهاتف':x.phone,'الفرع':x.branch,'تاريخ الطلب':x.request_date,'الحالة':x.status}));
-    const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'مطابقة الطلبية'); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(customers),'عملاء للتواصل');
-    XLSX.writeFile(wb,`تقرير_مطابقة_${selectedOrder?.order?.order_number||'طلبية'}.xlsx`);
-  }
-
-  const stats=useMemo(()=>{ const items=receipt?.items||[]; return {
-    count:items.length, ok:items.filter(x=>x.match_status==='سليم').length, missing:items.filter(x=>['ناقص','لم يصل'].includes(x.match_status)).length,
-    issues:items.filter(x=>!['سليم'].includes(x.match_status)).length, customers:(receipt?.customers||[]).length
-  };},[receipt]);
-
-  return <div dir="rtl" className="p-4 md:p-6 space-y-5">
-    <div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><PackageCheck className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold text-slate-900">استلام ومطابقة طلبيات المشتريات</h1><p className="text-sm text-slate-500 mt-1">مقارنة المطلوب بالمستلم والمفوتر، تقييم السعر، ومعرفة العملاء المنتظرين.</p></div></div>
-    {error&&<div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5"/>{error}</div>}
-    {message&&<div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
-
-    <div className="grid lg:grid-cols-[320px_1fr] gap-4">
-      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit">
-        <div className="flex justify-between items-center mb-3"><h2 className="font-bold">الطلبيات</h2><button onClick={refresh}><RefreshCw className="w-4 h-4"/></button></div>
-        <div className="space-y-2 max-h-[650px] overflow-auto">{orders.map(o=><button key={o.id} onClick={()=>chooseOrder(o.id)} className="w-full rounded-xl border p-3 text-right hover:bg-teal-50">
-          <div className="font-semibold text-sm">{o.order_number}</div><div className="text-xs text-slate-500 mt-1">{o.branch} • {o.items_count} صنف</div><div className="text-xs mt-1">المتوقع: {money(o.expected_total)} ج • المستلم: {money(o.received_total)} ج</div>
-        </button>)}{!orders.length&&<p className="text-sm text-slate-400 p-3">لا توجد طلبيات بعد.</p>}</div>
-      </aside>
-
-      <main className="space-y-4">
-        {selectedOrder ? <>
-          <section className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap justify-between gap-3 items-center"><div><h2 className="font-bold">{selectedOrder.order.order_number}</h2><p className="text-sm text-slate-500">{selectedOrder.order.branch} • الحالة: {selectedOrder.order.status}</p></div>
-              <button onClick={exportTemplate} className="rounded-lg border px-4 py-2 font-semibold flex gap-2"><Download className="w-4 h-4"/>تنزيل قالب الاستلام Excel</button></div>
-            <div className="grid md:grid-cols-4 gap-3 mt-4">
-              <label className="text-sm">المورد<input value={supplierName} onChange={e=>setSupplierName(e.target.value)} className="mt-1 w-full rounded-lg border p-2"/></label>
-              <label className="text-sm">رقم فاتورة المورد<input value={invoiceNumber} onChange={e=>setInvoiceNumber(e.target.value)} className="mt-1 w-full rounded-lg border p-2"/></label>
-              <label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={e=>setReceiptDate(e.target.value)} className="mt-1 w-full rounded-lg border p-2"/></label>
-              <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={e=>e.target.files?.[0]&&readFile(e.target.files[0])} className="mt-1 block w-full text-sm"/></label>
-            </div>
-            {preview.length>0&&<div className="mt-4 flex flex-wrap justify-between gap-3 rounded-xl bg-slate-50 p-3"><span className="text-sm">{fileName} — {preview.length} صنف</span><button disabled={loading} onClick={importReceipt} className="rounded-lg bg-teal-600 px-4 py-2 text-white font-semibold flex gap-2"><Upload className="w-4 h-4"/>تسجيل الاستلام والمطابقة</button></div>}
-          </section>
-
-          {receipt&&<>
-            <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">{[['عدد البنود',stats.count],['سليم',stats.ok],['ناقص أو لم يصل',stats.missing],['يحتاج مراجعة',stats.issues],['عملاء للتواصل',stats.customers]].map(([l,v])=><div key={l} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{l}</div><div className="mt-2 text-xl font-bold">{v}</div></div>)}</div>
-            <section className="rounded-2xl border bg-white p-4 shadow-sm">
-              <div className="flex flex-wrap justify-between gap-3"><div><h3 className="font-bold">تقييم الاستلام والسعر</h3><p className="text-sm text-slate-500 mt-1">اكتمال {receipt.receipt.completion_rate}% • تقييم السعر {Number(receipt.receipt.price_score||0).toFixed(1)}/100 • تقييم المورد {Number(receipt.receipt.supplier_score||0).toFixed(1)}/100</p></div><button onClick={exportReport} className="rounded-lg bg-slate-900 px-4 py-2 text-white font-semibold flex gap-2"><FileSpreadsheet className="w-4 h-4"/>تصدير تقرير Excel</button></div>
-              <div className="grid md:grid-cols-4 gap-3 mt-4 text-sm"><div>المتوقع: <b>{money(receipt.receipt.expected_total)} ج</b></div><div>المفوتر: <b>{money(receipt.receipt.invoiced_total)} ج</b></div><div>فرق القيمة: <b>{money(receipt.receipt.value_variance)} ج</b></div><div>فرق السعر: <b>{money(receipt.receipt.price_variance)} ج</b></div></div>
-            </section>
-            <div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف','المطلوب','المستلم','المفوتر','السعر المتوقع','السعر الفعلي','فرق القيمة','النتيجة'].map(h=><th key={h} className="p-3 text-right">{h}</th>)}</tr></thead><tbody>{receipt.items.map(x=><tr key={x.id} className="border-t"><td className="p-3 font-medium">{x.product_name}<div className="text-xs text-slate-400">{x.product_code}</div></td><td className="p-3">{x.ordered_quantity}</td><td className="p-3">{x.received_quantity}</td><td className="p-3">{x.invoiced_quantity}</td><td className="p-3">{money(x.expected_unit_cost)}</td><td className="p-3">{money(x.actual_unit_cost)}</td><td className="p-3">{money(x.value_variance)}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${x.match_status==='سليم'?'bg-teal-100 text-teal-700':'bg-amber-100 text-amber-800'}`}>{x.match_status}</span></td></tr>)}</tbody></table></div>
-          </>}
-        </> : <div className="rounded-2xl border border-dashed bg-white p-12 text-center text-slate-400"><PackageCheck className="w-10 h-10 mx-auto mb-3"/>اختر طلبية لبدء الاستلام والمطابقة.</div>}
-      </main>
+  return <div dir="rtl" className="p-3 md:p-6 space-y-5">
+    <header className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><PackageCheck className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">دورة تنفيذ ومطابقة الطلبية</h1><p className="text-sm text-slate-500 mt-1">رد المورد، استخراج المتبقي، ثم مطابقة ما وصل فعليًا مع المطلوب.</p></div></div><button onClick={refresh} className="rounded-lg border bg-white px-4 py-2 flex items-center gap-2"><RefreshCw className="w-4 h-4" />تحديث</button></header>
+    {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</div>}
+    {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
+    <div className="grid lg:grid-cols-[300px_minmax(0,1fr)] gap-4">
+      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className="text-sm text-slate-400 p-3">لا توجد طلبيات متاحة.</p>}</div></aside>
+      <main className="space-y-4">{!selected && <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">اختر طلبية للبدء.</div>}{selected && <>
+        <section className="rounded-2xl border bg-white p-4 shadow-sm"><h2 className="text-xl font-bold">{orderTitle(selected.order)}</h2><p className="text-xs text-slate-400 mt-1">{selected.order.order_number}</p><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {orderItems.length} صنف فعال</p><div className="mt-4 grid sm:grid-cols-2 gap-2"><button onClick={() => { setMode('supplier_response'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'supplier_response' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>1. تسجيل رد المورد واستخراج المتبقي</button><button onClick={() => { setMode('receipt'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'receipt' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>2. رفع المشتريات ومطابقة الاستلام</button></div></section>
+        <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-4"><div className="grid md:grid-cols-4 gap-3">{mode === 'supplier_response' && <label className="text-sm">نوع ملف رد المورد<select value={responseType} onChange={(event) => setResponseType(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="available">الأصناف المتاحة فقط</option><option value="missing">الأصناف غير المتاحة فقط</option><option value="modified">نسخة الطلبية بعد حذف النواقص</option></select></label>}<label className="text-sm">اسم المورد — اختياري<input value={supplierName} onChange={(event) => setSupplierName(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label><label className="text-sm md:col-span-2">ملف Excel أو CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-1 block w-full text-sm" /></label></div><div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">يتعرف النظام تلقائيًا على اسم الصنف والكود والكمية والسعر، حتى لو كانت أسماء الأعمدة مختلفة.</div></section>
+        {mode === 'supplier_response' && supplierResult && <><div className="grid sm:grid-cols-3 gap-3">{[['تم تأكيده', supplierStats.confirmed], ['متبقي لمورد آخر', supplierStats.remaining], ['صفوف غير معروفة', supplierStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap gap-2"><button onClick={exportRemaining} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-bold flex items-center gap-2"><Download className="w-4 h-4" />ملف المتبقي لمورد آخر</button><button disabled={loading} onClick={saveSnapshot} className="rounded-lg border bg-white px-4 py-2 font-bold flex items-center gap-2"><Save className="w-4 h-4" />حفظ النتيجة</button></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'المطلوب', 'المؤكد', 'المتبقي', 'المطابقة', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{supplierResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.ordered}</td><td className="p-3">{row.confirmed}</td><td className="p-3 font-bold">{row.remaining}</td><td className="p-3">{row.method === 'code' ? 'بالكود' : row.method === 'name' ? 'بالاسم' : row.method === 'fuzzy' ? `تشابه ${Math.round(row.confidence * 100)}%` : 'غير موجود'}</td><td className="p-3">{row.status}</td></tr>)}</tbody></table></div></>}
+        {mode === 'receipt' && receiptResult && <><div className="grid sm:grid-cols-3 gap-3">{[['سليم', receiptStats.ok], ['يحتاج مراجعة', receiptStats.issues], ['أصناف غير متوقعة', receiptStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap gap-2"><button onClick={exportReceiptReport} className="rounded-lg bg-slate-900 text-white px-4 py-2 font-bold flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />تصدير تقرير المطابقة</button><button disabled={loading} onClick={saveSnapshot} className="rounded-lg border bg-white px-4 py-2 font-bold flex items-center gap-2"><Save className="w-4 h-4" />حفظ النتيجة</button></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[1100px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف المطلوب', 'الصنف بالملف', 'المطلوب', 'المستلم', 'الفرق', 'السعر المتوقع', 'السعر الفعلي', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{receiptResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.row?.product_name || '—'}</td><td className="p-3">{row.ordered}</td><td className="p-3">{row.received}</td><td className="p-3 font-bold">{row.difference > 0 ? `+${row.difference}` : row.difference}</td><td className="p-3">{money(row.expectedPrice)}</td><td className="p-3">{row.actualPrice ? money(row.actualPrice) : '—'}</td><td className="p-3"><span className={`rounded-full px-2 py-1 text-xs font-bold ${row.status === 'سليم' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-800'}`}>{row.status}</span></td></tr>)}</tbody></table></div>{receiptResult.unexpected.length > 0 && <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><h3 className="font-bold text-red-800 flex items-center gap-2"><WandSparkles className="w-4 h-4" />أصناف موجودة في ملف المورد ولم تتطابق مع الطلبية</h3><div className="mt-3 space-y-2">{receiptResult.unexpected.map((row, index) => <div key={`${row.product_code}-${index}`} className="rounded-lg bg-white border p-3 text-sm"><b>{row.product_name}</b> — كمية {row.quantity}{row.closest_item && <span className="text-slate-500"> • أقرب صنف مطلوب: {row.closest_item.product_name} ({Math.round(row.similarity * 100)}%)</span>}<span className="mr-2 font-bold text-red-700">{row.status}</span></div>)}</div></section>}</>}
+      </>}</main>
     </div>
   </div>;
 }
