@@ -38,4 +38,4 @@ jobs:
           git commit -m "feat: apply admin settings center" || exit 0
           git push origin HEAD:agent/admin-settings-center
 
-# verification trigger
+# verification trigger 2
