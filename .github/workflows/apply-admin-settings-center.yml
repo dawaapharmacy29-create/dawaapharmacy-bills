@@ -1,0 +1,41 @@
+name: Apply admin settings center
+
+on:
+  push:
+    branches: [agent/admin-settings-center]
+    paths:
+      - '.github/scripts/apply-admin-settings-center.mjs'
+      - '.github/workflows/apply-admin-settings-center.yml'
+      - 'src/pages/AdminSettingsCenter.jsx'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-build:
+    if: ${{ !contains(github.event.head_commit.message, 'apply admin settings center') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/admin-settings-center
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply integration patch
+        run: node .github/scripts/apply-admin-settings-center.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Commit verified changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx src/components/layout/AppLayout.jsx
+          git commit -m "feat: apply admin settings center" || exit 0
+          git push origin HEAD:agent/admin-settings-center
+
+# verification trigger 2
