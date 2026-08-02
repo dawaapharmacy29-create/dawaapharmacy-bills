@@ -23,6 +23,7 @@ const navGroups = [
     sections: [
       { label: "نظرة عامة", items: [
         { path: "/", label: "الرئيسية", icon: LayoutDashboard },
+        { path: "/daily-tasks", label: "مهام اليوم", icon: ListChecks },
         { path: "/branch-performance", label: "مقارنة وكفاءة الفروع", icon: Building2 },
         { path: "/sales-purchases-report", label: "المبيعات مقابل المشتريات", icon: Scale },
       ]},
@@ -116,6 +117,7 @@ const navGroups = [
 
 const quickLinks = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
+  { path: "/daily-tasks", label: "مهام اليوم", icon: ListChecks },
   { path: "/invoices/new", label: "فاتورة جديدة", icon: FilePlus2 },
   { path: "/pending-invoices", label: "مراجعة الفواتير", icon: ClipboardList, badgeKey: "invoices" },
   { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock },
