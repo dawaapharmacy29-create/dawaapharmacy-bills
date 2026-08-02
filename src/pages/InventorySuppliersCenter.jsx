@@ -42,3 +42,5 @@ export default function InventorySuppliersCenter() {
     </div>
   </div>;
 }
+
+// integration verification trigger
