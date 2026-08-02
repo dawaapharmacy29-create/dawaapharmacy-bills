@@ -82,6 +82,7 @@ const navGroups = [
         { path: "/branch-settlements", label: "تسويات الفروع", icon: ArrowLeftRight, adminOnly: true },
       ]},
       { label: "المخزون والموردون", items: [
+        { path: "/inventory-center", label: "مركز المخزون والموردين", icon: Layers3 },
         { path: "/suppliers", label: "الموردون", icon: Users },
         { path: "/inventory", label: "الراكد والأكسبير", icon: PackageX },
         { path: "/inventory-count", label: "الجرد الدوري", icon: PackageSearch },

@@ -34,6 +34,7 @@ const PendingInvoices = lazy(() => import('./pages/PendingInvoices'));
 const MedicineList = lazy(() => import('./pages/MedicineList'));
 const Returns = lazy(() => import('./pages/Returns'));
 const InventoryManagement = lazy(() => import('./pages/InventoryManagement'));
+const InventorySuppliersCenter = lazy(() => import('./pages/InventorySuppliersCenter'));
 const CustomerOrders = lazy(() => import('./pages/CustomerOrders'));
 const PharmacyOrders = lazy(() => import('./pages/PharmacyOrders'));
 const InventoryCount = lazy(() => import('./pages/InventoryCount'));
@@ -100,6 +101,7 @@ const AuthenticatedApp = () => {
     <Route path="/medicine-list" element={<MedicineList />} />
     <Route path="/returns" element={<Returns />} />
     <Route path="/inventory" element={<InventoryManagement />} />
+    <Route path="/inventory-center" element={<InventorySuppliersCenter />} />
     <Route path="/customer-orders" element={<CustomerOrders />} />
     <Route path="/pharmacy-orders" element={<PharmacyOrders />} />
     <Route path="/inventory-count" element={<InventoryCount />} />
