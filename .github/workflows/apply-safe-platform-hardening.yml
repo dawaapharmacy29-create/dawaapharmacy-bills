@@ -1,0 +1,38 @@
+name: Apply safe platform hardening
+
+on:
+  push:
+    branches: [agent/safe-platform-hardening]
+    paths:
+      - '.github/scripts/apply-safe-platform-hardening.mjs'
+      - '.github/workflows/apply-safe-platform-hardening.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-build:
+    if: ${{ !contains(github.event.head_commit.message, 'apply safe platform hardening') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/safe-platform-hardening
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply patch
+        run: node .github/scripts/apply-safe-platform-hardening.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Commit verified changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx src/pages/Base44SyncReview.jsx
+          git commit -m "fix: apply safe platform hardening" || exit 0
+          git push origin HEAD:agent/safe-platform-hardening

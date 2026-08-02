@@ -310,6 +310,10 @@ export const performanceApi = {
   }),
 };
 
+export const systemHealthApi = {
+  sync: () => callSecureRpc('app_system_sync_health'),
+};
+
 export const base44ReviewApi = {
   pendingList: (params = {}) => callSecureRpc('app_base44_pending_reviews_list', { p_status: params.status || 'pending', p_limit: params.limit || 200 }),
   mark: (reviewId, decision, notes = '') => callSecureRpc('app_base44_review_mark', { p_review_id: reviewId, p_decision: decision, p_notes: notes || null }),
