@@ -1,7 +1,14 @@
-import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, ClipboardList, Clock, FileText, RefreshCw, Receipt, ShoppingBag, GitCompare = [
+import { AlertTriangle, CheckCircle2, ClipboardList, Clock, FileText, RefreshCw, Receipt, RotateCcw, ShoppingBag, WalletCards } from 'lucide-react';
+import { base44, performanceApi, errorText } from '@/api/base44Client';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useUserRole } from '@/lib/useUserRole';
+
+const fmt = (value) => Number(value || 0).toLocaleString('ar-EG');
+
+const TASKS = [
   {
     key: 'pendingInvoices',
     title: 'فواتير انتظار المراجعة',
