@@ -1,0 +1,36 @@
+name: Apply invoice consistency fix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/scripts/apply-invoice-consistency-fix.mjs'
+      - '.github/workflows/apply-invoice-consistency-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply consistency patch
+        run: node .github/scripts/apply-invoice-consistency-fix.mjs
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          git commit -m "fix: unify purchase invoice states across app"
+          git push
