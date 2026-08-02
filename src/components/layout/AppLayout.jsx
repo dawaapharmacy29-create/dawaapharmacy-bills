@@ -94,6 +94,7 @@ const navGroups = [
     key: "quality", label: "المراجعة والجودة", icon: ClipboardList,
     sections: [
       { label: "متابعة الجودة", items: [
+        { path: "/quality-center", label: "مركز المراجعة والجودة", icon: ClipboardList },
         { path: "/review-needed-invoices", label: "فواتير تحتاج مراجعة", icon: AlertTriangle },
         { path: "/data-review", label: "مركز مراجعة البيانات", icon: Database, adminOnly: true },
         { path: "/base44-sync-review", label: "مراجعة مزامنة Base44", icon: DatabaseZap, adminOnly: true, badgeKey: "base44Sync" },
