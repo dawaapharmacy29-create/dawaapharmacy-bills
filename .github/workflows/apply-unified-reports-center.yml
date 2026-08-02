@@ -38,4 +38,4 @@ jobs:
           git commit -m "feat: apply unified reports center" || exit 0
           git push origin HEAD:agent/unified-reports-center
 
-# verification trigger
+# navigation verification trigger
