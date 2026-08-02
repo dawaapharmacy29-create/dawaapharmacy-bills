@@ -37,3 +37,5 @@ jobs:
           git add src/App.jsx src/components/layout/AppLayout.jsx
           git commit -m "feat: apply operations treasury center" || exit 0
           git push origin HEAD:agent/operations-treasury-center
+
+# verification trigger
