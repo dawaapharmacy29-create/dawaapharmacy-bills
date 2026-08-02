@@ -1,0 +1,39 @@
+name: Apply inventory suppliers center
+
+on:
+  push:
+    branches: [agent/inventory-suppliers-center]
+    paths:
+      - '.github/scripts/apply-inventory-suppliers-center.mjs'
+      - '.github/workflows/apply-inventory-suppliers-center.yml'
+      - 'src/pages/InventorySuppliersCenter.jsx'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-build:
+    if: ${{ !contains(github.event.head_commit.message, 'apply inventory suppliers center') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/inventory-suppliers-center
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply integration patch
+        run: node .github/scripts/apply-inventory-suppliers-center.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Commit verified changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx src/components/layout/AppLayout.jsx
+          git commit -m "feat: apply inventory suppliers center" || exit 0
+          git push origin HEAD:agent/inventory-suppliers-center
