@@ -45,4 +45,4 @@ replaceOnce(
   'المزامنة الرسمية تعمل في اتجاه واحد فقط: Base44 ← المصدر التشغيلي، ثم Supabase/Vercel للمراجعة والتحليل. التغييرات لا تُرسل من Vercel إلى Base44. الحذف والتعارضات لا تُطبق تلقائيًا حفاظًا على البيانات.'
 );
 
-console.log('Safe platform hardening patch applied.');
+console.log('Safe platform hardening patch applied and ready for build verification.');
