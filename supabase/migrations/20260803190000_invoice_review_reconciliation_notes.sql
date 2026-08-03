@@ -1,0 +1,32 @@
+-- Production reconciliation applied to Supabase project zqfsakrxazznkqnjlgzv.
+-- Date: 2026-08-03
+--
+-- Verified for 2026-07-15 through 2026-08-03:
+-- invoices: 1499
+-- raw invoice value: 2,340,765.15
+-- returns: 12,706.33
+-- gross after returns: 2,328,058.82
+-- excluded: 1,034,638.22
+-- net purchases: 1,293,420.60
+-- expenses: 4,450.00
+-- total payments including expenses: 1,297,870.60
+-- accounting invariant delta: 0.00
+-- Base44 pending review set: 113
+-- Supabase pending review set: 113
+-- missing/extra pending review IDs: 0 / 0
+--
+-- Repairs applied:
+-- 1. Restored app_data_read_rows to use the actual JSONB staff_accounts.branch_ids type.
+-- 2. Corrected Base44-authoritative purchase categories for invoice IDs:
+--    6a66fcb3d691b78346d0d58e (system 7859)
+--    6a66ff56c04410de92747f0f (system 7893)
+-- 3. Added purchase_invoice_source_events as an immutable source event ledger.
+-- 4. Backfilled all existing Base44 PurchaseInvoice events.
+-- 5. Updated apply_base44_purchase_invoice_event to record every create/update/delete,
+--    map Base44 review states to canonical workflow states, preserve event actors/times,
+--    quarantine deletes, and reject stale events.
+-- 6. Normalized legacy pending_review rows using the latest authoritative Base44 status.
+-- 7. Added app_purchase_invoice_source_history RPC for authorized review/audit access.
+--
+-- No financial invoice was hard-deleted.
+-- Direction remains guarded Base44 -> Supabase.
