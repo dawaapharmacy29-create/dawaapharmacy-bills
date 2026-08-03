@@ -1,0 +1,18 @@
+-- Applied to production project zqfsakrxazznkqnjlgzv on 2026-08-03.
+-- Canonical financial summary and PharmacyOrder branch normalization.
+--
+-- Production objects created/updated:
+-- - normalize_pharmacy_order_branch() + BEFORE trigger
+-- - app_purchase_financial_summary(text,text,date,date)
+-- - repaired four PharmacyOrder events missing branch by inferring DawaaShokry -> دواء شكري
+--
+-- Canonical metric definitions:
+-- raw_invoice_value = invoice values before returns
+-- gross_after_returns = raw_invoice_value - returned_value
+-- excluded_after_returns = excluded invoice value after returns
+-- net_purchases = gross_after_returns - excluded_after_returns
+-- actual_paid_purchases = cash/insta/vodafone + cash part of mixed invoices, excluding excluded invoices
+-- credit_purchases = net_purchases - actual_paid_purchases
+-- cash_outflow = actual_paid_purchases + expenses
+--
+-- This file records the production rollout. The executable migration is retained in Supabase migration history.
