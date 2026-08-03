@@ -1,0 +1,57 @@
+-- Deep Base44 -> Supabase purchase synchronization repair
+-- Production project: zqfsakrxazznkqnjlgzv
+-- Applied on: 2026-08-03
+--
+-- This migration record documents the guarded production rollout performed
+-- through the Supabase migration API. The executable definitions are retained
+-- in Supabase migration history to avoid applying the same production DDL twice.
+--
+-- Objects changed:
+-- 1. purchase_invoices columns:
+--    - base44_source_updated_at timestamptz
+--    - base44_sync_state text (active | pending_delete_review)
+--    - base44_delete_event_id text
+--    - base44_delete_received_at timestamptz
+-- 2. purchase_invoices_base44_sync_state_idx
+-- 3. apply_base44_purchase_invoice_event(uuid)
+--    - ignores stale/out-of-order events
+--    - never hard-deletes financial invoices
+--    - quarantines source deletes as pending_delete_review
+--    - restores an invoice to active only when a newer create/update arrives
+-- 4. app_dashboard_summary(...)
+--    - fixes staff_accounts.branch_ids as text[] (not jsonb)
+--    - excludes quarantined/sample rows
+--    - uses the centralized exclusion precedence:
+--      internal transfer -> manual exclude -> manual include -> supplier setting
+--    - calculates gross after returns and guarantees gross = net + excluded
+-- 5. app_paged_purchase_invoices(...)
+--    - fixes text[] branch filtering
+--    - hides quarantined/sample rows from operational lists
+--    - uses canonical workflow status
+-- 6. app_system_sync_health(text)
+--    - reconstructs authoritative Base44 state from latest snapshot + events
+--    - compares source and active Supabase rows by id and value
+--    - reports source_only, target_only, value_mismatch, failed events,
+--      unresolved events and pending-delete quarantine count
+--
+-- Backfill result:
+-- - Two invoices whose latest Base44 event was delete were quarantined, not deleted:
+--   6a6de9817f691a66c502bb6f
+--   6a6eaa0c345208b9045d8521
+--
+-- Production verification after rollout:
+-- - reconstructed Base44 active invoices: 4506
+-- - active Supabase invoices: 4506
+-- - reconstructed Base44 raw total: 6593855.24
+-- - active Supabase raw total: 6593855.24
+-- - source_only: 0
+-- - target_only: 0
+-- - failed PurchaseInvoice sync events: 0
+-- - pending_delete_review: 2
+-- - functions still treating branch_ids as jsonb: 0
+--
+-- Safety policy preserved:
+-- - Direction remains Base44 -> Supabase only.
+-- - No automatic hard deletion of financial records.
+-- - Delete events remain visible for financial review.
+-- - Older events cannot overwrite newer source state.
