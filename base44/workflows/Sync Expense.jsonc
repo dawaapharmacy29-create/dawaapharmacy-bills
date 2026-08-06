@@ -1,0 +1,47 @@
+{
+  "description": "\u0645\u0632\u0627\u0645\u0646\u0629 \u0623\u062d\u062f\u0627\u062b Expense \u0625\u0644\u0649 Supabase",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "sync_expense",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "sync": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "syncEntityToDawaaBills",
+            "args": {
+              "entity_name": "Expense",
+              "record_id": "${ .trigger.entity_id }",
+              "event_type": "${ .trigger.event_type }",
+              "payload": "${ .trigger.data }",
+              "source_created_at": "${ .trigger.data.created_date }",
+              "source_updated_at": "${ .trigger.data.updated_date }"
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "\u0625\u0631\u0633\u0627\u0644 \u0625\u0644\u0649 Supabase",
+            "description": "\u0645\u0632\u0627\u0645\u0646\u0629 \u062d\u062f\u062b Expense"
+          }
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "entity",
+      "events": [
+        "create",
+        "update",
+        "delete"
+      ],
+      "entity_name": "Expense"
+    }
+  },
+  "name": "Sync Expense to DawaaBills"
+}
