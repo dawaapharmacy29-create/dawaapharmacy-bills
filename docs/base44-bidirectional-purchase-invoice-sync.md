@@ -92,8 +92,8 @@ export async function sendFullPurchaseInvoiceSnapshot(base44) {
 }
 ```
 
-> التنفيذ المعتمد موجود في `base44/functions/sendFullSyncSnapshot/entry.ts` ويشمل كل الكيانات الأساسية، ومنها تسليمات الشيفت.
-> يجب ضبط `BASE44_SYNC_SECRET` داخل أسرار Base44 وتشغيل الوظيفة كل ساعة من Automation.
+> التنفيذ المعتمد موجود في `base44/functions/exportSnapshotCycleToDawaaBills/entry.ts` ويشمل كل الكيانات الأساسية، ومنها تسليمات الشيفت، بحد أقصى 200 سجل في الدفعة.
+> يجب ضبط `DAWAA_SYNC_ENDPOINT` و`DAWAA_SYNC_SECRET` داخل أسرار Base44، ثم تشغيل دورة Snapshot كاملة كل ساعة مع تمرير قيمة `continuation` حتى تصبح `completed: true`.
 
 ## 3. قواعد منع التكرار والتعارض
 
