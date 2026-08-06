@@ -66,7 +66,8 @@ export async function syncInvoiceChangesToBase44(base44) {
 ```js
 export async function sendFullPurchaseInvoiceSnapshot(base44) {
   const snapshotId = crypto.randomUUID();
-  const pageSize = 250;
+  // المستقبل يرفض أي دفعة أكبر من 200 سجل.
+  const pageSize = 200;
   let offset = 0;
   let batchNumber = 1;
 
@@ -90,6 +91,9 @@ export async function sendFullPurchaseInvoiceSnapshot(base44) {
   return { snapshotId, batches: batchNumber };
 }
 ```
+
+> التنفيذ المعتمد موجود في `base44/functions/sendFullSyncSnapshot/entry.ts` ويشمل كل الكيانات الأساسية، ومنها تسليمات الشيفت.
+> يجب ضبط `BASE44_SYNC_SECRET` داخل أسرار Base44 وتشغيل الوظيفة كل ساعة من Automation.
 
 ## 3. قواعد منع التكرار والتعارض
 
