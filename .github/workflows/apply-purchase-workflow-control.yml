@@ -1,0 +1,41 @@
+name: Apply purchase workflow and invoice control
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/apply-purchase-workflow-control.mjs'
+      - 'src/lib/purchaseFinancialControl.js'
+      - 'base44/entities/ReplenishmentOrder.jsonc'
+      - '.github/workflows/apply-purchase-workflow-control.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply purchase workflow upgrade
+        run: node scripts/apply-purchase-workflow-control.mjs
+      - name: Validate build
+        run: |
+          npm ci
+          npm run build
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet; then
+            echo 'No generated changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/SmartPurchaseUnifiedCenter.jsx src/pages/SmartPurchaseReceiving.jsx src/components/pharmacy/ReplenishmentList.jsx
+          git commit -m 'تطوير دورة الطلبيات والتحكم في قيمة الفاتورة [skip ci]'
+          git push
