@@ -5,7 +5,9 @@ on:
   push:
     paths:
       - 'scripts/apply-purchase-workflow-control.mjs'
+      - 'scripts/apply-smart-budget-v5.mjs'
       - 'src/lib/purchaseFinancialControl.js'
+      - 'src/lib/purchasePlanning.js'
       - 'base44/entities/ReplenishmentOrder.jsonc'
       - '.github/workflows/apply-purchase-workflow-control.yml'
 
@@ -23,19 +25,21 @@ jobs:
         with:
           node-version: 22
       - name: Apply purchase workflow upgrade
-        run: node scripts/apply-purchase-workflow-control.mjs
+        run: |
+          node scripts/apply-purchase-workflow-control.mjs
+          node scripts/apply-smart-budget-v5.mjs
       - name: Validate build
         run: |
           npm ci
           npm run build
       - name: Commit generated changes
         run: |
-          if git diff --quiet -- src/pages/SmartPurchaseUnifiedCenter.jsx src/pages/SmartPurchaseReceiving.jsx src/components/pharmacy/ReplenishmentList.jsx; then
+          if git diff --quiet -- src/pages/SmartPurchaseUnifiedCenter.jsx src/pages/SmartPurchaseReceiving.jsx src/components/pharmacy/ReplenishmentList.jsx src/lib/purchasePlanning.js; then
             echo 'No generated purchase workflow changes.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/SmartPurchaseUnifiedCenter.jsx src/pages/SmartPurchaseReceiving.jsx src/components/pharmacy/ReplenishmentList.jsx
-          git commit -m 'تطوير دورة الطلبيات والتحكم في قيمة الفاتورة [skip ci]'
+          git add src/pages/SmartPurchaseUnifiedCenter.jsx src/pages/SmartPurchaseReceiving.jsx src/components/pharmacy/ReplenishmentList.jsx src/lib/purchasePlanning.js
+          git commit -m 'تحسين توزيع الكميات داخل الحد المالي [skip ci]'
           git push
