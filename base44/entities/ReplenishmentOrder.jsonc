@@ -2,150 +2,81 @@
   "name": "ReplenishmentOrder",
   "type": "object",
   "properties": {
-    "product_name": {
-      "type": "string",
-      "description": "اسم الصنف"
-    },
-    "product_code": {
-      "type": "string",
-      "description": "كود الصنف"
-    },
+    "product_name": { "type": "string", "description": "اسم الصنف" },
+    "product_code": { "type": "string", "description": "كود الصنف" },
     "branch": {
       "type": "string",
-      "enum": [
-        "دواء شكري",
-        "دواء الشامي"
-      ],
+      "enum": ["دواء شكري", "دواء الشامي"],
       "description": "الفرع"
     },
-    "requested_quantity": {
-      "type": "number",
-      "description": "الكمية المطلوبة"
-    },
-    "actual_balance": {
-      "type": "number",
-      "description": "الرصيد الفعلي",
-      "default": 0
+    "requested_quantity": { "type": "number", "description": "الكمية المطلوبة" },
+    "approved_quantity": { "type": "number", "default": 0, "description": "الكمية المعتمدة للشراء" },
+    "ordered_quantity": { "type": "number", "default": 0, "description": "الكمية التي تم طلبها من المورد" },
+    "received_quantity": { "type": "number", "default": 0, "description": "الكمية المستلمة" },
+    "outstanding_quantity": { "type": "number", "default": 0, "description": "الكمية المتبقية" },
+    "actual_balance": { "type": "number", "default": 0, "description": "الرصيد الفعلي" },
+    "pending_incoming": { "type": "number", "default": 0, "description": "كمية منتظر وصولها من طلبيات أخرى" },
+    "priority": {
+      "type": "string",
+      "enum": ["urgent", "important", "normal"],
+      "default": "normal",
+      "description": "أولوية النقص"
     },
     "order_status": {
       "type": "string",
-      "enum": [
-        "pending",
-        "ordered",
-        "shortage"
-      ],
+      "enum": ["pending", "shortage", "searching", "approved", "ordered", "partial_received", "received", "closed", "cancelled"],
       "default": "pending",
-      "description": "حالة الطلب"
+      "description": "حالة النقص داخل دورة المشتريات"
     },
-    "notes": {
+    "source_type": {
       "type": "string",
-      "description": "ملاحظات"
+      "enum": ["manual", "inventory", "customer_request", "smart_purchase"],
+      "default": "manual",
+      "description": "مصدر إنشاء النقص"
     },
-    "supplier_name": {
-      "type": "string",
-      "description": "المورد الذي تم الطلب منه"
-    },
-    "expected_arrival_date": {
-      "type": "string",
-      "format": "date",
-      "description": "موعد الوصول المتوقع"
-    },
-    "received_quantity": {
-      "type": "number",
-      "default": 0,
-      "description": "الكمية المستلمة"
-    },
-    "purchase_price": {
-      "type": "number",
-      "description": "سعر الشراء"
-    },
-    "approved_by": {
-      "type": "string",
-      "description": "المسؤول عن الاعتماد"
-    },
-    "received_by": {
-      "type": "string",
-      "description": "المسؤول عن الاستلام"
-    },
-    "closed_at": {
-      "type": "string",
-      "format": "date-time",
-      "description": "وقت إغلاق الطلب"
-    }
+    "purchase_order_id": { "type": "string", "description": "معرف الطلبية المرتبطة" },
+    "purchase_order_number": { "type": "string", "description": "رقم الطلبية المرتبطة" },
+    "supplier_name": { "type": "string", "description": "المورد الذي تم الطلب منه" },
+    "expected_arrival_date": { "type": "string", "format": "date", "description": "موعد الوصول المتوقع" },
+    "needed_by_date": { "type": "string", "format": "date", "description": "أقصى موعد مطلوب لتوفير الصنف" },
+    "purchase_price": { "type": "number", "description": "سعر الشراء المتوقع للوحدة" },
+    "actual_purchase_price": { "type": "number", "description": "سعر الشراء الفعلي للوحدة" },
+    "expected_total": { "type": "number", "default": 0, "description": "القيمة المتوقعة للصنف" },
+    "actual_total": { "type": "number", "default": 0, "description": "القيمة الفعلية للصنف" },
+    "reserved_budget": { "type": "number", "default": 0, "description": "القيمة المحجوزة من ميزانية الطلبية" },
+    "approved_by": { "type": "string", "description": "المسؤول عن الاعتماد" },
+    "received_by": { "type": "string", "description": "المسؤول عن الاستلام" },
+    "status_updated_at": { "type": "string", "format": "date-time", "description": "آخر وقت لتغيير الحالة" },
+    "closed_at": { "type": "string", "format": "date-time", "description": "وقت إغلاق الطلب" },
+    "notes": { "type": "string", "description": "ملاحظات" }
   },
-  "required": [
-    "product_name",
-    "branch",
-    "requested_quantity"
-  ],
+  "required": ["product_name", "branch", "requested_quantity"],
   "rls": {
     "create": {
       "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "manager"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "viewer"
-          }
-        }
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "manager" } },
+        { "user_condition": { "role": "viewer" } }
       ]
     },
     "read": {
       "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "manager"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "viewer"
-          }
-        }
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "manager" } },
+        { "user_condition": { "role": "viewer" } }
       ]
     },
     "update": {
       "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "manager"
-          }
-        },
-        {
-          "created_by_id": "{{user.id}}"
-        }
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "manager" } },
+        { "created_by_id": "{{user.id}}" }
       ]
     },
     "delete": {
       "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "manager"
-          }
-        }
+        { "user_condition": { "role": "admin" } },
+        { "user_condition": { "role": "manager" } }
       ]
     }
   }
