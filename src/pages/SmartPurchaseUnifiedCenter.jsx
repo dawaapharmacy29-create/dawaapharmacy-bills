@@ -169,6 +169,9 @@ export default function SmartPurchaseUnifiedCenter() {
   const [onlyCustomers, setOnlyCustomers] = useState(false);
   const [hideZero, setHideZero] = useState(true);
   const [sortConfig, setSortConfig] = useState({ field: 'quantity', direction: 'desc' });
+  const [opsBranch, setOpsBranch] = useState('all');
+  const [opsStatus, setOpsStatus] = useState('all');
+  const [opsSearch, setOpsSearch] = useState('');
 
   async function refresh(openId) {
     setLoading(true); setError('');
@@ -303,6 +306,12 @@ export default function SmartPurchaseUnifiedCenter() {
   }
   const budgetPlan = useMemo(() => number(budgetLimit) > 0 ? buildBudgetPlan(items, number(budgetLimit)) : null, [items, budgetLimit]);
   const financialGuard = useMemo(() => purchaseBudgetGuard(totals.total, number(budgetLimit)), [totals.total, budgetLimit]);
+  const opsOrders = useMemo(() => (data.orders || []).filter((order) => { const st = normStatus(order.status); if (opsBranch !== 'all' && order.branch !== opsBranch) return false; if (opsStatus !== 'all' && st !== opsStatus) return false; if (opsSearch) { const q = opsSearch.toLowerCase(); const hay = [order.title, order.order_number, order.branch, order.supplier_name, order.ordered_supplier, st].filter(Boolean).join(' ').toLowerCase(); if (!hay.includes(q)) return false; } return true; }), [data.orders, opsBranch, opsStatus, opsSearch]);
+  const opsOpen = (data.orders || []).filter((o) => !['مغلقة', 'تمت مطابقة الفاتورة', 'وصلت بالكامل'].includes(normStatus(o.status)));
+  const opsAwaiting = (data.orders || []).filter((o) => ['تم الإرسال للمورد', 'وصلت جزئيًا'].includes(normStatus(o.status)));
+  const opsExpected = opsOpen.reduce((sum, o) => sum + number(o.approved_total || o.expected_total || o.total_value), 0);
+  const opsActual = (data.orders || []).reduce((sum, o) => sum + number(o.actual_total || o.invoice_total || o.received_total), 0);
+  const opsInvoiceIssues = (data.orders || []).filter((o) => { const expected = number(o.approved_total || o.expected_total || o.total_value); const actual = number(o.actual_total || o.invoice_total || o.received_total); return expected > 0 && actual > expected + Math.max(expected * 0.02, 100); });
 
   async function updateOne(item, patch) { return management.updateItem({ id: item.id, order_id: selected.order.id, ...patch }); }
   async function applyBudgetPlan() {
@@ -348,6 +357,8 @@ export default function SmartPurchaseUnifiedCenter() {
         <button disabled={loading || !mapping.product_name || Boolean(openOrderForBranch)} onClick={importAndCreate} className="rounded-lg bg-teal-600 px-5 py-2.5 text-white font-bold flex items-center gap-2 disabled:opacity-50"><ShoppingCart className="w-4 h-4" />إنشاء الطلبية بالمقادير المعروضة</button>
       </>}
     </section>}
+
+    <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-lg">لوحة تشغيل الطلبيات والمشتريات</h2><p className="text-xs text-slate-500">متابعة القيمة والاستلام والفواتير وحالة كل طلبية من مكان واحد.</p></div><div className="flex flex-wrap gap-2"><select value={opsBranch} onChange={(e) => setOpsBranch(e.target.value)} className="rounded-lg border p-2 text-sm"><option value="all">كل الفروع</option>{BRANCHES.map((b) => <option key={b}>{b}</option>)}</select><select value={opsStatus} onChange={(e) => setOpsStatus(e.target.value)} className="rounded-lg border p-2 text-sm"><option value="all">كل الحالات</option>{STATUS_STEPS.map((st) => <option key={st}>{st}</option>)}</select><input value={opsSearch} onChange={(e) => setOpsSearch(e.target.value)} placeholder="بحث بالطلبية أو المورد" className="rounded-lg border p-2 text-sm min-w-[210px]" /></div></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['طلبيات مفتوحة', opsOpen.length], ['تنتظر الاستلام', opsAwaiting.length], ['قيمة مفتوحة', money(opsExpected) + ' ج'], ['قيمة فواتير فعلية', money(opsActual) + ' ج'], ['فروق مالية مرتفعة', opsInvoiceIssues.length]].map(([label, value]) => <div key={label} className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>{opsInvoiceIssues.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {opsInvoiceIssues.length} طلبية قيمة فاتورتها الفعلية أعلى من المتوقع فوق السماحية المالية وتحتاج مراجعة.</div>}<div className="overflow-auto rounded-xl border"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-right">الطلبية</th><th className="p-2 text-right">الفرع</th><th className="p-2 text-right">الحالة</th><th className="p-2 text-right">المورد</th><th className="p-2 text-right">المتوقع</th><th className="p-2 text-right">الفعلي</th><th className="p-2 text-right">الفرق</th></tr></thead><tbody>{opsOrders.slice(0, 25).map((o) => { const expected = number(o.approved_total || o.expected_total || o.total_value); const actual = number(o.actual_total || o.invoice_total || o.received_total); const diff = actual - expected; return <tr key={o.id} className="border-t hover:bg-teal-50 cursor-pointer" onClick={() => openOrder(o.id)}><td className="p-2 font-bold">{o.title || o.order_number}</td><td className="p-2">{o.branch || '—'}</td><td className="p-2">{normStatus(o.status)}</td><td className="p-2">{o.supplier_name || o.ordered_supplier || '—'}</td><td className="p-2">{money(expected)} ج</td><td className="p-2">{actual ? money(actual) + ' ج' : '—'}</td><td className={`p-2 font-bold ${diff > Math.max(expected * .02, 100) ? 'text-red-600' : diff > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>{actual ? (diff > 0 ? '+' : '') + money(diff) + ' ج' : '—'}</td></tr>})}</tbody></table></div></section>
 
     <div className="grid md:grid-cols-3 gap-3">{[['مسودات تحتاج مراجعة', data.pending_actions?.draft || 0], ['الطلبيات المفتوحة', (data.orders || []).filter((order) => !['مغلقة', 'تمت مطابقة الفاتورة'].includes(normStatus(order.status))).length], ['تنتظر الاستلام', data.pending_actions?.pending_receiving || 0]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-3 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-1">{value}</div></div>)}</div>
 
