@@ -79,7 +79,7 @@ export default function ReplenishmentList() {
 
   const updateStatus = useMutation({
     mutationFn: ({ id, order_status }) =>
-      base44.entities.ReplenishmentOrder.update(id, { order_status }),
+      base44.entities.ReplenishmentOrder.update(id, { order_status, status_updated_at: new Date().toISOString(), ...(order_status === 'closed' ? { closed_at: new Date().toISOString() } : {}) }),
     onMutate: async ({ id, order_status }) => {
       await qc.cancelQueries({ queryKey: ["replenishment-orders"] });
       const previous = qc.getQueryData(["replenishment-orders"]);
@@ -109,10 +109,27 @@ export default function ReplenishmentList() {
       toast({ variant: "destructive", description: "اسم الصنف والكود والفرع والكمية حقول مطلوبة" });
       return;
     }
+    const normalizedCode = String(form.product_code || '').trim().toLowerCase();
+    const normalizedName = String(form.product_name || '').trim().toLowerCase();
+    const duplicate = items.find((item) => item.branch === form.branch && !['closed', 'cancelled', 'received'].includes(getStatus(item)) && ((normalizedCode && String(item.product_code || '').trim().toLowerCase() === normalizedCode) || (!normalizedCode && String(item.product_name || '').trim().toLowerCase() === normalizedName)));
+    if (duplicate) {
+      toast({ variant: 'destructive', description: `الصنف موجود بالفعل كنقص مفتوح في ${form.branch}. افتح السجل الحالي بدل إنشاء تكرار جديد.` });
+      return;
+    }
+    const qty = parseFloat(form.requested_quantity) || 0;
+    const unitPrice = parseFloat(form.purchase_price) || 0;
     createMutation.mutate({
       ...form,
-      requested_quantity: parseFloat(form.requested_quantity) || 0,
+      requested_quantity: qty,
+      approved_quantity: 0,
+      ordered_quantity: 0,
+      received_quantity: 0,
+      outstanding_quantity: qty,
+      expected_total: qty * unitPrice,
       actual_balance: parseFloat(form.actual_balance) || 0,
+      priority: 'normal',
+      source_type: 'manual',
+      status_updated_at: new Date().toISOString(),
       added_at: new Date().toLocaleString("ar-EG", { timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }),
     });
   };
