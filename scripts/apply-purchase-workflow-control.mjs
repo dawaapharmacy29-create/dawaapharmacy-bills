@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 
-function patch(path, transforms) {
+function patch(path, marker, transforms) {
   let source = fs.readFileSync(path, 'utf8');
+  if (source.includes(marker)) {
+    console.log(`Already applied: ${path}`);
+    return;
+  }
   for (const transform of transforms) {
     const next = transform(source);
     if (next === source) throw new Error(`Patch anchor not found in ${path}`);
@@ -10,7 +14,7 @@ function patch(path, transforms) {
   fs.writeFileSync(path, source);
 }
 
-patch('src/pages/SmartPurchaseUnifiedCenter.jsx', [
+patch('src/pages/SmartPurchaseUnifiedCenter.jsx', 'const financialGuard = useMemo(() => purchaseBudgetGuard', [
   (source) => source.replace(
     "import {\n  buildBudgetPlan,",
     "import { purchaseBudgetGuard } from '@/lib/purchaseFinancialControl';\nimport {\n  buildBudgetPlan,"
@@ -37,7 +41,7 @@ patch('src/pages/SmartPurchaseUnifiedCenter.jsx', [
   ),
 ]);
 
-patch('src/pages/SmartPurchaseReceiving.jsx', [
+patch('src/pages/SmartPurchaseReceiving.jsx', 'const invoiceGuard = invoiceValueGuard', [
   (source) => source.replace(
     "import { smartPurchaseReceivingApi as api } from '@/api/smartPurchaseReceivingApi';",
     "import { smartPurchaseReceivingApi as api } from '@/api/smartPurchaseReceivingApi';\nimport { invoiceValueGuard } from '@/lib/purchaseFinancialControl';"
@@ -64,7 +68,7 @@ patch('src/pages/SmartPurchaseReceiving.jsx', [
   ),
 ]);
 
-patch('src/components/pharmacy/ReplenishmentList.jsx', [
+patch('src/components/pharmacy/ReplenishmentList.jsx', 'const normalizedCode = String(form.product_code', [
   (source) => source.replace(
     "  const updateStatus = useMutation({\n    mutationFn: ({ id, order_status }) =>\n      base44.entities.ReplenishmentOrder.update(id, { order_status }),",
     "  const updateStatus = useMutation({\n    mutationFn: ({ id, order_status }) =>\n      base44.entities.ReplenishmentOrder.update(id, { order_status, status_updated_at: new Date().toISOString(), ...(order_status === 'closed' ? { closed_at: new Date().toISOString() } : {}) }),"
@@ -79,4 +83,4 @@ patch('src/components/pharmacy/ReplenishmentList.jsx', [
   ),
 ]);
 
-console.log('Purchase workflow and invoice control upgrade applied.');
+console.log('Purchase workflow and invoice control upgrade is current.');
