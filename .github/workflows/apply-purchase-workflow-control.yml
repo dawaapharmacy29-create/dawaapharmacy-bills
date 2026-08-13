@@ -30,8 +30,8 @@ jobs:
           npm run build
       - name: Commit generated changes
         run: |
-          if git diff --quiet; then
-            echo 'No generated changes.'
+          if git diff --quiet -- src/pages/SmartPurchaseUnifiedCenter.jsx src/pages/SmartPurchaseReceiving.jsx src/components/pharmacy/ReplenishmentList.jsx; then
+            echo 'No generated purchase workflow changes.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
