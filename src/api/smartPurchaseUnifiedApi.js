@@ -52,6 +52,14 @@ export const smartPurchaseUnifiedApi = {
   decisionDailyChange: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
   smartClearanceEngine: (branch = 'all') => standaloneRpc('smart_purchase_clearance_engine_v1', { p_branch: branch }),
+  safeDraftPreview: ({ branch, targetBudget = null }) => standaloneRpc('smart_purchase_safe_draft_preview_v1', {
+    p_branch: branch,
+    p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
+  }),
+  createSafeDraft: ({ branch, targetBudget = null }) => standaloneRpc('smart_purchase_safe_draft_create_v1', {
+    p_branch: branch,
+    p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
+  }),
   captureClearancePlan: (branch = 'all') => standaloneRpc('smart_purchase_clearance_capture_plan_v1', { p_branch: branch }),
   clearanceOutcomes: (branch = 'all') => standaloneRpc('smart_purchase_clearance_outcomes_v1', { p_branch: branch }),
   importInventoryIntelligence: ({ branch, rows }) => standaloneRpc('smart_purchase_inventory_intelligence_import', { p_branch: branch, p_rows: rows }),
