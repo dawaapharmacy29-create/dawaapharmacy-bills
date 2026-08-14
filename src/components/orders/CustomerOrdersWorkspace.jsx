@@ -8,9 +8,13 @@ import OrderWorkspaceDashboard from "./OrderWorkspaceDashboard";
 import OrderWorkspaceOrders from "./OrderWorkspaceOrders";
 import OrderFormDialog from "./OrderFormDialog";
 import OrderDetailDialog from "./OrderDetailDialog";
-import OrderAnalytics from "./OrderAnalytics";
+import OrderAnalyticsPerformance from "./OrderAnalyticsPerformance";
+import OrderAnalyticsBranches from "./OrderAnalyticsBranches";
+import OrderAnalyticsLeaders from "./OrderAnalyticsLeaders";
 import OrderAlerts from "./OrderAlerts";
 import useCustomerOrdersWorkspace from "./useCustomerOrdersWorkspace";
+
+const ANALYTICS_TABS = [["performance", "الأداء"], ["branches", "الفروع"], ["leaders", "الأصناف والعملاء"]];
 
 export default function CustomerOrdersWorkspace() {
   const { isManager, user } = useUserRole();
@@ -18,6 +22,7 @@ export default function CustomerOrdersWorkspace() {
   const w = useCustomerOrdersWorkspace({ isManager, user });
   const [showForm, setShowForm] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [analyticsTab, setAnalyticsTab] = useState("performance");
   const refresh = () => qc.invalidateQueries({ queryKey: ["customer-orders"] });
 
   return <div dir="rtl" className="p-3 md:p-5 space-y-4 max-w-[1500px] mx-auto">
@@ -30,7 +35,12 @@ export default function CustomerOrdersWorkspace() {
     {w.mainTab === "dashboard" && <OrderWorkspaceDashboard orders={w.orders} onOpen={setSelectedOrder} />}
     {w.mainTab === "orders" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={setSelectedOrder} />}
     {w.mainTab === "followup" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={setSelectedOrder} mode="followup" />}
-    {w.mainTab === "analytics" && <OrderAnalytics orders={w.orders} />}
+    {w.mainTab === "analytics" && <div className="space-y-3">
+      <div className="bg-white border rounded-2xl p-1.5 overflow-x-auto"><div className="grid grid-cols-3 min-w-[420px] gap-1.5">{ANALYTICS_TABS.map(([id, label]) => <button key={id} onClick={() => setAnalyticsTab(id)} className={`h-10 px-3 rounded-xl text-sm font-semibold transition ${analyticsTab === id ? "bg-teal-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-50"}`}>{label}</button>)}</div></div>
+      {analyticsTab === "performance" && <OrderAnalyticsPerformance orders={w.orders} />}
+      {analyticsTab === "branches" && <OrderAnalyticsBranches orders={w.orders} />}
+      {analyticsTab === "leaders" && <OrderAnalyticsLeaders orders={w.orders} />}
+    </div>}
     {w.mainTab === "archive" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={setSelectedOrder} mode="archive" />}
 
     {showForm && <OrderFormDialog open={showForm} onOpenChange={setShowForm} teamMembers={w.teamMembers} onSaved={refresh} />}
