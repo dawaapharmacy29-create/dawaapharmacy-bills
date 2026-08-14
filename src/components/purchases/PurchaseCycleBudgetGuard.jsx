@@ -36,7 +36,7 @@ function BranchGuardCard({ row, onSaved }) {
       <button onClick={() => setEditing((v) => !v)} className="rounded-lg border bg-white px-3 py-2 text-xs font-bold">{editing ? 'إلغاء' : row.configured ? 'تعديل الميزانية' : 'اعتماد ميزانية الدورة'}</button>
     </div>
 
-    {!row.configured && <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">الميزانية الحالية تقديرية من متوسط آخر دورتين. اعتمد رقمك الفعلي حتى يتحول الحارس من استرشادي إلى رقابة فعلية.</div>}
+    {!row.configured && <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">الميزانية الحالية تقديرية من متوسط آخر دورتين. اعتمد رقمك الفعلي حتى تتحول الأرقام من استرشادية إلى رقابة فعلية.</div>}
     {error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
 
     {editing && <div className="mt-3 grid sm:grid-cols-4 gap-2 rounded-xl border bg-white p-3">
@@ -49,20 +49,20 @@ function BranchGuardCard({ row, onSaved }) {
     <div className="mt-3 grid grid-cols-2 xl:grid-cols-4 gap-2">
       {[
         ['ميزانية الدورة', `${money(row.cycle_budget)} ج`],
-        ['المصروف حتى الآن', `${money(row.current_spend)} ج`],
-        ['التزامات مفتوحة', `${money(row.open_commitments)} ج`],
-        ['المتبقي الحقيقي', `${money(row.remaining_budget)} ج`],
-        ['احتياطي لازم نحافظ عليه', `${money(row.reserve_required)} ج`],
-        ['متاح آمن الآن', `${money(row.safe_available_now)} ج`],
-        ['أقصى طلبية آمنة اليوم', `${money(row.safe_order_today)} ج`],
-        ['يكفي شراء بالمعدل الحالي', `${Number(row.days_of_purchasing_power || 0).toFixed(1)} يوم`],
+        ['المصروف الفعلي حتى الآن', `${money(row.current_spend)} ج`],
+        ['طلبات/التزامات مفتوحة', `${money(row.open_commitments)} ج`],
+        ['المتبقي بعد المصروف والالتزامات', `${money(row.remaining_budget)} ج`],
+        ['احتياطي نهاية الدورة', `${money(row.reserve_required)} ج`],
+        ['المتاح لباقي الدورة بعد الاحتياطي', `${money(row.safe_available_now)} ج`],
+        ['أقصى شراء مقترح اليوم', `${money(row.safe_order_today)} ج`],
+        ['المتبقي يكفي بالمعدل الحالي', `${Number(row.days_of_purchasing_power || 0).toFixed(1)} يوم`],
       ].map(([label, value]) => <div key={label} className="rounded-xl border bg-white/90 p-3"><div className="text-[11px] text-slate-500">{label}</div><div className="mt-1 font-black">{value}</div></div>)}
     </div>
 
     <div className="mt-3 grid md:grid-cols-3 gap-2 text-sm">
-      <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">المفروض نكون صرفنا حتى اليوم</div><div className="font-bold mt-1">{money(row.paced_limit_to_date)} ج</div><div className={`text-xs mt-1 ${pace > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{pace > 0 ? `أعلى من المسار بـ ${money(pace)} ج` : `أقل من المسار بـ ${money(Math.abs(pace))} ج`}</div></div>
-      <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">توقع نهاية الدورة بالمعدل الحالي</div><div className="font-bold mt-1">{money(row.forecast_end_cycle)} ج</div><div className={`text-xs mt-1 ${forecastOver > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{forecastOver > 0 ? `متوقع تجاوز ${money(forecastOver)} ج` : 'داخل الميزانية المتوقعة'}</div></div>
-      <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">حد الشراء اليومي المقترح</div><div className="font-bold mt-1">{money(row.suggested_daily_cap)} ج</div><div className="text-xs text-slate-500 mt-1">باقي {row.days_remaining} يوم في الدورة</div></div>
+      <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">المسار المناسب للصرف حتى اليوم</div><div className="font-bold mt-1">{money(row.paced_limit_to_date)} ج</div><div className={`text-xs mt-1 ${pace > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{pace > 0 ? `صرفنا أعلى من المسار بـ ${money(pace)} ج` : `أقل من المسار بـ ${money(Math.abs(pace))} ج`}</div></div>
+      <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">لو استمر نفس معدل الصرف حتى نهاية الدورة</div><div className="font-bold mt-1">{money(row.forecast_end_cycle)} ج</div><div className={`text-xs mt-1 ${forecastOver > 0 ? 'text-red-700' : 'text-emerald-700'}`}>{forecastOver > 0 ? `متوقع نتجاوز الميزانية بـ ${money(forecastOver)} ج` : 'متوقع نقفل داخل الميزانية'}</div></div>
+      <div className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">متوسط شراء يومي مقترح لباقي الدورة</div><div className="font-bold mt-1">{money(row.suggested_daily_cap)} ج</div><div className="text-xs text-slate-500 mt-1">باقي {row.days_remaining} يوم في الدورة</div></div>
     </div>
   </div>;
 }
@@ -81,9 +81,9 @@ export default function PurchaseCycleBudgetGuard() {
   useEffect(() => { load(); }, []);
 
   return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-black text-lg flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-teal-600" />حارس ميزانية دورة المشتريات</h2><p className="text-xs text-slate-500 mt-1">يراقب المصروف + الالتزامات + الاحتياطي، ويتوقع من دلوقتي هل هتتزنق قبل يوم 25.</p></div><button onClick={load} disabled={loading} className="rounded-lg border px-3 py-2 text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />تحديث</button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-black text-lg flex items-center gap-2"><ShieldCheck className="w-5 h-5 text-teal-600" />تفاصيل ميزانية دورة المشتريات</h2><p className="text-xs text-slate-500 mt-1">شرح تفصيلي لسبب السماح بالشراء أو تقييده: المصروف + الالتزامات + الاحتياطي + سرعة الصرف.</p></div><button onClick={load} disabled={loading} className="rounded-lg border px-3 py-2 text-sm flex items-center gap-2"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />تحديث</button></div>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5" />{error}</div>}
     {loading && !rows.length ? <div className="rounded-xl border border-dashed p-6 text-center text-slate-400">جاري حساب مسار الميزانية...</div> : <div className="grid xl:grid-cols-2 gap-3">{rows.map((row) => <BranchGuardCard key={row.branch} row={row} onSaved={load} />)}</div>}
-    <div className="grid md:grid-cols-3 gap-2 text-xs text-slate-600"><div className="flex gap-2 rounded-xl bg-slate-50 p-3"><Gauge className="w-4 h-4 shrink-0" />المسار الزمني يقارن ما تم صرفه بما كان يجب صرفه في نفس يوم الدورة.</div><div className="flex gap-2 rounded-xl bg-slate-50 p-3"><WalletCards className="w-4 h-4 shrink-0" />الالتزامات المفتوحة تتحسب قبل ما تتحول لفاتورة حتى لا نظن إن فيه سيولة غير موجودة.</div><div className="flex gap-2 rounded-xl bg-slate-50 p-3"><ShieldCheck className="w-4 h-4 shrink-0" />الاحتياطي يقل تدريجيًا في آخر أيام الدورة بدل ما نستهلك الميزانية بدري.</div></div>
+    <div className="grid md:grid-cols-3 gap-2 text-xs text-slate-600"><div className="flex gap-2 rounded-xl bg-slate-50 p-3"><Gauge className="w-4 h-4 shrink-0" />المسار الزمني يقارن ما تم صرفه بما يناسب نفس يوم الدورة؛ هو إنذار مبكر وليس حدًا محاسبيًا ثابتًا.</div><div className="flex gap-2 rounded-xl bg-slate-50 p-3"><WalletCards className="w-4 h-4 shrink-0" />الالتزامات المفتوحة تتحسب قبل ما تتحول لفاتورة حتى لا يظهر رصيد شراء وهمي.</div><div className="flex gap-2 rounded-xl bg-slate-50 p-3"><ShieldCheck className="w-4 h-4 shrink-0" />الاحتياطي يحمي آخر أيام الدورة من النواقص والطلبات المهمة بدل استهلاك الميزانية بدري.</div></div>
   </section>;
 }
