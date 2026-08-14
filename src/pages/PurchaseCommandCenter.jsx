@@ -1,6 +1,7 @@
 import PurchaseCycleBudgetGuard from '@/components/purchases/PurchaseCycleBudgetGuard';
 import InventoryCapitalCommandCenter from '@/components/purchases/InventoryCapitalCommandCenter';
 import InventoryIntelligenceImport from '@/components/purchases/InventoryIntelligenceImport';
+import SmartClearanceEngine from '@/components/purchases/SmartClearanceEngine';
 import SmartPurchaseUnifiedCenter from './SmartPurchaseUnifiedCenter';
 
 export default function PurchaseCommandCenter() {
@@ -8,6 +9,7 @@ export default function PurchaseCommandCenter() {
     <PurchaseCycleBudgetGuard />
     <InventoryIntelligenceImport />
     <InventoryCapitalCommandCenter />
+    <SmartClearanceEngine />
     <SmartPurchaseUnifiedCenter />
   </div>;
 }
