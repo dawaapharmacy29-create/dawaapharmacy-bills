@@ -15,7 +15,7 @@ async function standaloneRpc(functionName, body) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.ok === false) throw new Error(data?.message || data?.error || `فشل الطلب (${response.status})`);
-  return data.data;
+  return Object.prototype.hasOwnProperty.call(data || {}, 'data') ? data.data : data;
 }
 
 async function rpc(action, payload = {}) {
