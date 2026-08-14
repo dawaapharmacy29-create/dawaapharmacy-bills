@@ -10,9 +10,6 @@ import AppLayout from './components/layout/AppLayout';
 import AppErrorBoundary from './components/system/AppErrorBoundary';
 import RoleRouteGuard from './components/auth/RoleRouteGuard';
 
-// كل الصفحات بتتحمّل عند الحاجة فقط (lazy) بدل ما تتحمّل كلها مع أول فتح للتطبيق.
-// ده بيقلل حجم التحميل الأولي جدًا (كان يتضمن كل صفحات المشتريات والتقارير ومكتبات
-// التصدير Excel/PDF دفعة واحدة حتى لو المستخدم فاتح صفحة تسليم الشيفت بس).
 const FastDashboard = lazy(() => import('./pages/FastDashboard'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const DailyTasksCenter = lazy(() => import('./pages/DailyTasksCenter'));
@@ -58,7 +55,7 @@ const SmartPurchaseCenter = lazy(() => import('./pages/SmartPurchaseCenter'));
 const SmartPurchaseReceiving = lazy(() => import('./pages/SmartPurchaseReceiving'));
 const SmartPurchaseOrderManagement = lazy(() => import('./pages/SmartPurchaseOrderManagement'));
 const SmartPurchaseInsights = lazy(() => import('./pages/SmartPurchaseInsights'));
-const SmartPurchaseUnifiedCenter = lazy(() => import('./pages/SmartPurchaseUnifiedCenter'));
+const PurchaseCommandCenter = lazy(() => import('./pages/PurchaseCommandCenter'));
 const TeamMergeCenter = lazy(() => import('./pages/TeamMergeCenter'));
 const AdminSettingsCenter = lazy(() => import('./pages/AdminSettingsCenter'));
 const SystemStatus = lazy(() => import('./pages/SystemStatus'));
@@ -125,7 +122,7 @@ const AuthenticatedApp = () => {
     <Route path="/base44-sync-review" element={<RoleRouteGuard adminOnly><Base44SyncReview /></RoleRouteGuard>} />
     <Route path="/branch-settlements" element={<RoleRouteGuard adminOnly><BranchSettlements /></RoleRouteGuard>} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
-    <Route path="/purchase-center" element={<SmartPurchaseUnifiedCenter />} />
+    <Route path="/purchase-center" element={<PurchaseCommandCenter />} />
     <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
     <Route path="/smart-purchase-orders/manage" element={<SmartPurchaseOrderManagement />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
