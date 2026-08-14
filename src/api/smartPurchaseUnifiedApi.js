@@ -51,6 +51,8 @@ export const smartPurchaseUnifiedApi = {
   cycleBudgetGuard: (branch = 'all') => standaloneRpc('smart_purchase_cycle_budget_guard', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
   smartClearanceEngine: (branch = 'all') => standaloneRpc('smart_purchase_clearance_engine_v1', { p_branch: branch }),
+  captureClearancePlan: (branch = 'all') => standaloneRpc('smart_purchase_clearance_capture_plan_v1', { p_branch: branch }),
+  clearanceOutcomes: (branch = 'all') => standaloneRpc('smart_purchase_clearance_outcomes_v1', { p_branch: branch }),
   importInventoryIntelligence: ({ branch, rows }) => standaloneRpc('smart_purchase_inventory_intelligence_import', { p_branch: branch, p_rows: rows }),
   setCycleBudget: ({ branch, cycleBudget, reservePercent = 20, reserveDays = 8, warningPercent = 85 }) => standaloneRpc('smart_purchase_set_cycle_budget', {
     p_branch: branch,
