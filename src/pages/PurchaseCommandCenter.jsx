@@ -3,6 +3,7 @@ import PurchaseExecutiveDecisionCenter from '@/components/purchases/PurchaseExec
 import PurchaseDecisionDailyChange from '@/components/purchases/PurchaseDecisionDailyChange';
 import SafePurchaseDraftBuilder from '@/components/purchases/SafePurchaseDraftBuilder';
 import SupplierDecisionAdvisor from '@/components/purchases/SupplierDecisionAdvisor';
+import SupplierAllocationPlanner from '@/components/purchases/SupplierAllocationPlanner';
 import SupplierOfferImport from '@/components/purchases/SupplierOfferImport';
 import SupplierPerformanceLearning from '@/components/purchases/SupplierPerformanceLearning';
 import PurchaseCycleBudgetGuard from '@/components/purchases/PurchaseCycleBudgetGuard';
@@ -38,6 +39,10 @@ export default function PurchaseCommandCenter() {
 
     <DetailSection id="purchase-supplier-advisor" title="مستشار اختيار المورد" description="قارن تكلفة المورد الحقيقية بعد البونص مع MOQ والتوافر ومدة التوريد وأجل السداد قبل الاعتماد.">
       <SupplierDecisionAdvisor />
+    </DetailSection>
+
+    <DetailSection id="purchase-supplier-allocation" title="تقسيم الكميات بين الموردين" description="لو مورد واحد لا يغطي الكمية، اعرض خطة تكمل من البديل التالي مع تكلفة وMOQ وبونص واضحين.">
+      <SupplierAllocationPlanner />
     </DetailSection>
 
     <DetailSection id="purchase-supplier-performance" title="أداء الموردين الفعلي" description="تعلم تلقائي من الاستلام: اكتمال الكميات، التزام السعر، التأخير وقيمة النقص أو الزيادة الفعلية.">
