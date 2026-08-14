@@ -95,6 +95,11 @@ export const treasuryApi = {
     p_offset: offset,
   }),
   shiftSalesSourceStatus: () => postRpc('treasury_sales_source_status', {}),
+  shiftSalesIntelligence: ({ branch = 'all', shiftType = 'all', days = 14 } = {}) => postRpc('treasury_shift_sales_intelligence_v1', {
+    p_branch: branch,
+    p_shift_type: shiftType,
+    p_days: days,
+  }),
   syncShifts: () => rpc('treasury_center', 'sync_shifts'),
   manualTransaction: (payload) => rpc('treasury_center', 'manual_transaction', payload),
   createTransfer: (payload) => rpc('treasury_center', 'create_transfer', payload),
