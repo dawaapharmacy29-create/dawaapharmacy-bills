@@ -88,6 +88,12 @@ async function transferAction(id, action, targetAccountType = null, reason = nul
 
 export const treasuryApi = {
   dashboard: () => rpc('treasury_center', 'dashboard'),
+  pendingShifts: ({ branch = 'all', shiftType = 'all', limit = 1000, offset = 0 } = {}) => postRpc('treasury_shift_review_list', {
+    p_branch: branch,
+    p_shift_type: shiftType,
+    p_limit: limit,
+    p_offset: offset,
+  }),
   syncShifts: () => rpc('treasury_center', 'sync_shifts'),
   manualTransaction: (payload) => rpc('treasury_center', 'manual_transaction', payload),
   createTransfer: (payload) => rpc('treasury_center', 'create_transfer', payload),
