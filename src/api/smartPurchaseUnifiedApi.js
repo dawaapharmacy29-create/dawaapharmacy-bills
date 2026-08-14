@@ -1,5 +1,5 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
-const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
+const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYXNlIiwicmVmIjoienFmc2Frcnhhenpua3FuamxnenYiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTc4NDk5OTM4MywiZXhwIjoyMTAwNTc1MzgzfQ.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 
 function token() {
   try { return JSON.parse(localStorage.getItem('dawaa_staff_session') || 'null')?.session_token || ''; }
@@ -61,6 +61,11 @@ export const smartPurchaseUnifiedApi = {
     p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
   }),
   supplierDecision: (orderId) => standaloneRpc('smart_purchase_supplier_decision_v1', { p_order_id: orderId }),
+  supplierOfferHealth: () => standaloneRpc('smart_purchase_supplier_offer_health_v1', {}),
+  importSupplierOffers: ({ fileName, rows }) => standaloneRpc('smart_purchase_import_supplier_offers_v1', {
+    p_source_file_name: fileName || 'manual-import',
+    p_rows: rows || [],
+  }),
   captureClearancePlan: (branch = 'all') => standaloneRpc('smart_purchase_clearance_capture_plan_v1', { p_branch: branch }),
   clearanceOutcomes: (branch = 'all') => standaloneRpc('smart_purchase_clearance_outcomes_v1', { p_branch: branch }),
   importInventoryIntelligence: ({ branch, rows }) => standaloneRpc('smart_purchase_inventory_intelligence_import', { p_branch: branch, p_rows: rows }),
