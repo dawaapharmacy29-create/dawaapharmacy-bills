@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 import PurchaseExecutiveDecisionCenter from '@/components/purchases/PurchaseExecutiveDecisionCenter';
+import PurchaseDecisionDailyChange from '@/components/purchases/PurchaseDecisionDailyChange';
 import PurchaseCycleBudgetGuard from '@/components/purchases/PurchaseCycleBudgetGuard';
 import InventoryCapitalCommandCenter from '@/components/purchases/InventoryCapitalCommandCenter';
 import InventoryIntelligenceImport from '@/components/purchases/InventoryIntelligenceImport';
@@ -20,6 +21,7 @@ function DetailSection({ id, title, description, children, open = false }) {
 export default function PurchaseCommandCenter() {
   return <div dir="rtl" className="space-y-4 pb-8">
     <PurchaseExecutiveDecisionCenter />
+    <PurchaseDecisionDailyChange />
 
     <DetailSection id="purchase-order-workspace" title="تنفيذ الطلبية" description="بعد ما تفهم قرار اليوم، ابدأ من هنا لمراجعة الأصناف والكميات والموردين." open>
       <SmartPurchaseUnifiedCenter />
