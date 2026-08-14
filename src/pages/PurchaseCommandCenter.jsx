@@ -3,6 +3,7 @@ import PurchaseExecutiveDecisionCenter from '@/components/purchases/PurchaseExec
 import PurchaseDecisionDailyChange from '@/components/purchases/PurchaseDecisionDailyChange';
 import SafePurchaseDraftBuilder from '@/components/purchases/SafePurchaseDraftBuilder';
 import SupplierDecisionAdvisor from '@/components/purchases/SupplierDecisionAdvisor';
+import SupplierOfferImport from '@/components/purchases/SupplierOfferImport';
 import PurchaseCycleBudgetGuard from '@/components/purchases/PurchaseCycleBudgetGuard';
 import InventoryCapitalCommandCenter from '@/components/purchases/InventoryCapitalCommandCenter';
 import InventoryIntelligenceImport from '@/components/purchases/InventoryIntelligenceImport';
@@ -28,6 +29,10 @@ export default function PurchaseCommandCenter() {
 
     <DetailSection id="purchase-order-workspace" title="تنفيذ الطلبية" description="بعد ما تفهم قرار اليوم أو تنشئ مسودة آمنة، ابدأ من هنا لمراجعة الأصناف والكميات والموردين." open>
       <SmartPurchaseUnifiedCenter />
+    </DetailSection>
+
+    <DetailSection id="purchase-supplier-offers" title="رفع وتجديد عروض الموردين" description="ارفع أسعار وخصومات وبونص وMOQ والتوافر ومدة التوريد حتى يشتغل مستشار المورد على بيانات فعلية.">
+      <SupplierOfferImport />
     </DetailSection>
 
     <DetailSection id="purchase-supplier-advisor" title="مستشار اختيار المورد" description="قارن تكلفة المورد الحقيقية بعد البونص مع MOQ والتوافر ومدة التوريد وأجل السداد قبل الاعتماد.">
