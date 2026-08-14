@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 
 const localDate = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
 const fmt = (value) => Number(value || 0).toLocaleString("ar-EG", { maximumFractionDigits: 2 });
+const APPROVED_TREASURY_STATUSES = new Set(["posted", "approved", "reviewed"]);
 
 function MetricCard({ label, value, hint, icon: Icon, className }) {
   return <div className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><div><p className="text-xs text-gray-500">{label}</p><p className={`mt-1 text-2xl font-bold ${className || "text-gray-900"}`}>{value}</p>{hint && <p className="mt-1 text-[11px] text-gray-400">{hint}</p>}</div><div className="rounded-xl bg-gray-50 p-2"><Icon className="h-5 w-5 text-gray-500" /></div></div></div>;
@@ -37,8 +38,8 @@ export default function ShiftDelivery() {
   const today = localDate();
   const overview = useMemo(() => {
     const todayRows = deliveries.filter((delivery) => delivery.shift_date === today);
-    const pending = deliveries.filter((delivery) => !["approved", "reviewed"].includes(delivery.treasury_status || "pending")).length;
-    const approvedToday = todayRows.filter((delivery) => ["approved", "reviewed"].includes(delivery.treasury_status || "pending")).length;
+    const pending = deliveries.filter((delivery) => !APPROVED_TREASURY_STATUSES.has(delivery.treasury_status || "pending")).length;
+    const approvedToday = todayRows.filter((delivery) => APPROVED_TREASURY_STATUSES.has(delivery.treasury_status || "pending")).length;
     const todayNet = todayRows.reduce((sum, delivery) => sum + Number(delivery.net_amount || 0), 0);
     const expectedShifts = 6;
     return { todayCount: todayRows.length, missingToday: Math.max(0, expectedShifts - todayRows.length), pending, approvedToday, todayNet };
@@ -63,9 +64,7 @@ export default function ShiftDelivery() {
 
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">تعذر تحميل تسليمات الشيفت: {error.message}</div>}
 
-    <div className="flex items-center gap-1 overflow-x-auto border-b bg-white px-2">
-      {tabs.map((tab) => <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={cn("whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors", activeTab === tab.key ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-800")}>{tab.label}{tab.key === "history" && overview.pending > 0 && <span className="mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{overview.pending}</span>}</button>)}
-    </div>
+    <div className="flex items-center gap-1 overflow-x-auto border-b bg-white px-2">{tabs.map((tab) => <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={cn("whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors", activeTab === tab.key ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-800")}>{tab.label}{tab.key === "history" && overview.pending > 0 && <span className="mr-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{overview.pending}</span>}</button>)}</div>
 
     {activeTab === "new" && <ShiftDeliveryForm onSaved={async () => { await refetch(); if (canViewAll) setActiveTab("history"); }} />}
     {activeTab === "history" && canViewAll && <ShiftDeliveryHistory deliveries={deliveries} onNewShift={() => setActiveTab("new")} />}
