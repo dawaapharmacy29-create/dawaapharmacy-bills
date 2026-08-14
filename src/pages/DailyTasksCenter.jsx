@@ -7,6 +7,22 @@ import { Button } from '@/components/ui/button';
 import { useUserRole } from '@/lib/useUserRole';
 
 const fmt = (value) => Number(value || 0).toLocaleString('ar-EG');
+const localDateKey = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+const consistencyRange = () => {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - 30);
+  return { date_from: localDateKey(from), date_to: localDateKey(to) };
+};
+const CLOSED_CUSTOMER_ORDER_STATUSES = new Set([
+  'completed', 'delivered', 'cancelled', 'closed', 'تم', 'ملغي',
+  'تم التوصيل', 'تم الإلغاء', 'ملغى', 'مغلق',
+]);
 
 const TASKS = [
   {
@@ -46,12 +62,12 @@ const TASKS = [
   {
     key: 'customerOrders',
     title: 'طلبات عملاء مفتوحة',
-    description: 'طلبات لم تُغلق أو تُلغَ بعد.',
+    description: 'طلبات تحتاج إجراء فعلي ولم تُسلّم أو تُلغَ بعد.',
     path: '/customer-orders',
     icon: ShoppingBag,
     query: async () => {
       const rows = await base44.entities.CustomerOrder.list('-created_at', 1000, 0);
-      return rows.filter((row) => !['completed', 'delivered', 'cancelled', 'closed', 'تم', 'ملغي'].includes(String(row.status || '').toLowerCase()));
+      return rows.filter((row) => !CLOSED_CUSTOMER_ORDER_STATUSES.has(String(row.status || '').trim().toLowerCase()));
     },
     count: (data) => Array.isArray(data) ? data.length : 0,
     priority: 'normal',
@@ -64,7 +80,7 @@ const TASKS = [
     icon: Receipt,
     query: async () => {
       const rows = await base44.entities.Expense.list('-expense_date', 1000, 0);
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateKey();
       return rows.filter((row) => String(row.expense_date || row.created_at || '').slice(0, 10) === today);
     },
     count: (data) => Array.isArray(data) ? data.length : 0,
@@ -98,9 +114,10 @@ export default function DailyTasksCenter() {
   const { isAdmin, isManager } = useUserRole();
   const allowedTasks = TASKS.filter((task) => !task.managersOnly || isAdmin || isManager);
   const results = useQueries({ queries: allowedTasks.map((task) => ({ queryKey: ['daily-tasks', task.key], queryFn: task.query, staleTime: 30000, retry: 1 })) });
+  const range = consistencyRange();
   const consistency = useQueries({ queries: [
-    { queryKey: ['daily-tasks', 'dashboard-consistency'], queryFn: () => performanceApi.dashboard({ branch: 'all' }), staleTime: 30000, retry: 1 },
-    { queryKey: ['daily-tasks', 'invoice-consistency'], queryFn: () => performanceApi.invoices({ branch: 'all', page: 1, page_size: 1 }), staleTime: 30000, retry: 1 },
+    { queryKey: ['daily-tasks', 'dashboard-consistency', range.date_from, range.date_to], queryFn: () => performanceApi.dashboard({ branch: 'all', ...range }), staleTime: 30000, retry: 1 },
+    { queryKey: ['daily-tasks', 'invoice-consistency', range.date_from, range.date_to], queryFn: () => performanceApi.invoices({ branch: 'all', ...range, page: 1, page_size: 1 }), staleTime: 30000, retry: 1 },
   ] });
   const dashboardCount = Number(consistency[0].data?.invoice_count || 0);
   const listCount = Number(consistency[1].data?.total || consistency[1].data?.total_count || consistency[1].data?.count || 0);
@@ -117,11 +134,11 @@ export default function DailyTasksCenter() {
 
     <div className="grid gap-3 md:grid-cols-3">
       <Card className="p-5"><div className="flex items-center gap-3"><ClipboardList className="h-7 w-7 text-teal-700" /><div><p className="text-xs text-slate-500">إجمالي المهام المفتوحة</p><p className="text-3xl font-bold">{fmt(totalTasks)}</p></div></div></Card>
-      <Card className={`p-5 ${consistencyReady && !matched ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`}><div className="flex items-center gap-3">{matched ? <CheckCircle2 className="h-7 w-7 text-emerald-600" /> : <AlertTriangle className="h-7 w-7 text-red-600" />}<div><p className="text-xs text-slate-500">اتساق عدد الفواتير</p><p className="text-lg font-bold">{!consistencyReady ? 'جاري الفحص' : matched ? 'متطابق' : `فرق ${fmt(dashboardCount - listCount)}`}</p></div></div></Card>
-      <Card className="p-5"><div className="flex items-center gap-3"><WalletCards className="h-7 w-7 text-teal-700" /><div><p className="text-xs text-slate-500">عدد الداشبورد / القائمة</p><p className="text-lg font-bold">{fmt(dashboardCount)} / {fmt(listCount)}</p></div></div></Card>
+      <Card className={`p-5 ${consistencyReady && !matched ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`}><div className="flex items-center gap-3">{matched ? <CheckCircle2 className="h-7 w-7 text-emerald-600" /> : <AlertTriangle className="h-7 w-7 text-red-600" />}<div><p className="text-xs text-slate-500">اتساق عدد الفواتير — آخر 30 يوم</p><p className="text-lg font-bold">{!consistencyReady ? 'جاري الفحص' : matched ? 'متطابق' : `فرق ${fmt(dashboardCount - listCount)}`}</p></div></div></Card>
+      <Card className="p-5"><div className="flex items-center gap-3"><WalletCards className="h-7 w-7 text-teal-700" /><div><p className="text-xs text-slate-500">الداشبورد / القائمة — نفس الفترة</p><p className="text-lg font-bold">{fmt(dashboardCount)} / {fmt(listCount)}</p></div></div></Card>
     </div>
 
-    {!matched && consistencyReady && <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">تم اكتشاف اختلاف بين ملخص الداشبورد وقائمة الفواتير. لم يتم تعديل أي بيانات؛ راجع صفحة حالة النظام ومزامنة Base44.</Card>}
+    {!matched && consistencyReady && <Card className="border-red-200 bg-red-50 p-4 text-sm text-red-700">تم اكتشاف اختلاف حقيقي داخل نفس فترة المقارنة ({range.date_from} → {range.date_to}). لم يتم تعديل أي بيانات.</Card>}
 
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{allowedTasks.map((task, index) => <TaskCard key={task.key} task={task} result={results[index]} />)}</div>
   </div>;
