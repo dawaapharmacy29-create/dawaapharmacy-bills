@@ -48,6 +48,14 @@ export const smartPurchaseUnifiedApi = {
   updateItem: (payload) => rpc('update_item', payload),
   updateItems: (orderId, items) => rpc('update_items', { order_id: orderId, items }),
   updateOrderTitle: (orderId, title) => standaloneRpc('smart_purchase_update_order_title', { p_order_id: orderId, p_title: title }),
+  cycleBudgetGuard: (branch = 'all') => standaloneRpc('smart_purchase_cycle_budget_guard', { p_branch: branch }),
+  setCycleBudget: ({ branch, cycleBudget, reservePercent = 20, reserveDays = 8, warningPercent = 85 }) => standaloneRpc('smart_purchase_set_cycle_budget', {
+    p_branch: branch,
+    p_cycle_budget: Number(cycleBudget || 0),
+    p_reserve_percent: Number(reservePercent || 20),
+    p_reserve_days: Number(reserveDays || 8),
+    p_warning_percent: Number(warningPercent || 85),
+  }),
   approveOrder: async (orderId) => {
     try { return await standaloneRpc('smart_purchase_approve_without_supplier', { p_order_id: orderId }); }
     catch (error) {
