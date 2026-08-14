@@ -62,6 +62,7 @@ export const smartPurchaseUnifiedApi = {
   }),
   supplierDecision: (orderId) => standaloneRpc('smart_purchase_supplier_decision_v1', { p_order_id: orderId }),
   supplierOfferHealth: () => standaloneRpc('smart_purchase_supplier_offer_health_v1', {}),
+  supplierPerformance: (branch = 'all') => standaloneRpc('smart_purchase_supplier_performance_v1', { p_branch: branch }),
   importSupplierOffers: ({ fileName, rows }) => standaloneRpc('smart_purchase_import_supplier_offers_v1', {
     p_source_file_name: fileName || 'manual-import',
     p_rows: rows || [],
