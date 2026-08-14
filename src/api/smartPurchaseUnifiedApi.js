@@ -61,6 +61,7 @@ export const smartPurchaseUnifiedApi = {
     p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
   }),
   supplierDecision: (orderId) => standaloneRpc('smart_purchase_supplier_decision_v2', { p_order_id: orderId }),
+  supplierAllocationPlan: (orderId) => standaloneRpc('smart_purchase_supplier_allocation_plan_v1', { p_order_id: orderId }),
   supplierOfferHealth: () => standaloneRpc('smart_purchase_supplier_offer_health_v1', {}),
   supplierPerformance: (branch = 'all') => standaloneRpc('smart_purchase_supplier_performance_v1', { p_branch: branch }),
   importSupplierOffers: ({ fileName, rows }) => standaloneRpc('smart_purchase_import_supplier_offers_v1', {
