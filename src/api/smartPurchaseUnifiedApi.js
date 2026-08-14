@@ -60,6 +60,7 @@ export const smartPurchaseUnifiedApi = {
     p_branch: branch,
     p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
   }),
+  supplierDecision: (orderId) => standaloneRpc('smart_purchase_supplier_decision_v1', { p_order_id: orderId }),
   captureClearancePlan: (branch = 'all') => standaloneRpc('smart_purchase_clearance_capture_plan_v1', { p_branch: branch }),
   clearanceOutcomes: (branch = 'all') => standaloneRpc('smart_purchase_clearance_outcomes_v1', { p_branch: branch }),
   importInventoryIntelligence: ({ branch, rows }) => standaloneRpc('smart_purchase_inventory_intelligence_import', { p_branch: branch, p_rows: rows }),

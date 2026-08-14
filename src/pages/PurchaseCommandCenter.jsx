@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react';
 import PurchaseExecutiveDecisionCenter from '@/components/purchases/PurchaseExecutiveDecisionCenter';
 import PurchaseDecisionDailyChange from '@/components/purchases/PurchaseDecisionDailyChange';
 import SafePurchaseDraftBuilder from '@/components/purchases/SafePurchaseDraftBuilder';
+import SupplierDecisionAdvisor from '@/components/purchases/SupplierDecisionAdvisor';
 import PurchaseCycleBudgetGuard from '@/components/purchases/PurchaseCycleBudgetGuard';
 import InventoryCapitalCommandCenter from '@/components/purchases/InventoryCapitalCommandCenter';
 import InventoryIntelligenceImport from '@/components/purchases/InventoryIntelligenceImport';
@@ -27,6 +28,10 @@ export default function PurchaseCommandCenter() {
 
     <DetailSection id="purchase-order-workspace" title="تنفيذ الطلبية" description="بعد ما تفهم قرار اليوم أو تنشئ مسودة آمنة، ابدأ من هنا لمراجعة الأصناف والكميات والموردين." open>
       <SmartPurchaseUnifiedCenter />
+    </DetailSection>
+
+    <DetailSection id="purchase-supplier-advisor" title="مستشار اختيار المورد" description="قارن تكلفة المورد الحقيقية بعد البونص مع MOQ والتوافر ومدة التوريد وأجل السداد قبل الاعتماد.">
+      <SupplierDecisionAdvisor />
     </DetailSection>
 
     <DetailSection id="purchase-budget-details" title="تفاصيل ميزانية الدورة" description="المصروف، الالتزامات، الاحتياطي، المسار الزمني وتوقع نهاية الدورة.">
