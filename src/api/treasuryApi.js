@@ -94,6 +94,7 @@ export const treasuryApi = {
     p_limit: limit,
     p_offset: offset,
   }),
+  shiftSalesSourceStatus: () => postRpc('treasury_sales_source_status', {}),
   syncShifts: () => rpc('treasury_center', 'sync_shifts'),
   manualTransaction: (payload) => rpc('treasury_center', 'manual_transaction', payload),
   createTransfer: (payload) => rpc('treasury_center', 'create_transfer', payload),
