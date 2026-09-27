@@ -742,7 +742,7 @@ export default function SmartPurchaseUnifiedCenter() {
         </div>}
         {orderPolicyGuard.blocked && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">لا يمكن اعتماد الطلبية: القيمة الحالية أعلى من الحد المالي بمقدار {money(Math.max(0, totals.total - orderPolicyGuard.maximum))} ج.</div>}
         {orderPolicyGuard.warning && !orderPolicyGuard.below_minimum && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">تنبيه: تم استخدام {money(orderPolicyGuard.usage_percent)}% من الحد المالي المحدد.</div>}
-        {['معتمدة', 'تم الإرسال للمورد'].includes(status) && supplierDispatches.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+        {['معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا'].includes(status) && supplierDispatches.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
           <div>
             <h3 className="font-bold text-indigo-950">إرسال الطلبية للموردين</h3>
             <p className="text-xs text-indigo-700 mt-1">كل مورد له ملف مستقل وحالة إرسال مستقلة. تتحول الطلبية كلها إلى “تم الإرسال للمورد” فقط بعد تسجيل إرسال كل الموردين.</p>
