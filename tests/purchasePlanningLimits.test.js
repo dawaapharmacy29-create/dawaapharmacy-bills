@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { calculatePurchaseNeed } from '../src/lib/purchasePlanning.js';
+import { buildBudgetPlan, calculatePurchaseNeed } from '../src/lib/purchasePlanning.js';
 
 test('purchase planning raises a real need to the configured item minimum', () => {
   const row = {
@@ -41,4 +41,38 @@ test('item minimum never creates demand when calculated need is zero', () => {
   assert.equal(result.raw_suggested_quantity, 0);
   assert.equal(result.suggested_quantity, 0);
   assert.equal(result.purchase_limit_status, 'not_needed');
+});
+
+
+test('budget allocation protects the configured item minimum when possible', () => {
+  const rows = [{
+    id: 'a',
+    product_name: 'Protected Item',
+    approved_quantity: 10,
+    requested_quantity: 10,
+    expected_unit_cost: 10,
+    minimum_order_quantity: 4,
+    current_stock: 0,
+    sales_30: 30,
+  }];
+  const plan = buildBudgetPlan(rows, 45);
+  assert.equal(plan.rows[0].approved_quantity, 4);
+  assert.equal(plan.rows[0].protected_minimum_quantity, 4);
+  assert.equal(plan.protected_items_unmet, 0);
+});
+
+test('budget allocation reports an unmet configured minimum instead of hiding it', () => {
+  const rows = [{
+    id: 'a',
+    product_name: 'Protected Item',
+    approved_quantity: 10,
+    requested_quantity: 10,
+    expected_unit_cost: 10,
+    minimum_order_quantity: 4,
+    current_stock: 0,
+    sales_30: 30,
+  }];
+  const plan = buildBudgetPlan(rows, 30);
+  assert.equal(plan.protected_items_unmet, 1);
+  assert.equal(plan.rows[0].protected_minimum_met, false);
 });
