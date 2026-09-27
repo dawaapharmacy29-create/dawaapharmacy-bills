@@ -1,3 +1,5 @@
+import { applyItemPurchaseLimits } from './purchasePolicyEngine.js';
+
 const toNumber = (value) => {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -59,7 +61,9 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
   const availableStock = currentStock + pendingIncoming;
   const averageDaily = estimateDailyUsage(row);
   const targetStock = Math.max(0, Math.ceil(averageDaily * targetDays));
-  const suggestedQuantity = Math.max(0, targetStock - availableStock);
+  const rawSuggestedQuantity = Math.max(0, targetStock - availableStock);
+  const limitDecision = applyItemPurchaseLimits(rawSuggestedQuantity, row);
+  const suggestedQuantity = limitDecision.blocked ? rawSuggestedQuantity : limitDecision.quantity;
   const projectedStock = availableStock + suggestedQuantity;
   const projectedCoverageDays = averageDaily > 0 ? projectedStock / averageDaily : 0;
 
@@ -72,7 +76,14 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
     target_coverage_days: targetDays,
     target_stock: targetStock,
     available_stock: availableStock,
+    raw_suggested_quantity: rawSuggestedQuantity,
     suggested_quantity: suggestedQuantity,
+    item_minimum_quantity: limitDecision.minimum,
+    item_maximum_quantity: limitDecision.maximum,
+    purchase_limit_status: limitDecision.status,
+    purchase_limit_adjusted: limitDecision.adjusted,
+    purchase_limit_blocked: limitDecision.blocked,
+    purchase_limit_reasons: limitDecision.reasons,
     projected_stock: projectedStock,
     projected_coverage_days: projectedCoverageDays,
     expected_discount: toNumber(row.expected_discount) > 0 ? Math.min(100, toNumber(row.expected_discount)) : 20,
