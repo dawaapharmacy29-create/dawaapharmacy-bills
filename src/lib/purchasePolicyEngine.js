@@ -17,7 +17,6 @@ export function resolveItemPurchaseLimits(item = {}) {
     item.min_order_quantity,
     item.item_min_quantity,
     item.min_quantity,
-    item.moq_quantity,
   ]));
   const maximum = Math.max(0, firstPositive([
     item.maximum_order_quantity,
