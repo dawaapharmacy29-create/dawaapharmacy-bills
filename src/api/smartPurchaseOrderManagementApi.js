@@ -49,6 +49,7 @@ async function directRpc(functionName, body = {}) {
       items_without_cost: 'يوجد أصناف بكميات معتمدة بدون تكلفة شراء. راجع التكلفة قبل الاعتماد.',
       supplier_plan_invalid_offer: 'بعض عروض الموردين لم تعد صالحة أو لا تطابق الصنف.',
       supplier_plan_quantity_violation: 'اختيار المورد المقترح يخالف حد الصنف أو MOQ أو الكمية المتاحة.',
+      supplier_plan_policy_violation: 'اختيار المورد يخالف سياسة الصنف أو MOQ أو مضاعف العبوة أو التوافر أو السعر.',
     };
     const code = data?.error || data?.message;
     const extra = data?.data?.minimum_possible_total ? ` الحد الأدنى الآمن: ${Number(data.data.minimum_possible_total).toLocaleString('ar-EG')} ج.` : '';
@@ -141,7 +142,7 @@ export const smartPurchaseOrderManagementApi = {
     p_minimum_order_value: Number(minimumOrderValue || 0),
     p_maximum_order_value: Number(maximumOrderValue || 0),
   }),
-  applySupplierPlan: (orderId, items) => directRpc('smart_purchase_apply_supplier_plan_cost_guarded_v2', {
+  applySupplierPlan: (orderId, items) => directRpc('smart_purchase_apply_supplier_plan_policy_guarded_v2', {
     p_order_id: orderId,
     p_items: items,
   }),
