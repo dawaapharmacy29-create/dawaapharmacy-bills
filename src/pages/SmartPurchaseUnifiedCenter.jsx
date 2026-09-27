@@ -47,7 +47,7 @@ const normStatus = (status) => STATUS_ALIASES[String(status || '').trim()] || st
 const FIELD_LABELS = {
   product_code: 'كود الصنف', product_name: 'اسم الصنف', current_stock: 'الرصيد الحالي',
   sales_30: 'مبيعات آخر 30 يوم', sales_60: 'مبيعات آخر 60 يوم', sales_90: 'مبيعات آخر 90 يوم',
-  avg_daily_usage: 'متوسط الاستهلاك اليومي', last_purchase_price: 'آخر سعر شراء',
+  avg_daily_usage: 'متوسط الاستهلاك اليومي', last_sale_date: 'تاريخ آخر بيع', last_purchase_price: 'آخر سعر شراء',
   pending_incoming: 'الكمية المنتظر وصولها',
   minimum_order_quantity: 'الحد الأدنى للصنف',
   maximum_order_quantity: 'الحد الأقصى للصنف',
@@ -61,6 +61,7 @@ const ALIASES = {
   sales_60: ['مبيعات 60 يوم', 'مبيعات 60', 'sales 60', 'sales_60'],
   sales_90: ['مبيعات 90 يوم', 'مبيعات 90', 'sales 90', 'sales_90'],
   avg_daily_usage: ['متوسط الاستهلاك اليومي', 'متوسط الاستهلاك', 'avg daily usage', 'daily average'],
+  last_sale_date: ['تاريخ آخر بيع', 'اخر بيع', 'آخر بيع', 'last sale date', 'last sale'],
   last_purchase_price: ['آخر سعر شراء', 'سعر الشراء', 'السعر', 'purchase price', 'cost', 'price'],
   pending_incoming: ['كمية منتظر وصولها', 'منتظر وصول', 'pending incoming', 'incoming qty', 'on order'],
   minimum_order_quantity: ['الحد الأدنى للصنف', 'حد أدنى', 'اقل كمية', 'أقل كمية', 'internal minimum quantity', 'min purchase qty', 'min qty'],
@@ -87,6 +88,20 @@ function autoMapping(headers) {
     mapping.sales_90 = months[2] || '';
   }
   return mapping;
+}
+function normalizeDateValue(value) {
+  if (!value) return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number' && value > 0) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+  }
+  const text = String(value).trim();
+  const iso = text.match(/^(20\d{2})[-\/]([01]?\d)[-\/]([0-3]?\d)$/);
+  if (iso) return `${iso[1]}-${String(iso[2]).padStart(2, '0')}-${String(iso[3]).padStart(2, '0')}`;
+  const dmy = text.match(/^([0-3]?\d)[-\/]([01]?\d)[-\/](20\d{2})$/);
+  if (dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`;
+  return '';
 }
 function itemPrice(item) { return referenceUnitPrice(item); }
 function itemDiscount(item) { return explicitDiscountPercent(item); }
@@ -224,6 +239,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [creationTitle, setCreationTitle] = useState('');
   const [editingTitle, setEditingTitle] = useState('');
   const [coverageDays, setCoverageDays] = useState(7);
+  const [financialMode, setFinancialMode] = useState('medium');
+  const [demandTransferPreview, setDemandTransferPreview] = useState(null);
   const [creationMinimum, setCreationMinimum] = useState('');
   const [creationBudget, setCreationBudget] = useState('');
   const [fileName, setFileName] = useState('');
@@ -358,6 +375,7 @@ export default function SmartPurchaseUnifiedCenter() {
         pending_incoming: Math.max(0, number(row[nextMapping.pending_incoming])),
         sales_30: sales30, sales_60: sales60, sales_90: sales90,
         avg_daily_usage: number(row[nextMapping.avg_daily_usage]),
+        last_sale_date: normalizeDateValue(row[nextMapping.last_sale_date]),
         last_purchase_price: number(row[nextMapping.last_purchase_price]),
         minimum_order_quantity: Math.max(0, number(row[nextMapping.minimum_order_quantity])),
         maximum_order_quantity: Math.max(0, number(row[nextMapping.maximum_order_quantity])),
@@ -396,6 +414,21 @@ export default function SmartPurchaseUnifiedCenter() {
     const all = loadMappings(); all[signature(headers)] = mapping;
     localStorage.setItem(MAPPING_KEY, JSON.stringify(all)); setMappingSource('تم حفظ القالب على هذا الجهاز');
   }
+  async function runDemandTransferPreview() {
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const result = await unified.demandTransferPreview(branch, financialMode);
+      setDemandTransferPreview(result || null);
+      const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
+      setCoverageDays(days);
+      setMessage(`تم تحليل الاحتياج على تغطية ${days} يوم مع فحص فائض الفرع الآخر قبل الشراء.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function saveCurrentBranchPolicy() {
     setLoading(true); setError(''); setMessage('');
     try {
@@ -695,11 +728,46 @@ export default function SmartPurchaseUnifiedCenter() {
       <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <label className="text-sm">اسم الطلبية<input type="text" maxLength="120" value={creationTitle} onChange={(event) => setCreationTitle(event.target.value)} placeholder="مثال: طلبية أول أغسطس — فرع الشامي" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">اسم واضح للمراجعة والبحث، والكود المرجعي سيظهر تحته.</span></label>
         <label className="text-sm">الفرع<select value={branch} onChange={(event) => setBranch(event.target.value)} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="text-sm">التغطية النهائية المطلوبة بالأيام<input type="number" min="1" value={coverageDays} onChange={(event) => setCoverageDays(Math.max(1, number(event.target.value)))} className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">تشمل الرصيد الحالي والمنتظر والطلبية.</span></label>
+        <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { const mode = event.target.value; setFinancialMode(mode); setCoverageDays(mode === 'critical' ? 7 : mode === 'comfortable' ? 30 : 14); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="critical">حرج — 7 أيام</option><option value="medium">متوسط — 14 يوم</option><option value="comfortable">مريح — 30 يوم</option></select><span className="text-[11px] text-slate-500">يحدد التغطية المستهدفة قبل توزيع الميزانية.</span></label>
+        <label className="text-sm">التغطية النهائية المطلوبة بالأيام<input type="number" min="1" value={coverageDays} onChange={(event) => { setCoverageDays(Math.max(1, number(event.target.value))); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمكن تعديلها يدويًا بعد اختيار الوضع المالي.</span></label>
         <label className="text-sm">الحد الأدنى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationMinimum} onChange={(event) => setCreationMinimum(event.target.value)} placeholder="مثال: 10000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمنع إنشاء طلبية أصغر من الحد التشغيلي.</span></label>
         <label className="text-sm">الحد الأقصى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يوزع الكميات داخل السقف المالي.</span></label>
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={loading} onClick={runDemandTransferPreview} className="rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 font-bold text-indigo-800 disabled:opacity-50">تحليل ذكي قبل الشراء</button>
+        <span className="text-xs text-slate-500">يقارن حركة ورصيد الفرعين ويخصم التحويل الداخلي الآمن قبل اقتراح الشراء.</span>
+      </div>
+      {demandTransferPreview?.plan?.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h3 className="font-bold">نتيجة ذكاء الطلبية قبل الشراء</h3><p className="text-xs text-slate-500 mt-1">تغطية {demandTransferPreview.target_coverage_days} يوم • التحويل الداخلي يُخصم قبل الشراء.</p></div>
+          <div className="text-sm font-bold">شراء مقترح: {number(demandTransferPreview.summary?.suggested_buy_units)} وحدة • {money(demandTransferPreview.summary?.suggested_buy_value)} ج</div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+          {[
+            ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
+            ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
+            ['شراء مباشر', demandTransferPreview.summary?.buy_items || 0],
+            ['موقوف بسبب الركود', demandTransferPreview.summary?.blocked_deadstock_items || 0],
+          ].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
+        </div>
+        <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1050px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف','الرصيد','متوسط/يوم','التغطية','المستهدف','الاحتياج','تحويل من فرع آخر','شراء','التصنيف','القرار'].map((head)=><th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>
+          {demandTransferPreview.plan.filter((row) => number(row.gross_need) > 0 || ['do_not_buy','slow_mover','deadstock'].includes(String(row.movement_class))).slice(0, 80).map((row) => <tr key={row.product_code || row.product_name} className="border-t">
+            <td className="p-2 font-semibold">{row.product_name}<div className="text-[11px] text-slate-400">{row.product_code || ''}</div></td>
+            <td className="p-2">{number(row.current_stock)}</td>
+            <td className="p-2">{number(row.usage_per_day).toFixed(2)}</td>
+            <td className="p-2">{row.coverage_days == null ? '—' : `${number(row.coverage_days).toFixed(1)} يوم`}</td>
+            <td className="p-2">{number(row.target_stock)}</td>
+            <td className="p-2 font-bold">{number(row.gross_need)}</td>
+            <td className="p-2">{number(row.suggested_transfer_qty) > 0 ? `${number(row.suggested_transfer_qty)} من ${row.transfer_from_branch || 'الفرع الآخر'}` : '—'}</td>
+            <td className="p-2 font-bold">{number(row.buy_quantity)}</td>
+            <td className="p-2">{row.movement_class}</td>
+            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy' ? 'شراء' : row.decision === 'do_not_buy' ? 'لا شراء — راكد' : 'الرصيد كافٍ'}</td>
+          </tr>)}
+        </tbody></table></div>
+      </section>}
+
+
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
         <span>{policiesLoading ? 'جاري تحميل سياسات الأصناف…' : `سياسات أصناف محفوظة: ${productPolicies.length}`}</span>
         <span>{branchPolicyLoading ? 'جاري تحميل سياسة الطلبية…' : branchPolicy ? 'تم تطبيق افتراضي الفرع على الطلبية الجديدة' : 'لا يوجد افتراضي محفوظ للطلبية'}</span>
