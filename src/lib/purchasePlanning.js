@@ -1,19 +1,10 @@
 import { applyItemPurchaseLimits } from './purchasePolicyEngine.js';
+import { explicitDiscountPercent, purchaseUnitCost } from './purchasePricing.js';
 
 const toNumber = (value) => {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
 };
-
-function discountPercent(item = {}) {
-  const value = toNumber(item.expected_discount);
-  return value > 0 ? Math.min(100, value) : 20;
-}
-
-function netPurchasePrice(item = {}) {
-  const publicPrice = Math.max(0, toNumber(item.expected_unit_cost || item.last_purchase_price));
-  return publicPrice * (1 - (discountPercent(item) / 100));
-}
 
 export function normalizeProductKey(row = {}) {
   const code = String(row.product_code || '').trim();
@@ -86,7 +77,7 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
     purchase_limit_reasons: limitDecision.reasons,
     projected_stock: projectedStock,
     projected_coverage_days: projectedCoverageDays,
-    expected_discount: toNumber(row.expected_discount) > 0 ? Math.min(100, toNumber(row.expected_discount)) : 20,
+    expected_discount: explicitDiscountPercent(row),
     calculation_method: 'unified_final_coverage_v6_slow_mover_guard',
   };
 }
@@ -164,7 +155,7 @@ function marginalPriority(item,current) {
 
 export function buildBudgetPlan(rows=[],budgetValue=0) {
   const budget=Math.max(0,toNumber(budgetValue));
-  const source=rows.map((item)=>{const price=netPurchasePrice(item);const desired=Math.max(0,Math.floor(toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity)));return {...item,price,desired};}).filter((item)=>item.price>0&&item.desired>0);
+  const source=rows.map((item)=>{const price=purchaseUnitCost(item);const desired=Math.max(0,Math.floor(toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity)));return {...item,price,desired};}).filter((item)=>item.price>0&&item.desired>0);
   const fullTargetTotal=source.reduce((sum,item)=>sum+item.desired*item.price,0);
   const quantities=new Map(source.map((item)=>[item.id||normalizeProductKey(item),0]));
   let remaining=budget;
@@ -176,7 +167,7 @@ export function buildBudgetPlan(rows=[],budgetValue=0) {
     moved=true;
     while(moved&&remaining>0){moved=false;const candidates=source.map((item)=>{const key=item.id||normalizeProductKey(item);const current=quantities.get(key)||0;const priority=marginalPriority(item,current);return {...item,key,current,priority,valueScore:priority/Math.max(1,Math.sqrt(item.price))};}).filter((item)=>item.current<item.desired&&item.price<=remaining).sort((a,b)=>b.valueScore-a.valueScore||b.priority-a.priority||a.price-b.price);if(!candidates.length) break;const best=candidates[0];quantities.set(best.key,best.current+1);remaining-=best.price;moved=true;}
   }
-  const plannedRows=rows.map((item)=>{const key=item.id||normalizeProductKey(item);const approvedQuantity=quantities.get(key)||0;const price=netPurchasePrice(item);const desired=Math.max(0,toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity));const protectedQty=protectedMinimum({...item,desired});return {...item,approved_quantity:approvedQuantity,budget_line_total:approvedQuantity*price,original_desired_quantity:desired,protected_minimum_quantity:protectedQty,protected_minimum_met:approvedQuantity>=protectedQty,budget_reduction_percent:desired>0?Number((((desired-approvedQuantity)/desired)*100).toFixed(1)):0,budget_distribution_method:'protected_priority_marginal_value_v5'};});
+  const plannedRows=rows.map((item)=>{const key=item.id||normalizeProductKey(item);const approvedQuantity=quantities.get(key)||0;const price=purchaseUnitCost(item);const desired=Math.max(0,toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity));const protectedQty=protectedMinimum({...item,desired});return {...item,approved_quantity:approvedQuantity,budget_line_total:approvedQuantity*price,original_desired_quantity:desired,protected_minimum_quantity:protectedQty,protected_minimum_met:approvedQuantity>=protectedQty,budget_reduction_percent:desired>0?Number((((desired-approvedQuantity)/desired)*100).toFixed(1)):0,budget_distribution_method:'protected_priority_marginal_value_v5'};});
   const total=plannedRows.reduce((sum,item)=>sum+toNumber(item.budget_line_total),0);const activeRows=plannedRows.filter((item)=>toNumber(item.approved_quantity)>0);const zeroedRows=plannedRows.filter((item)=>toNumber(item.approved_quantity)===0&&toNumber(item.requested_quantity||item.suggested_quantity)>0);const reducedRows=plannedRows.filter((item)=>toNumber(item.approved_quantity)<toNumber(item.requested_quantity||item.suggested_quantity));const unmet=plannedRows.filter((item)=>!item.protected_minimum_met&&toNumber(item.protected_minimum_quantity)>0);
   return {rows:plannedRows,budget,full_target_total:fullTargetTotal,budget_ratio:fullTargetTotal>0?budget/fullTargetTotal:0,total,remaining:Math.max(0,budget-total),utilization_percent:budget>0?Number(((total/budget)*100).toFixed(1)):0,active_items:activeRows.length,retained_items_percent:source.length?Number(((activeRows.length/source.length)*100).toFixed(1)):0,total_quantity:activeRows.reduce((sum,item)=>sum+toNumber(item.approved_quantity),0),reduced_items:reducedRows.length,zeroed_items:zeroedRows.length,protected_items_unmet:unmet.length,missing_price_items:rows.filter((item)=>toNumber(item.expected_unit_cost||item.last_purchase_price)<=0).length,distribution_method:'protected_priority_marginal_value_v5'};
 }
