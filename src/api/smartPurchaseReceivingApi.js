@@ -29,6 +29,10 @@ async function standaloneReceivingRpc(functionName, body = {}) {
       order_not_closable: 'الطلبية ليست في مرحلة تسمح بالإغلاق.',
       invalid_resolution: 'قرار الاستلام غير صالح.',
       receiving_not_started: 'لا يمكن اتخاذ قرار نهائي قبل تسجيل استلام فعلي على الطلبية.',
+      financial_receipts_unresolved: 'يوجد فواتير مورد لم يتم حسم فروقها المالية بعد.',
+      financial_followup_open: 'يوجد متابعة مالية مفتوحة تمنع إغلاق الطلبية.',
+      invalid_financial_resolution: 'قرار المطابقة المالية غير صالح.',
+      receipt_not_found: 'فاتورة الاستلام غير موجودة.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
@@ -125,6 +129,12 @@ export const smartPurchaseReceivingApi = {
       return data.data;
     });
   },
+  financialReadiness: (orderId) => standaloneReceivingRpc('smart_purchase_financial_close_readiness_v1', { p_order_id: orderId }),
+  resolveReceiptFinancial: (receiptId, resolutionStatus, note = '') => standaloneReceivingRpc('smart_purchase_resolve_receipt_financial_v1', {
+    p_receipt_id: receiptId,
+    p_resolution_status: resolutionStatus,
+    p_note: note,
+  }),
   closeReadiness: (orderId) => standaloneReceivingRpc('smart_purchase_receiving_close_readiness_v1', { p_order_id: orderId }),
   closeOrder: (orderId) => standaloneReceivingRpc('smart_purchase_close_order_v1', { p_order_id: orderId }),
 };
