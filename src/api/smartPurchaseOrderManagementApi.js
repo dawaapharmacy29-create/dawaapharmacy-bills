@@ -34,6 +34,14 @@ async function directRpc(functionName, body = {}) {
       order_not_found: 'الطلبية غير موجودة.',
       invalid_budget: 'أدخل قيمة ميزانية صحيحة أكبر من صفر.',
       budget_below_protected_minimum: 'الميزانية أقل من الحد الأدنى الآمن للأصناف المحمية بطلبات العملاء.',
+      order_min_exceeds_max: 'الحد الأدنى للطلبية لا يمكن أن يكون أكبر من الحد الأقصى.',
+      order_policy_locked: 'لا يمكن تعديل حدود الطلبية بعد الاعتماد أو الإرسال.',
+      order_items_locked: 'لا يمكن تعديل بنود الطلبية بعد الاعتماد أو الإرسال.',
+      item_limits_violation: 'الكمية الجديدة تخالف الحد الأدنى أو الأقصى للصنف.',
+      order_max_exceeded: 'التعديل يرفع الطلبية فوق الحد الأقصى المحدد.',
+      order_below_minimum: 'قيمة الطلبية أقل من الحد الأدنى المحدد.',
+      order_above_maximum: 'قيمة الطلبية أعلى من الحد الأقصى المحدد.',
+      items_without_supplier: 'يوجد أصناف معتمدة بدون مورد.',
     };
     const code = data?.error || data?.message;
     const extra = data?.data?.minimum_possible_total ? ` الحد الأدنى الآمن: ${Number(data.data.minimum_possible_total).toLocaleString('ar-EG')} ج.` : '';
@@ -64,20 +72,22 @@ async function legacyRpc(action, payload = {}) {
 }
 
 async function atomicUpdateItem(payload = {}) {
-  const sessionToken = token();
-  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_apply_budget_plan`, {
-    method: 'POST',
-    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      p_session_token: sessionToken,
-      p_order_id: payload.order_id,
-      p_items: [{ id: payload.id, ...(payload.approved_quantity !== undefined ? { approved_quantity: Number(payload.approved_quantity || 0) } : {}) }],
-    }),
+  if (!payload.order_id || !payload.id) throw new Error('بيانات الصنف أو الطلبية غير مكتملة.');
+  const patch = { id: payload.id };
+  for (const key of [
+    'approved_quantity',
+    'expected_unit_cost',
+    'expected_discount',
+    'supplier_name',
+    'minimum_order_quantity',
+    'maximum_order_quantity',
+  ]) {
+    if (payload[key] !== undefined) patch[key] = payload[key];
+  }
+  return directRpc('smart_purchase_apply_item_plan_v2', {
+    p_order_id: payload.order_id,
+    p_items: [patch],
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) throw new Error(errorText(data?.error || data?.message || data, `فشل تحديث الصنف (${response.status})`));
-  return data.data;
 }
 
 async function fallbackOrders() {
@@ -108,7 +118,13 @@ export const smartPurchaseOrderManagementApi = {
   listOffers: (filters = {}) => legacyRpc('list_offers', filters),
   importOffers: (payload) => legacyRpc('import_offers', payload),
   updateItem: atomicUpdateItem,
-  applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_budget_plan', { p_order_id: orderId, p_items: items }),
+  applyItemPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_v2', { p_order_id: orderId, p_items: items }),
+  applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_v2', { p_order_id: orderId, p_items: items }),
+  setOrderPolicy: (orderId, minimumOrderValue, maximumOrderValue) => directRpc('smart_purchase_set_order_policy_v2', {
+    p_order_id: orderId,
+    p_minimum_order_value: Number(minimumOrderValue || 0),
+    p_maximum_order_value: Number(maximumOrderValue || 0),
+  }),
   optimizeSuppliers: async (orderId) => {
     try { return await legacyRpc('optimize_suppliers', { order_id: orderId }); }
     catch (error) {
@@ -119,5 +135,5 @@ export const smartPurchaseOrderManagementApi = {
   },
   previewBudget: (orderId, targetBudget) => directRpc('smart_purchase_optimize_budget_v2', { p_order_id: orderId, p_target_budget: Number(targetBudget || 0), p_apply: false }),
   applyBudget: (orderId, targetBudget) => directRpc('smart_purchase_optimize_budget_v2', { p_order_id: orderId, p_target_budget: Number(targetBudget || 0), p_apply: true }),
-  approveOrder: (orderId) => smartPurchaseUnifiedApi.approveOrder(orderId),
+  approveOrder: (orderId) => directRpc('smart_purchase_approve_order_v2', { p_order_id: orderId }),
 };
