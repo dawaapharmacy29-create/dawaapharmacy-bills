@@ -39,6 +39,8 @@ const STATUS_ALIASES = {
   invoice_matched: 'تمت مطابقة الفاتورة',
   matched: 'تمت مطابقة الفاتورة',
   closed: 'مغلقة',
+  cancelled: 'ملغاة',
+  canceled: 'ملغاة',
 };
 const normStatus = (status) => STATUS_ALIASES[String(status || '').trim()] || status || 'مسودة';
 
@@ -238,6 +240,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [budgetPreviewVisible, setBudgetPreviewVisible] = useState(false);
   const [supplierDecision, setSupplierDecision] = useState(null);
   const [supplierDispatches, setSupplierDispatches] = useState([]);
+  const [showCancelOrder, setShowCancelOrder] = useState(false);
+  const [cancelOrderReason, setCancelOrderReason] = useState('');
   const [onlyUrgent, setOnlyUrgent] = useState(false);
   const [onlyCustomers, setOnlyCustomers] = useState(false);
   const [hideZero, setHideZero] = useState(true);
@@ -311,7 +315,7 @@ export default function SmartPurchaseUnifiedCenter() {
   }, [branch]);
 
   async function openOrder(id) {
-    setLoading(true); setError(''); setSupplierDecision(null); setMessage(''); setBudgetPreviewVisible(false);
+    setLoading(true); setError(''); setSupplierDecision(null); setMessage(''); setBudgetPreviewVisible(false); setShowCancelOrder(false); setCancelOrderReason('');
     try {
       const detail = await loadHydratedOrder(id);
       setSelected(detail);
@@ -650,8 +654,9 @@ export default function SmartPurchaseUnifiedCenter() {
   const anySupplierSent = supplierDispatches.some((dispatch) => dispatch.sent);
   const statusEditable = ['مسودة', 'تم التحليل'].includes(status);
   const statusReturnable = status === 'معتمدة' && !anySupplierSent;
+  const statusCancelable = ['مسودة', 'تم التحليل', 'معتمدة'].includes(status) && !anySupplierSent;
   const statusReceivable = ['معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا'].includes(status);
-  const stepIndex = Math.max(0, STATUS_STEPS.indexOf(status));
+  const stepIndex = STATUS_STEPS.indexOf(status);
 
   return <div dir="rtl" className="p-3 md:p-4 space-y-4">
     <header className="flex flex-wrap items-start justify-between gap-3">
@@ -768,8 +773,17 @@ export default function SmartPurchaseUnifiedCenter() {
         <div className="flex flex-wrap gap-2">
           {statusEditable && <button onClick={() => run(() => management.approveOrder(selected.order.id), 'تم اعتماد الطلبية وفق حدود الشراء.')} disabled={loading || totals.total <= 0 || orderPolicyGuard.blocked || orderPolicyGuard.below_minimum || orderPolicyGuard.invalid_range || orderItemLimitViolations.length > 0} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" />اعتماد الطلبية</button>}
           {statusReturnable && <button onClick={() => run(() => unified.returnToReview(selected.order.id), 'تمت إعادة الطلبية للمراجعة.')} disabled={loading} className="rounded-lg border border-amber-300 px-4 py-2 disabled:opacity-50">إعادة للمراجعة</button>}
-          {!statusEditable && !statusReturnable && <div className="rounded-lg border bg-slate-50 px-4 py-2 text-sm text-slate-600">{anySupplierSent && status === 'معتمدة' ? 'تم إرسال جزء من الطلبية لمورد واحد على الأقل — تم قفل الرجوع للمراجعة حتى لا تختلف النسخة المرسلة عن النظام.' : `الطلبية في مرحلة ${status} — التعديلات المالية والكميات مقفولة.`}</div>}
+          {statusCancelable && <button type="button" onClick={() => setShowCancelOrder((value) => !value)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50">إلغاء الطلبية</button>}
+          {!statusEditable && !statusReturnable && !statusCancelable && <div className="rounded-lg border bg-slate-50 px-4 py-2 text-sm text-slate-600">{anySupplierSent && status === 'معتمدة' ? 'تم إرسال جزء من الطلبية لمورد واحد على الأقل — تم قفل الرجوع للمراجعة حتى لا تختلف النسخة المرسلة عن النظام.' : `الطلبية في مرحلة ${status} — التعديلات المالية والكميات مقفولة.`}</div>}
         </div>
+        {showCancelOrder && statusCancelable && <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2">
+          <div className="text-sm font-bold text-red-800">إلغاء الطلبية قبل التنفيذ</div>
+          <div className="text-xs text-red-700">الإلغاء لا يحذف البيانات؛ يسجل الحالة القديمة والسبب واسم منفذ القرار في سجل الحالات. لا يمكن الإلغاء بعد إرسال أو استلام أي جزء.</div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input value={cancelOrderReason} onChange={(event) => setCancelOrderReason(event.target.value)} placeholder="سبب الإلغاء — مثال: طلبية قديمة تجريبية / تم استبدالها بطلبية أحدث" className="flex-1 rounded-lg border bg-white p-2 text-sm" />
+            <button type="button" disabled={loading || cancelOrderReason.trim().length < 3} onClick={() => run(() => unified.cancelOrder(selected.order.id, cancelOrderReason.trim()), 'تم إلغاء الطلبية وتسجيل السبب في سجل الحالات.', selected.order.id)} className="rounded-lg bg-red-700 px-4 py-2 font-bold text-white disabled:opacity-40">تأكيد الإلغاء</button>
+          </div>
+        </div>}
         <section className="rounded-2xl border bg-white overflow-auto"><table className="min-w-[1940px] w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">المورد</th><th className="p-2 text-right">الرصيد</th><th className="p-2 text-right">المنتظر</th><th className="p-2 text-right">المطلوب</th><th className="p-2 text-right">حد أدنى</th><th className="p-2 text-right">حد أقصى</th><SortableHeader label="المعتمد" field="quantity" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">متوسط يومي</th><th className="p-2 text-right">التغطية النهائية</th><SortableHeader label="السعر المرجعي" field="public_price" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">خصم مرجعي %</th><SortableHeader label="تكلفة الوحدة" field="net_price" sortConfig={sortConfig} onSort={toggleSort} /><SortableHeader label="الإجمالي" field="total" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">طلبات العملاء</th></tr></thead><tbody>{visibleItems.map((item) => <tr key={item.id} className="border-t"><td className="p-2"><div className="font-semibold">{item.product_name}</div><div className="text-xs text-slate-400">{item.product_code || 'بدون كود'}</div></td><td className="p-2"><input type="text" defaultValue={item.supplier_name || ''} disabled={!statusEditable} placeholder="اختر/اكتب المورد" onBlur={(event) => { const value = String(event.target.value || '').trim(); if (value !== String(item.supplier_name || '').trim()) run(() => updateOne(item, { supplier_name: value }), value ? 'تم تحديث مورد الصنف.' : 'تم مسح مورد الصنف.'); }} className="w-40 rounded-lg border p-2 disabled:bg-slate-100" />{item.supplier_reason && <div className="mt-1 max-w-[170px] text-[11px] text-slate-400">{item.supplier_reason}</div>}</td><td className="p-2">{number(item.current_stock)}</td><td className="p-2">{number(item.pending_incoming)}</td><td className="p-2">{number(item.requested_quantity)}</td><td className="p-2"><input type="number" min="0" defaultValue={number(item.minimum_order_quantity)} disabled={!statusEditable} onBlur={(event) => { const value = Math.max(0, Math.floor(number(event.target.value))); if (value !== number(item.minimum_order_quantity)) run(() => updateOne(item, { minimum_order_quantity: value }), 'تم تحديث الحد الأدنى للصنف.'); }} className="w-20 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min="0" defaultValue={number(item.maximum_order_quantity)} disabled={!statusEditable} onBlur={(event) => { const value = Math.max(0, Math.floor(number(event.target.value))); if (value !== number(item.maximum_order_quantity)) run(() => updateOne(item, { maximum_order_quantity: value }), 'تم تحديث الحد الأقصى للصنف.'); }} className="w-20 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min={number(item.minimum_order_quantity) || 0} max={number(item.maximum_order_quantity) || undefined} defaultValue={item.approved_quantity} disabled={!statusEditable} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.approved_quantity)) run(() => updateOne(item, { approved_quantity: value }), 'تم تحديث الكمية.'); }} className="w-20 rounded-lg border p-2 font-bold" /></td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs ${finalCoverage(item) < 3 ? 'bg-red-50 text-red-700' : finalCoverage(item) > 14 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{finalCoverage(item).toFixed(1)} يوم</span></td><td className="p-2"><div className="font-semibold">{money(itemPrice(item))} ج</div><div className="text-[11px] text-slate-400">مرجع التحليل</div></td><td className="p-2"><input type="number" min="0" max="100" step="0.1" defaultValue={itemDiscount(item)} disabled={!statusEditable} onBlur={(event) => {
   const value = Math.min(100, Math.max(0, number(event.target.value)));
   if (value !== itemDiscount(item)) {
