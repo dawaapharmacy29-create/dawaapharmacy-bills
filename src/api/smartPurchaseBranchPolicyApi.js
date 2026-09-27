@@ -11,7 +11,7 @@ function token() {
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_branch_policy_v2`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_branch_policy_guarded_v2`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
@@ -22,6 +22,7 @@ async function rpc(action, payload = {}) {
       invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
       forbidden: 'لا توجد صلاحية لتعديل سياسة الفرع.',
       branch_required: 'حدد الفرع أولًا.',
+      forbidden_branch: 'لا توجد صلاحية لتعديل سياسة هذا الفرع.',
       order_min_exceeds_max: 'الحد الأدنى للطلبية لا يمكن أن يكون أكبر من الحد الأقصى.',
     };
     const code = data?.error || data?.message;
