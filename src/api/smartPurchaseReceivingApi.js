@@ -37,6 +37,7 @@ async function importReceipt(payload) {
       invalid_rows: 'بيانات الاستلام غير صالحة.',
       forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
       order_not_found: 'الطلبية غير موجودة.',
+      receipt_order_not_ready: 'لا يمكن تسجيل استلام على طلبية غير معتمدة أو غير مرسلة للمورد.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل تسجيل الاستلام (${response.status})`));
