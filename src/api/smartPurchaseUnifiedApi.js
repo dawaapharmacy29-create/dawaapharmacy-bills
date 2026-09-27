@@ -137,7 +137,7 @@ export const smartPurchaseUnifiedApi = {
     p_action: 'list',
     p_payload: { order_id: orderId },
   }),
-  markSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_supplier_dispatch_v2', {
+  markSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v2', {
     p_action: 'mark_supplier_sent',
     p_payload: { order_id: orderId, supplier_name: supplierName },
   }),
