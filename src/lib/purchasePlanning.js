@@ -46,7 +46,8 @@ function hasPriorityException(row = {}) {
 }
 
 export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
-  const targetDays = Math.max(1, toNumber(coverageDays) || 7);
+  const savedTargetDays = Math.max(0, toNumber(row.target_coverage_days));
+  const targetDays = savedTargetDays > 0 ? savedTargetDays : Math.max(1, toNumber(coverageDays) || 7);
   const currentStock = Math.max(0, toNumber(row.current_stock));
   const pendingIncoming = Math.max(0, toNumber(row.pending_incoming));
   const availableStock = currentStock + pendingIncoming;
@@ -78,7 +79,8 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
     projected_stock: projectedStock,
     projected_coverage_days: projectedCoverageDays,
     expected_discount: explicitDiscountPercent(row),
-    calculation_method: 'unified_final_coverage_v6_slow_mover_guard',
+    coverage_policy_source: savedTargetDays > 0 ? 'saved_product_policy' : 'order_default',
+    calculation_method: 'unified_final_coverage_v7_product_policy',
   };
 }
 
