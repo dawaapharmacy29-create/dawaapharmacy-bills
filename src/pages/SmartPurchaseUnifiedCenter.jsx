@@ -474,7 +474,8 @@ export default function SmartPurchaseUnifiedCenter() {
     minimum_order_value: number(creationMinimum),
     maximum_order_value: number(creationBudget),
   }), [creationTotal, creationMinimum, creationBudget]);
-  const openOrderForBranch = (data.orders || []).find((order) => order.branch === branch && ['مسودة', 'تم التحليل', 'معتمدة'].includes(normStatus(order.status)));
+  const planningOrdersForBranch = (data.orders || []).filter((order) => order.branch === branch && ['مسودة', 'تم التحليل', 'معتمدة'].includes(normStatus(order.status)));
+  const openOrderForBranch = planningOrdersForBranch[0] || null;
 
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
@@ -683,7 +684,17 @@ export default function SmartPurchaseUnifiedCenter() {
         <button type="button" onClick={saveCurrentBranchPolicy} disabled={loading || branchPolicyLoading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-blue-700 disabled:opacity-50">حفظ قيم الطلبية كافتراضي للفرع</button>
         {plannedCandidates.length > 0 && <button type="button" onClick={saveCurrentProductPolicies} disabled={loading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-teal-700 disabled:opacity-50">حفظ حدود الأصناف كسياسات دائمة</button>}
       </div>
-      {openOrderForBranch && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع: {openOrderForBranch.order_number}. تم منع إنشاء طلبية موازية حتى اعتمادها وإرسالها.</div>}
+      {planningOrdersForBranch.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+        <div className="font-bold">يوجد {planningOrdersForBranch.length} طلبية في مرحلة التخطيط/الاعتماد للفرع، لذلك تم إيقاف إنشاء طلبية جديدة مؤقتًا.</div>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {planningOrdersForBranch.map((order) => <button type="button" key={order.id} onClick={() => openOrder(order.id)} className="rounded-lg border border-amber-200 bg-white p-2 text-right hover:border-amber-400">
+            <div className="font-bold">{order.title || order.order_number}</div>
+            <div className="text-xs text-slate-500">{order.order_number} • {normStatus(order.status)}</div>
+            <div className="mt-1 font-semibold">{money(order.calculated_total || order.approved_total || order.expected_total)} ج</div>
+          </button>)}
+        </div>
+        <div className="text-xs">افتح الطلبية المناسبة: كمّلها، أرسلها للمورد، أو استخدم «إلغاء الطلبية» بسبب مسجل لو كانت قديمة/متروكة.</div>
+      </div>}
       {headers.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex justify-between gap-2"><div><h3 className="font-bold">ربط الأعمدة</h3><p className="text-xs text-blue-700">{mappingSource}</p></div><button onClick={saveMapping} className="rounded-lg border bg-white px-3 py-2 flex gap-2"><Save className="w-4 h-4" />حفظ القالب</button></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{Object.entries(FIELD_LABELS).map(([field, label]) => <label key={field} className="text-xs font-semibold">{label}{field === 'product_name' && <span className="text-red-600"> *</span>}<select value={mapping[field] || ''} onChange={(event) => changeMapping(field, event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">غير موجود</option>{headers.map((header) => <option key={header}>{header}</option>)}</select></label>)}</div></div>}
       {preview.length > 0 && <>
         <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[
