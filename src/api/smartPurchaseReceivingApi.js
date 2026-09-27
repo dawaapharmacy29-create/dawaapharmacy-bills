@@ -28,6 +28,7 @@ async function standaloneReceivingRpc(functionName, body = {}) {
       receiving_followup_open: 'يوجد أصناف عليها متابعة مفتوحة ولا يمكن إغلاق الطلبية.',
       order_not_closable: 'الطلبية ليست في مرحلة تسمح بالإغلاق.',
       invalid_resolution: 'قرار الاستلام غير صالح.',
+      receiving_not_started: 'لا يمكن اتخاذ قرار نهائي قبل تسجيل استلام فعلي على الطلبية.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
