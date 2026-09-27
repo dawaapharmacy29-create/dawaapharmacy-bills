@@ -35,6 +35,8 @@ const FIELD_LABELS = {
   sales_30: 'مبيعات آخر 30 يوم', sales_60: 'مبيعات آخر 60 يوم', sales_90: 'مبيعات آخر 90 يوم',
   avg_daily_usage: 'متوسط الاستهلاك اليومي', last_purchase_price: 'آخر سعر شراء',
   pending_incoming: 'الكمية المنتظر وصولها',
+  minimum_order_quantity: 'الحد الأدنى للصنف',
+  maximum_order_quantity: 'الحد الأقصى للصنف',
 };
 const ALIASES = {
   product_code: ['كود الصنف', 'الكود', 'كود', 'code', 'item code', 'product code'],
@@ -46,6 +48,8 @@ const ALIASES = {
   avg_daily_usage: ['متوسط الاستهلاك اليومي', 'متوسط الاستهلاك', 'avg daily usage', 'daily average'],
   last_purchase_price: ['آخر سعر شراء', 'سعر الشراء', 'السعر', 'purchase price', 'cost', 'price'],
   pending_incoming: ['كمية منتظر وصولها', 'منتظر وصول', 'pending incoming', 'incoming qty', 'on order'],
+  minimum_order_quantity: ['الحد الأدنى للصنف', 'حد أدنى', 'اقل كمية', 'أقل كمية', 'minimum order quantity', 'min qty', 'moq'],
+  maximum_order_quantity: ['الحد الأقصى للصنف', 'حد أقصى', 'اكبر كمية', 'أكبر كمية', 'maximum order quantity', 'max qty'],
 };
 const monthKey = (header) => {
   const match = String(header || '').trim().match(/^(20\d{2})[\/-](0?[1-9]|1[0-2])$/);
@@ -227,6 +231,8 @@ export default function SmartPurchaseUnifiedCenter() {
         sales_30: sales30, sales_60: sales60, sales_90: sales90,
         avg_daily_usage: number(row[nextMapping.avg_daily_usage]),
         last_purchase_price: number(row[nextMapping.last_purchase_price]),
+        minimum_order_quantity: Math.max(0, number(row[nextMapping.minimum_order_quantity])),
+        maximum_order_quantity: Math.max(0, number(row[nextMapping.maximum_order_quantity])),
       };
     });
     const errors = parsed.filter((row) => !isValidProductName(row.product_name)).map((row) => `صف ${row.row_number}: اسم الصنف غير صالح`);
@@ -251,6 +257,11 @@ export default function SmartPurchaseUnifiedCenter() {
   function changeMapping(field, value) {
     const next = { ...mapping, [field]: value };
     setMapping(next); buildPreview(rawRows, next); setMappingSource('تم تعديل ربط الأعمدة يدويًا');
+  }
+  function updatePreviewLimit(item, field, value) {
+    const key = normalizeProductKey(item);
+    const nextValue = Math.max(0, Math.floor(number(value)));
+    setPreview((current) => current.map((row) => normalizeProductKey(row) === key ? { ...row, [field]: nextValue } : row));
   }
   function saveMapping() {
     const all = loadMappings(); all[signature(headers)] = mapping;
@@ -281,6 +292,7 @@ export default function SmartPurchaseUnifiedCenter() {
     if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
     if (openOrderForBranch) return setError(`يوجد طلبية مفتوحة للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أغلقها قبل إنشاء طلبية جديدة.`);
     if (creationBudget && rowsForCreation.length === 0) return setError('الحد الأقصى لا يكفي لإضافة أي صنف بسعره الحالي.');
+    if (creationBudgetPlan?.protected_items_unmet > 0) return setError(`الحد الأقصى الحالي لا يكفي للحفاظ على الحد الأدنى لـ ${creationBudgetPlan.protected_items_unmet} صنف محمي. ارفع الحد الأقصى أو راجع حدود الأصناف.`);
     if (creationOrderGuard.invalid_range) return setError('حد الطلبية الأدنى لا يمكن أن يكون أكبر من الحد الأقصى.');
     if (creationOrderGuard.above_maximum) return setError(`قيمة الطلبية ${money(creationTotal)} ج تتجاوز الحد الأقصى ${money(creationBudget)} ج.`);
     if (creationOrderGuard.below_minimum) return setError(`قيمة الطلبية ${money(creationTotal)} ج أقل من الحد الأدنى ${money(creationMinimum)} ج.`);
@@ -400,14 +412,14 @@ export default function SmartPurchaseUnifiedCenter() {
           ['الأصناف بعد إزالة التكرار', preview.length], ['تحتاج شراء', plannedCandidates.length], ['أخطاء الصفوف', previewErrors.length],
           ['أصناف الطلبية', rowsForCreation.length], ['التكلفة المتوقعة', `${money(creationTotal)} ج`], ['الميزانية المتبقية', creationBudgetPlan ? `${money(creationBudgetPlan.remaining)} ج` : '—'],
         ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}</div>
-        {creationBudgetPlan && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">داخل الحد الأقصى: {creationBudgetPlan.active_items} صنف، {creationBudgetPlan.total_quantity} وحدة، خُفّض {creationBudgetPlan.reduced_items} صنف، وصُفّر {creationBudgetPlan.zeroed_items} صنف.</div>}
+        {creationBudgetPlan && <div className={`rounded-xl border p-3 text-sm ${creationBudgetPlan.protected_items_unmet > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>داخل الحد الأقصى: {creationBudgetPlan.active_items} صنف، {creationBudgetPlan.total_quantity} وحدة، خُفّض {creationBudgetPlan.reduced_items} صنف، وصُفّر {creationBudgetPlan.zeroed_items} صنف.{creationBudgetPlan.protected_items_unmet > 0 ? ` يوجد ${creationBudgetPlan.protected_items_unmet} صنف لن يصل للحد الأدنى المحمي.` : ''}</div>}
         {(creationMinimum || creationBudget) && <div className={`rounded-xl border p-3 text-sm ${creationOrderGuard.invalid_range || creationOrderGuard.above_maximum ? 'border-red-200 bg-red-50 text-red-700' : creationOrderGuard.below_minimum || creationOrderGuard.warning ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
           {creationOrderGuard.invalid_range ? 'راجع الحدود: الحد الأدنى أكبر من الحد الأقصى.'
             : creationOrderGuard.above_maximum ? `الطلبية أعلى من الحد الأقصى بـ ${money(creationTotal - creationOrderGuard.maximum)} ج.`
             : creationOrderGuard.below_minimum ? `الطلبية أقل من الحد الأدنى بـ ${money(creationOrderGuard.remaining_to_minimum)} ج.`
             : `قيمة الطلبية داخل الحدود المحددة. المتبقي حتى الحد الأقصى: ${money(creationOrderGuard.remaining_to_maximum)} ج.`}
         </div>}
-        <div className="overflow-auto rounded-xl border"><table className="min-w-[1050px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود', 'الصنف', 'الرصيد', 'المتوسط اليومي', 'الاحتياج', 'التغطية بعد الوصول', 'السعر', 'الإجمالي'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{rowsForCreation.slice(0, 30).map((item) => <tr key={item.product_code || item.product_name} className="border-t"><td className="p-2">{item.product_code || '—'}</td><td className="p-2 font-semibold">{item.product_name}</td><td className="p-2">{item.current_stock}</td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2 font-bold">{number(item.approved_quantity || item.suggested_quantity)}</td><td className="p-2">{item.projected_coverage_days?.toFixed?.(1) || coverageDays} يوم</td><td className="p-2">{money(itemPrice(item))}</td><td className="p-2 font-bold">{money(number(item.approved_quantity || item.suggested_quantity) * itemPrice(item))}</td></tr>)}</tbody></table></div>
+        <div className="overflow-auto rounded-xl border"><table className="min-w-[1350px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود', 'الصنف', 'الرصيد', 'المتوسط اليومي', 'الحد الأدنى', 'الحد الأقصى', 'الاحتياج الخام', 'الكمية النهائية', 'التغطية بعد الوصول', 'تكلفة الوحدة', 'الإجمالي'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{rowsForCreation.slice(0, 30).map((item) => <tr key={item.product_code || item.product_name} className={`border-t ${item.purchase_limit_adjusted ? 'bg-amber-50/40' : ''}`}><td className="p-2">{item.product_code || '—'}</td><td className="p-2 font-semibold">{item.product_name}{item.purchase_limit_adjusted && <div className="text-[11px] text-amber-700">تم ضبط الكمية حسب حدود الصنف</div>}</td><td className="p-2">{item.current_stock}</td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><input type="number" min="0" value={number(item.minimum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'minimum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2"><input type="number" min="0" value={number(item.maximum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'maximum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2">{number(item.raw_suggested_quantity)}</td><td className="p-2 font-bold">{number(item.approved_quantity || item.suggested_quantity)}</td><td className="p-2">{item.projected_coverage_days?.toFixed?.(1) || coverageDays} يوم</td><td className="p-2">{money(netUnitPrice(item))}</td><td className="p-2 font-bold">{money(purchaseLineTotal(item, number(item.approved_quantity || item.suggested_quantity)))}</td></tr>)}</tbody></table></div>
         <button disabled={loading || !mapping.product_name || Boolean(openOrderForBranch)} onClick={importAndCreate} className="rounded-lg bg-teal-600 px-5 py-2.5 text-white font-bold flex items-center gap-2 disabled:opacity-50"><ShoppingCart className="w-4 h-4" />إنشاء الطلبية بالمقادير المعروضة</button>
       </>}
     </section>}
