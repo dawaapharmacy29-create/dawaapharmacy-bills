@@ -756,7 +756,7 @@ export default function SmartPurchaseUnifiedCenter() {
       <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <label className="text-sm">اسم الطلبية<input type="text" maxLength="120" value={creationTitle} onChange={(event) => setCreationTitle(event.target.value)} placeholder="مثال: طلبية أول أغسطس — فرع الشامي" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">اسم واضح للمراجعة والبحث، والكود المرجعي سيظهر تحته.</span></label>
         <label className="text-sm">الفرع<select value={branch} onChange={(event) => { setBranch(event.target.value); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { const mode = event.target.value; setFinancialMode(mode); setCoverageDays(mode === 'critical' ? 7 : mode === 'comfortable' ? 30 : 14); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="critical">حرج — 7 أيام</option><option value="medium">متوسط — 14 يوم</option><option value="comfortable">مريح — 30 يوم</option></select><span className="text-[11px] text-slate-500">يحدد التغطية المستهدفة قبل توزيع الميزانية.</span></label>
+        <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { const mode = event.target.value; setFinancialMode(mode); setCoverageDays(mode === 'comfortable' ? 30 : mode === 'medium' ? 14 : 7); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="essential">الضروريات فقط — 7 أيام + أولوية مشددة</option><option value="critical">حرج — 7 أيام</option><option value="medium">متوسط — 14 يوم</option><option value="comfortable">مريح — 30 يوم</option></select><span className="text-[11px] text-slate-500">يحدد التغطية المستهدفة قبل توزيع الميزانية.</span></label>
         <label className="text-sm">التغطية الناتجة بالأيام<input type="number" value={coverageDays} readOnly className="mt-1 w-full rounded-lg border bg-slate-50 p-2" /><span className="text-[11px] text-slate-500">7 حرج • 14 متوسط • 30 مريح.</span></label>
         <label className="text-sm">الحد الأدنى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationMinimum} onChange={(event) => setCreationMinimum(event.target.value)} placeholder="مثال: 10000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمنع إنشاء طلبية أصغر من الحد التشغيلي.</span></label>
         <label className="text-sm">الحد الأقصى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يوزع الكميات داخل السقف المالي.</span></label>
@@ -771,11 +771,12 @@ export default function SmartPurchaseUnifiedCenter() {
           <div><h3 className="font-bold">نتيجة ذكاء الطلبية قبل الشراء</h3><p className="text-xs text-slate-500 mt-1">تغطية {demandTransferPreview.target_coverage_days} يوم • التحويل الداخلي يُخصم قبل الشراء.</p></div>
           <div className="text-sm font-bold">شراء مقترح: {number(demandTransferPreview.summary?.suggested_buy_units)} وحدة • {money(demandTransferPreview.summary?.suggested_buy_value)} ج</div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
           {[
             ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
             ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
             ['شراء مباشر', demandTransferPreview.summary?.buy_items || 0],
+            ['مؤجل — أقل أولوية', demandTransferPreview.summary?.deferred_low_priority_items || 0],
             ['موقوف بسبب الركود', demandTransferPreview.summary?.blocked_deadstock_items || 0],
           ].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
         </div>
@@ -790,7 +791,7 @@ export default function SmartPurchaseUnifiedCenter() {
             <td className="p-2">{number(row.suggested_transfer_qty) > 0 ? `${number(row.suggested_transfer_qty)} من ${row.transfer_from_branch || 'الفرع الآخر'}` : '—'}</td>
             <td className="p-2 font-bold">{number(row.buy_quantity)}</td>
             <td className="p-2">{row.movement_class}</td>
-            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy' ? 'شراء' : row.decision === 'do_not_buy' ? 'لا شراء — راكد' : 'الرصيد كافٍ'}</td>
+            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy' ? 'شراء' : row.decision === 'do_not_buy' ? 'لا شراء — راكد' : row.decision === 'defer_low_priority' ? 'مؤجل — أقل أولوية' : 'الرصيد كافٍ'}</td>
           </tr>)}
         </tbody></table></div>
       </section>}
