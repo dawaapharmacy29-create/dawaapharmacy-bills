@@ -62,7 +62,7 @@ const ALIASES = {
   avg_daily_usage: ['متوسط الاستهلاك اليومي', 'متوسط الاستهلاك', 'avg daily usage', 'daily average'],
   last_purchase_price: ['آخر سعر شراء', 'سعر الشراء', 'السعر', 'purchase price', 'cost', 'price'],
   pending_incoming: ['كمية منتظر وصولها', 'منتظر وصول', 'pending incoming', 'incoming qty', 'on order'],
-  minimum_order_quantity: ['الحد الأدنى للصنف', 'حد أدنى', 'اقل كمية', 'أقل كمية', 'minimum order quantity', 'min qty', 'moq'],
+  minimum_order_quantity: ['الحد الأدنى للصنف', 'حد أدنى', 'اقل كمية', 'أقل كمية', 'internal minimum quantity', 'min purchase qty', 'min qty'],
   maximum_order_quantity: ['الحد الأقصى للصنف', 'حد أقصى', 'اكبر كمية', 'أكبر كمية', 'maximum order quantity', 'max qty'],
 };
 const monthKey = (header) => {
@@ -698,7 +698,7 @@ export default function SmartPurchaseUnifiedCenter() {
         </div>
         <div className="text-xs">افتح الطلبية المناسبة: كمّلها، أرسلها للمورد، أو استخدم «إلغاء الطلبية» بسبب مسجل لو كانت قديمة/متروكة.</div>
       </div>}
-      {headers.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex justify-between gap-2"><div><h3 className="font-bold">ربط الأعمدة</h3><p className="text-xs text-blue-700">{mappingSource}</p></div><button onClick={saveMapping} className="rounded-lg border bg-white px-3 py-2 flex gap-2"><Save className="w-4 h-4" />حفظ القالب</button></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{Object.entries(FIELD_LABELS).map(([field, label]) => <label key={field} className="text-xs font-semibold">{label}{field === 'product_name' && <span className="text-red-600"> *</span>}<select value={mapping[field] || ''} onChange={(event) => changeMapping(field, event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">غير موجود</option>{headers.map((header) => <option key={header}>{header}</option>)}</select></label>)}</div></div>}
+      {headers.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex justify-between gap-2"><div><h3 className="font-bold">ربط الأعمدة</h3><p className="text-xs text-blue-700">{mappingSource} • حد الصنف هنا سياسة داخلية لدواء، وليس MOQ المورد.</p></div><button onClick={saveMapping} className="rounded-lg border bg-white px-3 py-2 flex gap-2"><Save className="w-4 h-4" />حفظ القالب</button></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{Object.entries(FIELD_LABELS).map(([field, label]) => <label key={field} className="text-xs font-semibold">{label}{field === 'product_name' && <span className="text-red-600"> *</span>}<select value={mapping[field] || ''} onChange={(event) => changeMapping(field, event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">غير موجود</option>{headers.map((header) => <option key={header}>{header}</option>)}</select></label>)}</div></div>}
       {preview.length > 0 && <>
         <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[
           ['الأصناف بعد إزالة التكرار', preview.length], ['تحتاج شراء', plannedCandidates.length], ['أخطاء الصفوف', previewErrors.length],
