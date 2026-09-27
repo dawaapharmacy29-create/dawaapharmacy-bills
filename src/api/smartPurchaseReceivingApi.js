@@ -105,7 +105,7 @@ async function saveSnapshot(payload) {
 export const smartPurchaseReceivingApi = {
   listOrders: async () => {
     const rows = await receivingRpc('list_orders');
-    const allowed = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received', 'وصلت جزئيًا']);
+    const allowed = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received', 'وصلت جزئيًا', 'received', 'وصلت بالكامل']);
     return (rows || []).filter((order) => allowed.has(String(order.status || '').trim()));
   },
   getOrder: (id) => receivingRpc('get_order', { id }),
