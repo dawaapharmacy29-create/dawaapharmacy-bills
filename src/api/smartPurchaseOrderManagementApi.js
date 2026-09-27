@@ -43,6 +43,7 @@ async function directRpc(functionName, body = {}) {
       order_below_minimum: 'قيمة الطلبية أقل من الحد الأدنى المحدد.',
       order_above_maximum: 'قيمة الطلبية أعلى من الحد الأقصى المحدد.',
       items_without_supplier: 'يوجد أصناف معتمدة بدون مورد.',
+      items_without_cost: 'يوجد أصناف بكميات معتمدة بدون تكلفة شراء. راجع التكلفة قبل الاعتماد.',
       supplier_plan_invalid_offer: 'بعض عروض الموردين لم تعد صالحة أو لا تطابق الصنف.',
       supplier_plan_quantity_violation: 'اختيار المورد المقترح يخالف حد الصنف أو MOQ أو الكمية المتاحة.',
     };
@@ -124,6 +125,11 @@ export const smartPurchaseOrderManagementApi = {
     rows: payload.rows || [],
   }),
   updateItem: atomicUpdateItem,
+  assignSupplier: (orderId, itemId, supplierName) => directRpc('smart_purchase_assign_supplier_v2', {
+    p_order_id: orderId,
+    p_item_id: itemId,
+    p_supplier_name: supplierName,
+  }),
   applyItemPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_guarded_v2', { p_order_id: orderId, p_items: items }),
   applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_guarded_v2', { p_order_id: orderId, p_items: items }),
   setOrderPolicy: (orderId, minimumOrderValue, maximumOrderValue) => directRpc('smart_purchase_set_order_policy_guarded_v2', {
