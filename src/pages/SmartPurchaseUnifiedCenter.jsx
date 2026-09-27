@@ -183,7 +183,8 @@ export default function SmartPurchaseUnifiedCenter() {
       if (id) {
         const detail = await unified.getOrder(id);
         setSelected(detail);
-        setBudgetLimit((old) => old || String(Math.ceil((detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0))));
+        const computedTotal = (detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0);
+        setBudgetLimit(String(Math.ceil(number(detail.order?.budget) || computedTotal)));
       }
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
@@ -195,7 +196,8 @@ export default function SmartPurchaseUnifiedCenter() {
     try {
       const detail = await unified.getOrder(id);
       setSelected(detail);
-      setBudgetLimit(String(Math.ceil((detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0))));
+      const computedTotal = (detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0);
+      setBudgetLimit(String(Math.ceil(number(detail.order?.budget) || computedTotal)));
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -324,6 +326,9 @@ export default function SmartPurchaseUnifiedCenter() {
     total: items.reduce((sum, item) => sum + itemTotal(item), 0),
     average_discount: items.filter((item) => itemQuantity(item) > 0).length ? items.filter((item) => itemQuantity(item) > 0).reduce((sum, item) => sum + itemDiscount(item), 0) / items.filter((item) => itemQuantity(item) > 0).length : 0,
   }), [items]);
+  const storedOrderTotal = number(selected?.order?.approved_total || selected?.order?.expected_total);
+  const orderTotalDifference = storedOrderTotal - totals.total;
+  const orderTotalMismatch = Boolean(selected?.order?.id) && Math.abs(orderTotalDifference) > 0.01;
   const visibleItems = useMemo(() => items.filter((item) => {
     if (hideZero && itemQuantity(item) <= 0) return false;
     if (onlyUrgent && number(item.priority_score) < 50 && !String(item.priority_label || '').includes('عاجل')) return false;
@@ -346,6 +351,16 @@ export default function SmartPurchaseUnifiedCenter() {
   const opsInvoiceIssues = (data.orders || []).filter((o) => { const expected = number(o.approved_total || o.expected_total || o.total_value); const actual = number(o.actual_total || o.invoice_total || o.received_total); return expected > 0 && actual > expected + Math.max(expected * 0.02, 100); });
 
   async function updateOne(item, patch) { return management.updateItem({ id: item.id, order_id: selected.order.id, ...patch }); }
+  async function reconcileOrderTotal() {
+    if (!selected?.order?.id || !items.length) return;
+    const sameQuantities = items.map((item) => ({ id: item.id, approved_quantity: itemQuantity(item) }));
+    await run(
+      () => management.applyQuantityPlan(selected.order.id, sameQuantities),
+      'تمت مزامنة قيمة الطلبية مع مجموع البنود الحالية.',
+      selected.order.id,
+    );
+  }
+
   async function applyBudgetPlan() {
     if (!budgetPlan) return setError('اكتب ميزانية صحيحة أولًا.');
     const changes = budgetPlan.rows.filter((item) => number(item.approved_quantity) !== number(items.find((source) => source.id === item.id)?.approved_quantity));
@@ -408,6 +423,10 @@ export default function SmartPurchaseUnifiedCenter() {
         <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['الأصناف', totals.items], ['الكميات', totals.quantity], ['متوسط الخصم', `${money(totals.average_discount)}%`], ['سعر الجمهور قبل الخصم', `${money(items.reduce((sum, item) => sum + itemQuantity(item) * itemPrice(item), 0))} ج`], ['تكلفة الصيدلية بعد الخصم', `${money(totals.total)} ج`]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3"><h3 className="font-bold flex items-center gap-2"><WalletCards className="w-5 h-5" />التحكم المالي الذكي</h3><div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3"><label className="text-sm">الحد الأقصى لقيمة الطلبية / الفاتورة<input type="number" value={budgetLimit} onChange={(event) => { setBudgetLimit(event.target.value); setBudgetPreviewVisible(false); }} className="mt-1 w-full rounded-lg border bg-white p-2" /></label><div className="rounded-xl bg-white border p-3"><div className="text-xs text-slate-500">التكلفة الحالية</div><div className="font-bold text-lg">{money(totals.total)} ج</div></div><button onClick={() => setBudgetPreviewVisible(true)} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold flex justify-center items-center gap-2"><Eye className="w-5 h-5" />معاينة التوزيع</button><button onClick={applyBudgetPlan} disabled={!budgetPreviewVisible || loading || ['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="rounded-xl bg-emerald-700 text-white px-4 py-3 font-bold flex justify-center items-center gap-2 disabled:opacity-50"><Calculator className="w-5 h-5" />تطبيق الخطة</button></div>{budgetPreviewVisible && budgetPlan && <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[['التكلفة بعد الضبط', `${money(budgetPlan.total)} ج`], ['المتبقي', `${money(budgetPlan.remaining)} ج`], ['الأصناف', budgetPlan.active_items], ['الكميات', budgetPlan.total_quantity], ['المخفضة', budgetPlan.reduced_items], ['المصفرة', budgetPlan.zeroed_items]].map(([label, value]) => <div key={label} className="rounded-lg bg-white border p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}</section>
         
+        {orderTotalMismatch && <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800 flex flex-wrap items-center justify-between gap-3">
+          <div><strong>تنبيه سلامة البيانات:</strong> القيمة المخزنة للطلبية {money(storedOrderTotal)} ج بينما مجموع البنود الحالي {money(totals.total)} ج، والفرق {money(Math.abs(orderTotalDifference))} ج.</div>
+          {['مسودة', 'تم التحليل'].includes(status) && <button type="button" onClick={reconcileOrderTotal} disabled={loading} className="rounded-lg border border-orange-300 bg-white px-3 py-2 font-bold disabled:opacity-50">مزامنة القيمة بدون تغيير الكميات</button>}
+        </div>}
         {financialGuard.blocked && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">لا يمكن اعتماد الطلبية: القيمة الحالية أعلى من الحد المالي بمقدار {money(financialGuard.over)} ج.</div>}
         {financialGuard.warning && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">تنبيه: تم استخدام {money(financialGuard.usage)}% من الحد المالي المحدد.</div>}
         <div className="flex gap-2">{!['معتمدة', 'تم الإرسال للمورد'].includes(status) ? <button onClick={() => run(() => unified.approveOrder(selected.order.id), 'تم اعتماد الطلبية.')} disabled={loading || totals.total <= 0 || financialGuard.blocked} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" />اعتماد الطلبية</button> : <button onClick={() => run(() => unified.returnToReview(selected.order.id), 'تمت إعادة الطلبية للمراجعة.')} className="rounded-lg border border-amber-300 px-4 py-2">إعادة للمراجعة</button>}</div>
