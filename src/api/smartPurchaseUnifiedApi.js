@@ -94,18 +94,18 @@ export const smartPurchaseUnifiedApi = {
   cycleBudgetGuard: (branch = 'all') => standaloneRpc('smart_purchase_cycle_budget_guard', { p_branch: branch }),
   decisionDailyChange: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
-  demandTransferPreview: (branch, financialMode = 'medium', rows = []) => standaloneRpc('smart_purchase_demand_transfer_preview_v2', {
+  demandTransferPreview: (branch, financialMode = 'medium', rows = []) => standaloneRpc('smart_purchase_demand_transfer_preview_v3', {
     p_branch: branch,
     p_financial_mode: financialMode,
     p_rows: rows,
   }),
   smartClearanceEngine: (branch = 'all') => standaloneRpc('smart_purchase_clearance_engine_v1', { p_branch: branch }),
-  safeDraftPreview: ({ branch, targetBudget = null, financialMode = 'medium' }) => standaloneRpc('smart_purchase_safe_draft_preview_v2', {
+  safeDraftPreview: ({ branch, targetBudget = null, financialMode = 'medium' }) => standaloneRpc('smart_purchase_safe_draft_preview_v3', {
     p_branch: branch,
     p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
     p_financial_mode: financialMode,
   }),
-  createSafeDraft: ({ branch, targetBudget = null, financialMode = 'medium' }) => standaloneRpc('smart_purchase_safe_draft_create_v2', {
+  createSafeDraft: ({ branch, targetBudget = null, financialMode = 'medium' }) => standaloneRpc('smart_purchase_safe_draft_create_v3', {
     p_branch: branch,
     p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
     p_financial_mode: financialMode,
