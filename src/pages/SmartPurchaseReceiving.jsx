@@ -160,7 +160,23 @@ export default function SmartPurchaseReceiving() {
   const pendingResolutionItems = useMemo(() => receivingResolutionItems.filter((item) => String(item.resolution_status || 'pending') === 'pending'), [receivingResolutionItems]);
   const followupResolutionItems = useMemo(() => receivingResolutionItems.filter((item) => String(item.resolution_status || '') === 'followup_required'), [receivingResolutionItems]);
   const receivingStarted = Boolean((selected?.receipts || []).length);
-  const closeReadyLocal = receivingStarted && receivingResolutionItems.length > 0 && pendingResolutionItems.length === 0 && followupResolutionItems.length === 0;
+  const financialReceipts = useMemo(() => selected?.receipts || [], [selected]);
+  const pendingFinancialReceipts = useMemo(() => financialReceipts.filter((receipt) => String(receipt.financial_resolution_status || 'pending') === 'pending'), [financialReceipts]);
+  const followupFinancialReceipts = useMemo(() => financialReceipts.filter((receipt) => String(receipt.financial_resolution_status || '') === 'followup_required'), [financialReceipts]);
+  const financialSummary = useMemo(() => ({
+    expected: financialReceipts.reduce((sum, receipt) => sum + num(receipt.expected_total), 0),
+    invoiced: financialReceipts.reduce((sum, receipt) => sum + num(receipt.invoiced_total), 0),
+    received: financialReceipts.reduce((sum, receipt) => sum + num(receipt.received_total), 0),
+    bonus: financialReceipts.reduce((sum, receipt) => sum + num(receipt.bonus_quantity), 0),
+    valueVariance: financialReceipts.reduce((sum, receipt) => sum + num(receipt.value_variance), 0),
+    priceVariance: financialReceipts.reduce((sum, receipt) => sum + num(receipt.price_variance), 0),
+  }), [financialReceipts]);
+  const closeReadyLocal = receivingStarted
+    && receivingResolutionItems.length > 0
+    && pendingResolutionItems.length === 0
+    && followupResolutionItems.length === 0
+    && pendingFinancialReceipts.length === 0
+    && followupFinancialReceipts.length === 0;
 
   async function resolveReceivingItem(item, resolutionStatus) {
     if (!selected?.order?.id || !item?.id) return;
@@ -170,6 +186,18 @@ export default function SmartPurchaseReceiving() {
       const detail = await api.getOrder(selected.order.id);
       setSelected(detail);
       setMessage('تم حفظ قرار الاستلام للصنف.');
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  }
+
+  async function resolveFinancialReceipt(receipt, resolutionStatus) {
+    if (!receipt?.id) return;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      await api.resolveReceiptFinancial(receipt.id, resolutionStatus);
+      const detail = await api.getOrder(selected.order.id);
+      setSelected(detail);
+      setMessage('تم حفظ قرار المطابقة المالية لفاتورة المورد.');
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -194,6 +222,44 @@ export default function SmartPurchaseReceiving() {
       <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className="text-sm text-slate-400 p-3">لا توجد طلبيات متاحة.</p>}</div></aside>
       <main className="space-y-4">{!selected && <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">اختر طلبية للبدء.</div>}{selected && <>
         <section className="rounded-2xl border bg-white p-4 shadow-sm"><h2 className="text-xl font-bold">{orderTitle(selected.order)}</h2><p className="text-xs text-slate-400 mt-1">{selected.order.order_number}</p><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {orderSuppliers.length} مورد • {supplierName ? `${orderItems.length} صنف للمورد المختار` : 'اختر المورد لبدء المطابقة'}</p><div className="mt-4 grid sm:grid-cols-2 gap-2"><button onClick={() => { setMode('supplier_response'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'supplier_response' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>1. تسجيل رد المورد واستخراج المتبقي</button><button onClick={() => { setMode('receipt'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'receipt' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>2. رفع المشتريات ومطابقة الاستلام</button></div></section>
+        {receivingStarted && <section className="rounded-2xl border border-blue-200 bg-blue-50/30 p-4 shadow-sm space-y-3">
+          <div>
+            <h3 className="font-bold">المطابقة المالية النهائية</h3>
+            <p className="text-xs text-slate-500 mt-1">كل فاتورة مورد لازم تكون مطابقة ماليًا أو يكون فرقها معتمد بقرار واضح قبل الإغلاق النهائي.</p>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">
+            {[
+              ['المتوقع', `${money(financialSummary.expected)} ج`],
+              ['المفوتر', `${money(financialSummary.invoiced)} ج`],
+              ['المستلم', `${money(financialSummary.received)} ج`],
+              ['البونص', financialSummary.bonus],
+              ['فرق القيمة', `${money(financialSummary.valueVariance)} ج`],
+              ['فرق السعر', `${money(financialSummary.priceVariance)} ج`],
+            ].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}
+          </div>
+          <div className="space-y-2">
+            {financialReceipts.map((receipt) => {
+              const status = String(receipt.financial_resolution_status || 'pending');
+              const unresolved = ['pending','followup_required'].includes(status);
+              return <div key={receipt.id} className="rounded-xl border bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="font-bold">{receipt.supplier_name || 'مورد غير محدد'} {receipt.supplier_invoice_number ? `• فاتورة ${receipt.supplier_invoice_number}` : ''}</div>
+                    <div className="text-xs text-slate-500 mt-1">متوقع {money(receipt.expected_total)} • مفوتر {money(receipt.invoiced_total)} • مستلم {money(receipt.received_total)} • بونص {num(receipt.bonus_quantity)} • فرق قيمة {money(receipt.value_variance)} • فرق سعر {money(receipt.price_variance)}</div>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${status === 'accepted_match' ? 'bg-emerald-100 text-emerald-700' : status === 'accepted_variance' ? 'bg-blue-100 text-blue-700' : status === 'followup_required' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>
+                    {status === 'accepted_match' ? 'مطابقة' : status === 'accepted_variance' ? 'فرق معتمد' : status === 'followup_required' ? 'متابعة مفتوحة' : 'قرار مالي مطلوب'}
+                  </span>
+                </div>
+                {unresolved && <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={loading} onClick={() => resolveFinancialReceipt(receipt, 'accepted_variance')} className="rounded-lg border px-3 py-2 text-xs font-bold">اعتماد الفرق المالي</button>
+                  <button type="button" disabled={loading} onClick={() => resolveFinancialReceipt(receipt, 'followup_required')} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">يحتاج متابعة مالية</button>
+                </div>}
+              </div>;
+            })}
+          </div>
+        </section>}
+
         {receivingStarted && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -206,7 +272,7 @@ export default function SmartPurchaseReceiving() {
             {[
               ['إجمالي البنود', receivingResolutionItems.length],
               ['قرارات معلقة', pendingResolutionItems.length],
-              ['متابعة مفتوحة', followupResolutionItems.length],
+              ['متابعة مفتوحة', followupResolutionItems.length + followupFinancialReceipts.length],
               ['جاهزية الإغلاق', closeReadyLocal ? 'جاهزة' : 'غير جاهزة'],
             ].map(([label, value]) => <div key={label} className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}
           </div>
