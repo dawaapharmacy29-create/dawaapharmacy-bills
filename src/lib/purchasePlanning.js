@@ -1,4 +1,4 @@
-import { applyItemPurchaseLimits } from './purchasePolicyEngine.js';
+import { applyItemPurchaseLimits, resolveItemPurchaseLimits } from './purchasePolicyEngine.js';
 import { explicitDiscountPercent, purchaseUnitCost } from './purchasePricing.js';
 
 const toNumber = (value) => {
@@ -134,12 +134,14 @@ function isCritical(item) { return hasPriorityException(item); }
 function protectedMinimum(item) {
   const desired=Math.max(0,Math.floor(toNumber(item.desired)));
   if(!desired) return 0;
+  const configuredLimits=resolveItemPurchaseLimits(item);
+  const configuredMinimum=configuredLimits.invalid_range ? 0 : Math.min(desired,Math.ceil(configuredLimits.minimum || 0));
   const requests=Math.max(0,Math.ceil(toNumber(item.customer_requests_count)));
-  if(requests>0) return Math.min(desired,Math.max(1,requests));
-  if(isCritical(item)) return 1;
+  if(requests>0) return Math.min(desired,Math.max(configuredMinimum,1,requests));
+  if(isCritical(item)) return Math.min(desired,Math.max(configuredMinimum,1));
   const usage=Math.max(0,estimateDailyUsage(item));
   const available=Math.max(0,toNumber(item.available_stock));
-  return Math.min(desired,Math.max(0,Math.ceil(usage*2)-available));
+  return Math.min(desired,Math.max(configuredMinimum,Math.max(0,Math.ceil(usage*2)-available)));
 }
 
 function marginalPriority(item,current) {
