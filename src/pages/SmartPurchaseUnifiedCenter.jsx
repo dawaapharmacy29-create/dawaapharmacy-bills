@@ -524,7 +524,10 @@ export default function SmartPurchaseUnifiedCenter() {
       if (itemPlan.length) await management.applyItemPlan(created.id, itemPlan);
 
       setPreview([]); setRawRows([]); setHeaders([]); setFileName(''); setShowImport(false);
-      setCreationMinimum(''); setCreationBudget(''); setCreationTitle('');
+      setCreationMinimum(number(branchPolicy?.minimum_order_value) > 0 ? String(branchPolicy.minimum_order_value) : '');
+      setCreationBudget(number(branchPolicy?.maximum_order_value) > 0 ? String(branchPolicy.maximum_order_value) : '');
+      setCoverageDays(Math.max(1, number(branchPolicy?.default_coverage_days) || 7));
+      setCreationTitle('');
       return created;
     }, 'تم إنشاء الطلبية وفق التغطية والميزانية المحددة.');
   }
