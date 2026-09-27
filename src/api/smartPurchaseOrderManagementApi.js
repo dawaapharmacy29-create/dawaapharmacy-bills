@@ -130,10 +130,9 @@ export const smartPurchaseOrderManagementApi = {
     rows: payload.rows || [],
   }),
   updateItem: atomicUpdateItem,
-  assignSupplier: (orderId, itemId, supplierName) => directRpc('smart_purchase_assign_supplier_v2', {
+  assignSupplier: (orderId, itemId, supplierName) => directRpc('smart_purchase_apply_item_plan_cost_guarded_v2', {
     p_order_id: orderId,
-    p_item_id: itemId,
-    p_supplier_name: supplierName,
+    p_items: [{ id: itemId, supplier_name: supplierName }],
   }),
   applyItemPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_cost_guarded_v2', { p_order_id: orderId, p_items: items }),
   applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_cost_guarded_v2', { p_order_id: orderId, p_items: items }),
