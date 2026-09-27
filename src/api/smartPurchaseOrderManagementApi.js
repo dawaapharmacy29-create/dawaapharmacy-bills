@@ -31,6 +31,7 @@ async function directRpc(functionName, body = {}) {
     const messages = {
       invalid_session: 'الجلسة غير صالحة. سجل الدخول مرة أخرى.',
       forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+      forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
       order_not_found: 'الطلبية غير موجودة.',
       invalid_budget: 'أدخل قيمة ميزانية صحيحة أكبر من صفر.',
       budget_below_protected_minimum: 'الميزانية أقل من الحد الأدنى الآمن للأصناف المحمية بطلبات العملاء.',
@@ -86,7 +87,7 @@ async function atomicUpdateItem(payload = {}) {
   ]) {
     if (payload[key] !== undefined) patch[key] = payload[key];
   }
-  return directRpc('smart_purchase_apply_item_plan_v2', {
+  return directRpc('smart_purchase_apply_item_plan_guarded_v2', {
     p_order_id: payload.order_id,
     p_items: [patch],
   });
@@ -123,14 +124,14 @@ export const smartPurchaseOrderManagementApi = {
     rows: payload.rows || [],
   }),
   updateItem: atomicUpdateItem,
-  applyItemPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_v2', { p_order_id: orderId, p_items: items }),
-  applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_v2', { p_order_id: orderId, p_items: items }),
-  setOrderPolicy: (orderId, minimumOrderValue, maximumOrderValue) => directRpc('smart_purchase_set_order_policy_v2', {
+  applyItemPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_guarded_v2', { p_order_id: orderId, p_items: items }),
+  applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_guarded_v2', { p_order_id: orderId, p_items: items }),
+  setOrderPolicy: (orderId, minimumOrderValue, maximumOrderValue) => directRpc('smart_purchase_set_order_policy_guarded_v2', {
     p_order_id: orderId,
     p_minimum_order_value: Number(minimumOrderValue || 0),
     p_maximum_order_value: Number(maximumOrderValue || 0),
   }),
-  applySupplierPlan: (orderId, items) => directRpc('smart_purchase_apply_supplier_plan_v2', {
+  applySupplierPlan: (orderId, items) => directRpc('smart_purchase_apply_supplier_plan_guarded_v2', {
     p_order_id: orderId,
     p_items: items,
   }),
@@ -144,5 +145,5 @@ export const smartPurchaseOrderManagementApi = {
   },
   previewBudget: (orderId, targetBudget) => directRpc('smart_purchase_optimize_budget_v2', { p_order_id: orderId, p_target_budget: Number(targetBudget || 0), p_apply: false }),
   applyBudget: (orderId, targetBudget) => directRpc('smart_purchase_optimize_budget_v2', { p_order_id: orderId, p_target_budget: Number(targetBudget || 0), p_apply: true }),
-  approveOrder: (orderId) => directRpc('smart_purchase_approve_order_v2', { p_order_id: orderId }),
+  approveOrder: (orderId) => directRpc('smart_purchase_approve_order_guarded_v2', { p_order_id: orderId }),
 };
