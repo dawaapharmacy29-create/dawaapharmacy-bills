@@ -27,13 +27,23 @@ function errorMessage(data, status) {
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_center`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_center_guarded_v2`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) throw new Error(errorMessage(data, response.status));
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      forbidden_branch: 'لا توجد صلاحية على هذا الفرع.',
+      import_not_found: 'ملف التحليل غير موجود.',
+      import_branch_mismatch: 'فرع ملف التحليل لا يطابق فرع الطلبية.',
+      open_order_exists: 'يوجد طلبية مفتوحة بالفعل لهذا الفرع.',
+      invalid_create_payload: 'بيانات إنشاء الطلبية غير مكتملة.',
+    };
+    const code = data?.error || data?.message;
+    throw new Error(messages[code] || errorMessage(data, response.status));
+  }
   return data.data;
 }
 
