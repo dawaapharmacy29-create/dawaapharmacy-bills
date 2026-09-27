@@ -76,3 +76,17 @@ test('budget allocation reports an unmet configured minimum instead of hiding it
   assert.equal(plan.protected_items_unmet, 1);
   assert.equal(plan.rows[0].protected_minimum_met, false);
 });
+
+
+test('saved product coverage target overrides the order default coverage', () => {
+  const row = {
+    product_name: 'Policy Coverage Item',
+    current_stock: 0,
+    sales_30: 30,
+    target_coverage_days: 14,
+  };
+  const result = calculatePurchaseNeed(row, 7);
+  assert.equal(result.target_coverage_days, 14);
+  assert.equal(result.suggested_quantity, 14);
+  assert.equal(result.coverage_policy_source, 'saved_product_policy');
+});
