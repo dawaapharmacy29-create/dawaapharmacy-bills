@@ -25,11 +25,19 @@ export function resolveItemPurchaseLimits(item = {}) {
     item.max_quantity,
   ]));
 
+  const packageMultiple = Math.max(0, Math.floor(firstPositive([
+    item.package_multiple,
+    item.pack_multiple,
+    item.order_multiple,
+  ])));
+
   return {
     minimum,
     maximum,
+    package_multiple: packageMultiple,
     has_minimum: minimum > 0,
     has_maximum: maximum > 0,
+    has_package_multiple: packageMultiple > 1,
     invalid_range: minimum > 0 && maximum > 0 && minimum > maximum,
   };
 }
@@ -71,9 +79,35 @@ export function applyItemPurchaseLimits(quantityValue, item = {}, options = {}) 
     next = Math.ceil(limits.minimum);
     reasons.push('raised_to_item_minimum');
   }
+  if (limits.has_package_multiple) {
+    const rounded = Math.ceil(next / limits.package_multiple) * limits.package_multiple;
+    if (rounded !== next) reasons.push('rounded_to_package_multiple');
+    next = rounded;
+  }
+
   if (enforceMaximum && limits.has_maximum && next > limits.maximum) {
-    next = Math.floor(limits.maximum);
-    reasons.push('capped_at_item_maximum');
+    if (limits.has_package_multiple) {
+      const largestValid = Math.floor(limits.maximum / limits.package_multiple) * limits.package_multiple;
+      const minimumRequired = enforceMinimum && limits.has_minimum
+        ? Math.ceil(limits.minimum / limits.package_multiple) * limits.package_multiple
+        : limits.package_multiple;
+      if (largestValid <= 0 || largestValid < minimumRequired) {
+        return {
+          input_quantity: quantity,
+          quantity,
+          ...limits,
+          blocked: true,
+          adjusted: false,
+          status: 'package_conflict',
+          reasons: ['package_multiple_conflicts_with_maximum'],
+        };
+      }
+      next = largestValid;
+      reasons.push('capped_at_item_maximum_package_multiple');
+    } else {
+      next = Math.floor(limits.maximum);
+      reasons.push('capped_at_item_maximum');
+    }
   }
 
   return {
