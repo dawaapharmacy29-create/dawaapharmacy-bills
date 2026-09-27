@@ -1,3 +1,4 @@
+// Purchase Architecture V2 preview checkpoint — no runtime behavior change.
 import { Link } from 'react-router-dom';
 import {
   BarChart3, ChevronDown, ClipboardCheck, PackageCheck, ShoppingCart, Sparkles, Truck,
