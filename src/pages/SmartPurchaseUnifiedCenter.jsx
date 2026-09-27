@@ -14,7 +14,10 @@ import {
   estimateDailyUsage,
   isValidProductName,
   mergePurchaseRows,
+  normalizeProductKey,
 } from '@/lib/purchasePlanning';
+import { evaluateOrderValue } from '@/lib/purchasePolicyEngine';
+import { explicitDiscountPercent, purchaseLineTotal, purchaseUnitCost, referenceUnitPrice } from '@/lib/purchasePricing';
 
 const BRANCHES = ['دواء الشامي', 'دواء شكري'];
 const STATUS_STEPS = ['مسودة', 'تم التحليل', 'معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا', 'وصلت بالكامل', 'تمت مطابقة الفاتورة', 'مغلقة'];
@@ -65,14 +68,11 @@ function autoMapping(headers) {
   }
   return mapping;
 }
-function itemPrice(item) { return Math.max(0, number(item.expected_unit_cost || item.last_purchase_price)); }
-function itemDiscount(item) {
-  const value = number(item.expected_discount);
-  return value > 0 ? Math.min(100, value) : 20;
-}
-function netUnitPrice(item) { return itemPrice(item) * (1 - (itemDiscount(item) / 100)); }
+function itemPrice(item) { return referenceUnitPrice(item); }
+function itemDiscount(item) { return explicitDiscountPercent(item); }
+function netUnitPrice(item) { return purchaseUnitCost(item); }
 function itemQuantity(item) { return Math.max(0, number(item.approved_quantity)); }
-function itemTotal(item) { return itemQuantity(item) * netUnitPrice(item); }
+function itemTotal(item) { return purchaseLineTotal(item, itemQuantity(item)); }
 function sortValue(item, field) {
   if (field === 'quantity') return itemQuantity(item);
   if (field === 'public_price') return itemPrice(item);
@@ -155,6 +155,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [creationTitle, setCreationTitle] = useState('');
   const [editingTitle, setEditingTitle] = useState('');
   const [coverageDays, setCoverageDays] = useState(7);
+  const [creationMinimum, setCreationMinimum] = useState('');
   const [creationBudget, setCreationBudget] = useState('');
   const [fileName, setFileName] = useState('');
   const [rawRows, setRawRows] = useState([]);
@@ -255,32 +256,63 @@ export default function SmartPurchaseUnifiedCenter() {
   }
 
   const plannedCandidates = useMemo(() => buildPurchaseCandidates(preview, { coverage_days: coverageDays }).map((item) => ({
-    ...item, requested_quantity: item.suggested_quantity, approved_quantity: item.suggested_quantity,
-    expected_unit_cost: item.last_purchase_price, supplier_name: '',
+    ...item,
+    requested_quantity: item.suggested_quantity,
+    approved_quantity: item.suggested_quantity,
+    expected_unit_cost: purchaseUnitCost({ ...item, expected_unit_cost: 0 }),
+    supplier_name: '',
   })), [preview, coverageDays]);
   const creationBudgetPlan = useMemo(() => {
     const value = number(creationBudget);
     return value > 0 ? buildBudgetPlan(plannedCandidates, value) : null;
   }, [plannedCandidates, creationBudget]);
   const rowsForCreation = creationBudgetPlan ? creationBudgetPlan.rows.filter((item) => number(item.approved_quantity) > 0) : plannedCandidates;
-  const creationTotal = rowsForCreation.reduce((sum, item) => sum + number(item.approved_quantity || item.suggested_quantity) * itemPrice(item), 0);
+  const creationTotal = rowsForCreation.reduce((sum, item) => sum + purchaseLineTotal(item, number(item.approved_quantity || item.suggested_quantity)), 0);
+  const creationOrderGuard = useMemo(() => evaluateOrderValue(creationTotal, {
+    minimum_order_value: number(creationMinimum),
+    maximum_order_value: number(creationBudget),
+  }), [creationTotal, creationMinimum, creationBudget]);
   const openOrderForBranch = (data.orders || []).find((order) => order.branch === branch && ['مسودة', 'تم التحليل', 'معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا'].includes(normStatus(order.status)));
 
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
     if (openOrderForBranch) return setError(`يوجد طلبية مفتوحة للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أغلقها قبل إنشاء طلبية جديدة.`);
-    if (creationBudget && rowsForCreation.length === 0) return setError('الميزانية لا تكفي لإضافة أي صنف بسعره الحالي.');
-    if (creationBudget && creationTotal > number(creationBudget) + 0.01) return setError(`قيمة الطلبية ${money(creationTotal)} ج تتجاوز الحد المالي ${money(creationBudget)} ج.`);
+    if (creationBudget && rowsForCreation.length === 0) return setError('الحد الأقصى لا يكفي لإضافة أي صنف بسعره الحالي.');
+    if (creationOrderGuard.invalid_range) return setError('حد الطلبية الأدنى لا يمكن أن يكون أكبر من الحد الأقصى.');
+    if (creationOrderGuard.above_maximum) return setError(`قيمة الطلبية ${money(creationTotal)} ج تتجاوز الحد الأقصى ${money(creationBudget)} ج.`);
+    if (creationOrderGuard.below_minimum) return setError(`قيمة الطلبية ${money(creationTotal)} ج أقل من الحد الأدنى ${money(creationMinimum)} ج.`);
     await run(async () => {
       const imported = await smartPurchaseApi.importRows({
         file_name: fileName, branch, coverage_days: coverageDays, safety_days: 0,
         enforce_budget: Boolean(creationBudgetPlan), budget_limit: number(creationBudget),
-        rows: rowsForCreation.map((item) => ({ ...item, budget_quantity: number(item.approved_quantity || item.suggested_quantity) })),
+        rows: rowsForCreation.map((item) => ({
+          ...item,
+          old_discount: itemDiscount(item),
+          budget_quantity: number(item.approved_quantity || item.suggested_quantity),
+        })),
       });
       const title = creationTitle.trim() || `طلبية ${branch}`;
-      const created = await smartPurchaseApi.createOrder({ import_id: imported.id, branch, title });
-      setPreview([]); setRawRows([]); setHeaders([]); setFileName(''); setShowImport(false); setCreationBudget(''); setCreationTitle('');
+      const created = await smartPurchaseApi.createOrder({
+        import_id: imported.id,
+        branch,
+        title,
+        budget: number(creationBudget) > 0 ? number(creationBudget) : null,
+      });
+
+      const createdOrder = await smartPurchaseApi.getOrder(created.id);
+      const intendedByKey = new Map(rowsForCreation.map((item) => [
+        normalizeProductKey(item),
+        number(item.approved_quantity || item.suggested_quantity),
+      ]));
+      const quantityPlan = (createdOrder?.items || []).map((item) => ({
+        id: item.id,
+        approved_quantity: intendedByKey.get(normalizeProductKey(item)) ?? number(item.approved_quantity),
+      }));
+      if (quantityPlan.length) await management.applyQuantityPlan(created.id, quantityPlan);
+
+      setPreview([]); setRawRows([]); setHeaders([]); setFileName(''); setShowImport(false);
+      setCreationMinimum(''); setCreationBudget(''); setCreationTitle('');
       return created;
     }, 'تم إنشاء الطلبية وفق التغطية والميزانية المحددة.');
   }
@@ -338,11 +370,12 @@ export default function SmartPurchaseUnifiedCenter() {
 
     {showImport && <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm space-y-4">
       <h2 className="font-bold flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-teal-600" />إنشاء طلبية من B-Connect أو Excel</h2>
-      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <label className="text-sm">اسم الطلبية<input type="text" maxLength="120" value={creationTitle} onChange={(event) => setCreationTitle(event.target.value)} placeholder="مثال: طلبية أول أغسطس — فرع الشامي" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">اسم واضح للمراجعة والبحث، والكود المرجعي سيظهر تحته.</span></label>
         <label className="text-sm">الفرع<select value={branch} onChange={(event) => setBranch(event.target.value)} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label className="text-sm">التغطية النهائية المطلوبة بالأيام<input type="number" min="1" value={coverageDays} onChange={(event) => setCoverageDays(Math.max(1, number(event.target.value)))} className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">تشمل الرصيد الحالي والمنتظر والطلبية.</span></label>
-        <label className="text-sm">ميزانية الطلبية — اختياري<input type="number" min="1" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /></label>
+        <label className="text-sm">الحد الأدنى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationMinimum} onChange={(event) => setCreationMinimum(event.target.value)} placeholder="مثال: 10000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمنع إنشاء طلبية أصغر من الحد التشغيلي.</span></label>
+        <label className="text-sm">الحد الأقصى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يوزع الكميات داخل السقف المالي.</span></label>
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
       </div>
       {openOrderForBranch && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">يوجد طلبية مفتوحة للفرع: {openOrderForBranch.order_number}. تم منع إنشاء طلبية مكررة حتى إغلاقها.</div>}
@@ -352,7 +385,13 @@ export default function SmartPurchaseUnifiedCenter() {
           ['الأصناف بعد إزالة التكرار', preview.length], ['تحتاج شراء', plannedCandidates.length], ['أخطاء الصفوف', previewErrors.length],
           ['أصناف الطلبية', rowsForCreation.length], ['التكلفة المتوقعة', `${money(creationTotal)} ج`], ['الميزانية المتبقية', creationBudgetPlan ? `${money(creationBudgetPlan.remaining)} ج` : '—'],
         ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}</div>
-        {creationBudgetPlan && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">داخل الميزانية: {creationBudgetPlan.active_items} صنف، {creationBudgetPlan.total_quantity} وحدة، خُفّض {creationBudgetPlan.reduced_items} صنف، وصُفّر {creationBudgetPlan.zeroed_items} صنف.</div>}
+        {creationBudgetPlan && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">داخل الحد الأقصى: {creationBudgetPlan.active_items} صنف، {creationBudgetPlan.total_quantity} وحدة، خُفّض {creationBudgetPlan.reduced_items} صنف، وصُفّر {creationBudgetPlan.zeroed_items} صنف.</div>}
+        {(creationMinimum || creationBudget) && <div className={`rounded-xl border p-3 text-sm ${creationOrderGuard.invalid_range || creationOrderGuard.above_maximum ? 'border-red-200 bg-red-50 text-red-700' : creationOrderGuard.below_minimum || creationOrderGuard.warning ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+          {creationOrderGuard.invalid_range ? 'راجع الحدود: الحد الأدنى أكبر من الحد الأقصى.'
+            : creationOrderGuard.above_maximum ? `الطلبية أعلى من الحد الأقصى بـ ${money(creationTotal - creationOrderGuard.maximum)} ج.`
+            : creationOrderGuard.below_minimum ? `الطلبية أقل من الحد الأدنى بـ ${money(creationOrderGuard.remaining_to_minimum)} ج.`
+            : `قيمة الطلبية داخل الحدود المحددة. المتبقي حتى الحد الأقصى: ${money(creationOrderGuard.remaining_to_maximum)} ج.`}
+        </div>}
         <div className="overflow-auto rounded-xl border"><table className="min-w-[1050px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود', 'الصنف', 'الرصيد', 'المتوسط اليومي', 'الاحتياج', 'التغطية بعد الوصول', 'السعر', 'الإجمالي'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{rowsForCreation.slice(0, 30).map((item) => <tr key={item.product_code || item.product_name} className="border-t"><td className="p-2">{item.product_code || '—'}</td><td className="p-2 font-semibold">{item.product_name}</td><td className="p-2">{item.current_stock}</td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2 font-bold">{number(item.approved_quantity || item.suggested_quantity)}</td><td className="p-2">{item.projected_coverage_days?.toFixed?.(1) || coverageDays} يوم</td><td className="p-2">{money(itemPrice(item))}</td><td className="p-2 font-bold">{money(number(item.approved_quantity || item.suggested_quantity) * itemPrice(item))}</td></tr>)}</tbody></table></div>
         <button disabled={loading || !mapping.product_name || Boolean(openOrderForBranch)} onClick={importAndCreate} className="rounded-lg bg-teal-600 px-5 py-2.5 text-white font-bold flex items-center gap-2 disabled:opacity-50"><ShoppingCart className="w-4 h-4" />إنشاء الطلبية بالمقادير المعروضة</button>
       </>}
