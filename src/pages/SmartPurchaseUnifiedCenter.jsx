@@ -805,7 +805,11 @@ export default function SmartPurchaseUnifiedCenter() {
                   className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                 >تسجيل تم الإرسال</button>}
               </div>
-              {dispatch.sent_at && <div className="mt-2 text-[11px] text-slate-400">{new Date(dispatch.sent_at).toLocaleString('ar-EG')} {dispatch.sent_by_name ? `• ${dispatch.sent_by_name}` : ''}</div>}
+              {dispatch.sent_at && <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+                <div>{new Date(dispatch.sent_at).toLocaleString('ar-EG')} {dispatch.sent_by_name ? `• ${dispatch.sent_by_name}` : ''}</div>
+                {dispatch.snapshot_items_count != null && <div>{dispatch.snapshot_items_count} صنف • {number(dispatch.snapshot_quantity)} وحدة • {money(dispatch.snapshot_total)} ج</div>}
+                {dispatch.snapshot_hash && <div className={`font-semibold ${dispatch.snapshot_matches_current === false ? 'text-red-600' : 'text-emerald-700'}`}>{dispatch.snapshot_matches_current === false ? 'تحذير: النسخة الحالية تختلف عن Snapshot الإرسال' : 'Snapshot الإرسال مطابق للطلبية الحالية'}</div>}
+              </div>}
             </div>)}
           </div>
         </section>}
