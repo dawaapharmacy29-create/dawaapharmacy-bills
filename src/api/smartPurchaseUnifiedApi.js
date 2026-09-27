@@ -28,6 +28,8 @@ async function standaloneRpc(functionName, body) {
       cancel_reason_required: 'اكتب سبب واضح لإلغاء الطلبية.',
       order_not_cancelable: 'الطلبية في مرحلة لا تسمح بالإلغاء.',
       order_execution_started: 'لا يمكن إلغاء الطلبية بعد بدء الإرسال أو الاستلام.',
+      supplier_not_in_order: 'المورد غير موجود ضمن البنود المعتمدة في الطلبية.',
+      supplier_items_not_send_ready: 'بنود المورد غير جاهزة للإرسال: راجع الأسعار والتحقق منها أولًا.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
@@ -133,11 +135,11 @@ export const smartPurchaseUnifiedApi = {
     p_order_id: orderId,
     p_reason: reason,
   }),
-  supplierDispatches: (orderId) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v2', {
+  supplierDispatches: (orderId) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v3', {
     p_action: 'list',
     p_payload: { order_id: orderId },
   }),
-  markSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v2', {
+  markSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v3', {
     p_action: 'mark_supplier_sent',
     p_payload: { order_id: orderId, supplier_name: supplierName },
   }),
