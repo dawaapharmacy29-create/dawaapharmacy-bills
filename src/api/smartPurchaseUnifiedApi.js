@@ -28,6 +28,30 @@ async function standaloneRpc(functionName, body) {
   return Object.prototype.hasOwnProperty.call(data || {}, 'data') ? data.data : data;
 }
 
+async function unifiedV2Rpc(action, payload = {}) {
+  const sessionToken = token();
+  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_unified_v2`, {
+    method: 'POST',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+      forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+      forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
+      order_not_found: 'الطلبية غير موجودة.',
+      order_not_returnable: 'الطلبية ليست في حالة تسمح بإعادتها للمراجعة.',
+      order_already_dispatched: 'لا يمكن إعادة الطلبية للمراجعة بعد إرسال أي جزء منها لمورد.',
+    };
+    const code = data?.error || data?.message;
+    throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+  }
+  return data.data;
+}
+
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
@@ -53,8 +77,8 @@ async function rpc(action, payload = {}) {
 }
 
 export const smartPurchaseUnifiedApi = {
-  dashboard: () => rpc('dashboard'),
-  getOrder: (id) => rpc('get_order', { id }),
+  dashboard: () => unifiedV2Rpc('dashboard'),
+  getOrder: (id) => unifiedV2Rpc('get_order', { id }),
   updateItem: (payload) => rpc('update_item', payload),
   updateItems: (orderId, items) => rpc('update_items', { order_id: orderId, items }),
   updateOrderTitle: (orderId, title) => standaloneRpc('smart_purchase_update_order_title', { p_order_id: orderId, p_title: title }),
@@ -96,8 +120,8 @@ export const smartPurchaseUnifiedApi = {
     }
   },
   approveAndReserve: (payload) => rpc('approve_order', { order_id: payload.order_id }),
-  returnToReview: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
-  releaseReservation: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
+  returnToReview: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
+  releaseReservation: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
   markSent: (orderId) => standaloneRpc('smart_purchase_mark_sent_v2', { p_order_id: orderId }),
   supplierDispatches: (orderId) => standaloneRpc('smart_purchase_supplier_dispatch_v2', {
     p_action: 'list',
