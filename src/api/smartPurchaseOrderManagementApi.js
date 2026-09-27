@@ -42,6 +42,8 @@ async function directRpc(functionName, body = {}) {
       order_below_minimum: 'قيمة الطلبية أقل من الحد الأدنى المحدد.',
       order_above_maximum: 'قيمة الطلبية أعلى من الحد الأقصى المحدد.',
       items_without_supplier: 'يوجد أصناف معتمدة بدون مورد.',
+      supplier_plan_invalid_offer: 'بعض عروض الموردين لم تعد صالحة أو لا تطابق الصنف.',
+      supplier_plan_quantity_violation: 'اختيار المورد المقترح يخالف حد الصنف أو MOQ أو الكمية المتاحة.',
     };
     const code = data?.error || data?.message;
     const extra = data?.data?.minimum_possible_total ? ` الحد الأدنى الآمن: ${Number(data.data.minimum_possible_total).toLocaleString('ar-EG')} ج.` : '';
@@ -116,7 +118,10 @@ export const smartPurchaseOrderManagementApi = {
     }
   },
   listOffers: (filters = {}) => legacyRpc('list_offers', filters),
-  importOffers: (payload) => legacyRpc('import_offers', payload),
+  importOffers: (payload) => smartPurchaseUnifiedApi.importSupplierOffers({
+    fileName: payload.file_name,
+    rows: payload.rows || [],
+  }),
   updateItem: atomicUpdateItem,
   applyItemPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_v2', { p_order_id: orderId, p_items: items }),
   applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_item_plan_v2', { p_order_id: orderId, p_items: items }),
@@ -124,6 +129,10 @@ export const smartPurchaseOrderManagementApi = {
     p_order_id: orderId,
     p_minimum_order_value: Number(minimumOrderValue || 0),
     p_maximum_order_value: Number(maximumOrderValue || 0),
+  }),
+  applySupplierPlan: (orderId, items) => directRpc('smart_purchase_apply_supplier_plan_v2', {
+    p_order_id: orderId,
+    p_items: items,
   }),
   optimizeSuppliers: async (orderId) => {
     try { return await legacyRpc('optimize_suppliers', { order_id: orderId }); }
