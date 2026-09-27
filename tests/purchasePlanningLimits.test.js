@@ -104,3 +104,28 @@ test('independent reference price remains separate from expected net cost', () =
   assert.equal(independentReferenceUnitPrice(item), 100);
   assert.equal(purchaseUnitCost(item), 80);
 });
+
+
+test('supplier MOQ is not treated as the pharmacy internal minimum', () => {
+  const row = {
+    product_name: 'Supplier MOQ Item',
+    current_stock: 0,
+    sales_30: 30,
+    moq_quantity: 12,
+  };
+  const result = calculatePurchaseNeed(row, 3);
+  assert.equal(result.raw_suggested_quantity, 3);
+  assert.equal(result.suggested_quantity, 3);
+});
+
+test('pharmacy internal minimum still raises a needed quantity', () => {
+  const row = {
+    product_name: 'Internal Minimum Item',
+    current_stock: 0,
+    sales_30: 30,
+    minimum_order_quantity: 6,
+  };
+  const result = calculatePurchaseNeed(row, 3);
+  assert.equal(result.raw_suggested_quantity, 3);
+  assert.equal(result.suggested_quantity, 6);
+});
