@@ -129,3 +129,62 @@ test('pharmacy internal minimum still raises a needed quantity', () => {
   assert.equal(result.raw_suggested_quantity, 3);
   assert.equal(result.suggested_quantity, 6);
 });
+
+
+test('purchase planning rounds required quantity up to package multiple', () => {
+  const row = {
+    product_name: 'Pack Item',
+    current_stock: 0,
+    sales_30: 30,
+    package_multiple: 6,
+  };
+  const result = calculatePurchaseNeed(row, 7);
+  assert.equal(result.raw_suggested_quantity, 7);
+  assert.equal(result.suggested_quantity, 12);
+  assert.equal(result.purchase_limit_adjusted, true);
+  assert.ok(result.purchase_limit_reasons.includes('rounded_to_package_multiple'));
+});
+
+test('package multiple respects maximum using the largest valid multiple', () => {
+  const row = {
+    product_name: 'Pack Max Item',
+    current_stock: 0,
+    sales_30: 60,
+    package_multiple: 6,
+    maximum_order_quantity: 20,
+  };
+  const result = calculatePurchaseNeed(row, 14);
+  assert.equal(result.raw_suggested_quantity, 28);
+  assert.equal(result.suggested_quantity, 18);
+  assert.ok(result.purchase_limit_reasons.includes('capped_at_item_maximum_package_multiple'));
+});
+
+test('package multiple blocks impossible minimum and maximum combination', () => {
+  const row = {
+    product_name: 'Impossible Pack Item',
+    current_stock: 0,
+    sales_30: 30,
+    minimum_order_quantity: 10,
+    maximum_order_quantity: 11,
+    package_multiple: 6,
+  };
+  const result = calculatePurchaseNeed(row, 7);
+  assert.equal(result.purchase_limit_blocked, true);
+  assert.equal(result.purchase_limit_status, 'package_conflict');
+});
+
+test('budget allocation buys complete packages only', () => {
+  const rows = [{
+    id: 'pack',
+    product_name: 'Budget Pack Item',
+    approved_quantity: 12,
+    requested_quantity: 12,
+    expected_unit_cost: 10,
+    package_multiple: 6,
+    current_stock: 0,
+    sales_30: 30,
+  }];
+  const plan = buildBudgetPlan(rows, 70);
+  assert.equal(plan.rows[0].approved_quantity, 6);
+  assert.equal(plan.total, 60);
+});
