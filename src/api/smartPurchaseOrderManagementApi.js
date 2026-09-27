@@ -42,6 +42,8 @@ async function directRpc(functionName, body = {}) {
       package_multiple_violation: 'الكمية لازم تكون مضاعف صحيح لعبوة/باك الصنف.',
       supplier_offer_missing_cost: 'عرض المورد لا يحتوي على تكلفة شراء صالحة.',
       unverified_item_costs: 'يوجد أسعار مرجعية لم تتم مراجعتها واعتمادها بعد.',
+      order_total_mismatch: 'إجمالي الطلبية المخزن لا يطابق مجموع البنود. نفّذ مزامنة القيمة ثم راجع الاعتماد.',
+      order_not_approvable: 'الطلبية ليست في مرحلة تسمح بالاعتماد.',
       order_max_exceeded: 'التعديل يرفع الطلبية فوق الحد الأقصى المحدد.',
       order_below_minimum: 'قيمة الطلبية أقل من الحد الأدنى المحدد.',
       order_above_maximum: 'قيمة الطلبية أعلى من الحد الأقصى المحدد.',
@@ -156,5 +158,6 @@ export const smartPurchaseOrderManagementApi = {
   previewBudget: (orderId, targetBudget) => directRpc('smart_purchase_optimize_budget_v2', { p_order_id: orderId, p_target_budget: Number(targetBudget || 0), p_apply: false }),
   applyBudget: (orderId, targetBudget) => directRpc('smart_purchase_optimize_budget_v2', { p_order_id: orderId, p_target_budget: Number(targetBudget || 0), p_apply: true }),
   verifyOrderCosts: (orderId) => directRpc('smart_purchase_verify_order_costs_v2', { p_order_id: orderId }),
-  approveOrder: (orderId) => directRpc('smart_purchase_approve_order_cost_guarded_v2', { p_order_id: orderId }),
+  approvalReadiness: (orderId) => directRpc('smart_purchase_approval_readiness_v2', { p_order_id: orderId }),
+  approveOrder: (orderId) => directRpc('smart_purchase_approve_order_final_guarded_v2', { p_order_id: orderId }),
 };
