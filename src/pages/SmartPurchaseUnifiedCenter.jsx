@@ -498,30 +498,28 @@ export default function SmartPurchaseUnifiedCenter() {
         })),
       });
       const title = creationTitle.trim() || `طلبية ${branch}`;
-      const created = await smartPurchaseApi.createOrder({
-        import_id: imported.id,
+      const created = await smartPurchaseApi.createOrderFromPlan({
+        importId: imported.id,
         branch,
         title,
-        budget: number(creationBudget) > 0 ? number(creationBudget) : null,
+        budget: number(creationBudget),
+        minimumOrderValue: number(creationMinimum),
+        maximumOrderValue: number(creationBudget),
+        items: rowsForCreation.map((item) => ({
+          analysis_item_id: item.id || item.analysis_item_id || null,
+          product_code: item.product_code || '',
+          product_name: item.product_name,
+          supplier_name: item.supplier_name || '',
+          requested_quantity: number(item.requested_quantity || item.suggested_quantity),
+          approved_quantity: number(item.approved_quantity || item.suggested_quantity),
+          expected_unit_cost: purchaseUnitCost(item),
+          expected_discount: itemDiscount(item),
+          customer_requests_count: number(item.customer_requests_count),
+          priority_score: number(item.priority_score),
+          minimum_order_quantity: number(item.minimum_order_quantity),
+          maximum_order_quantity: number(item.maximum_order_quantity),
+        })),
       });
-
-      await management.setOrderPolicy(created.id, number(creationMinimum), number(creationBudget));
-
-      const createdOrder = await loadHydratedOrder(created.id);
-      const intendedByKey = new Map(rowsForCreation.map((item) => [normalizeProductKey(item), item]));
-      const itemPlan = (createdOrder?.items || []).map((item) => {
-        const intended = intendedByKey.get(normalizeProductKey(item));
-        if (!intended) return { id: item.id, approved_quantity: number(item.approved_quantity) };
-        return {
-          id: item.id,
-          approved_quantity: number(intended.approved_quantity || intended.suggested_quantity),
-          expected_unit_cost: purchaseUnitCost(intended),
-          expected_discount: itemDiscount(intended),
-          minimum_order_quantity: number(intended.minimum_order_quantity),
-          maximum_order_quantity: number(intended.maximum_order_quantity),
-        };
-      });
-      if (itemPlan.length) await management.applyItemPlan(created.id, itemPlan);
 
       setPreview([]); setRawRows([]); setHeaders([]); setFileName(''); setShowImport(false);
       setCreationMinimum(number(branchPolicy?.minimum_order_value) > 0 ? String(branchPolicy.minimum_order_value) : '');
