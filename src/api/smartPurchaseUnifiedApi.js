@@ -21,6 +21,10 @@ async function standaloneRpc(functionName, body) {
       order_not_found: 'الطلبية غير موجودة.',
       items_without_supplier: 'يوجد أصناف معتمدة بدون مورد.',
       order_not_ready_to_send: 'الطلبية لازم تكون معتمدة قبل تسجيل إرسالها للمورد.',
+      forbidden_branch: 'لا توجد صلاحية على هذا الفرع.',
+      open_order_exists: 'يوجد طلبية مفتوحة بالفعل لهذا الفرع.',
+      order_title_locked: 'لا يمكن تعديل اسم الطلبية بعد الاعتماد أو بدء التنفيذ.',
+      invalid_title: 'اسم الطلبية يجب أن يكون من حرفين إلى 120 حرفًا.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
@@ -81,7 +85,7 @@ export const smartPurchaseUnifiedApi = {
   getOrder: (id) => unifiedV2Rpc('get_order', { id }),
   updateItem: (payload) => rpc('update_item', payload),
   updateItems: (orderId, items) => rpc('update_items', { order_id: orderId, items }),
-  updateOrderTitle: (orderId, title) => standaloneRpc('smart_purchase_update_order_title', { p_order_id: orderId, p_title: title }),
+  updateOrderTitle: (orderId, title) => standaloneRpc('smart_purchase_update_order_title_v2', { p_order_id: orderId, p_title: title }),
   cycleBudgetGuard: (branch = 'all') => standaloneRpc('smart_purchase_cycle_budget_guard', { p_branch: branch }),
   decisionDailyChange: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
