@@ -545,6 +545,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const orderTotalDifference = storedOrderTotal - totals.total;
   const orderTotalMismatch = Boolean(selected?.order?.id) && Math.abs(orderTotalDifference) > 0.01;
   const orderMissingCostItems = useMemo(() => items.filter((item) => itemQuantity(item) > 0 && netUnitPrice(item) <= 0), [items]);
+  const orderUnverifiedCostItems = useMemo(() => items.filter((item) => itemQuantity(item) > 0 && netUnitPrice(item) > 0 && !item.cost_verified_at), [items]);
   const orderItemLimitViolations = useMemo(() => items.filter((item) => {
     const qty = itemQuantity(item);
     const min = number(item.minimum_order_quantity);
@@ -760,6 +761,10 @@ export default function SmartPurchaseUnifiedCenter() {
         </section>
 
         {orderMissingCostItems.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {orderMissingCostItems.length} صنف بكميات معتمدة بدون تكلفة شراء موجبة. لن يسمح النظام بالاعتماد قبل إدخال التكلفة.</div>}
+        {orderUnverifiedCostItems.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 flex flex-wrap items-center justify-between gap-3">
+          <div><strong>مراجعة الأسعار:</strong> يوجد {orderUnverifiedCostItems.length} صنف سعره الحالي مرجعي ولم يتم تأكيده بعد. تعديل تكلفة الصنف يدويًا أو اختيار عرض مورد يؤكد السعر تلقائيًا.</div>
+          {statusEditable && orderMissingCostItems.length === 0 && <button type="button" onClick={() => run(() => management.verifyOrderCosts(selected.order.id), 'تم اعتماد الأسعار الحالية بعد المراجعة.', selected.order.id)} disabled={loading} className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-bold disabled:opacity-50">اعتماد الأسعار الحالية بعد المراجعة</button>}
+        </div>}
         {orderItemLimitViolations.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {orderItemLimitViolations.length} صنف كميته الحالية تخالف الحد الأدنى أو الأقصى. لن يسمح النظام باعتماد الطلبية قبل تصحيحها.</div>}
         {orderTotalMismatch && <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800 flex flex-wrap items-center justify-between gap-3">
           <div><strong>تنبيه سلامة البيانات:</strong> القيمة المخزنة للطلبية {money(storedOrderTotal)} ج بينما مجموع البنود الحالي {money(totals.total)} ج، والفرق {money(Math.abs(orderTotalDifference))} ج.</div>
@@ -791,7 +796,7 @@ export default function SmartPurchaseUnifiedCenter() {
         </section>}
 
         <div className="flex flex-wrap gap-2">
-          {statusEditable && <button onClick={() => run(() => management.approveOrder(selected.order.id), 'تم اعتماد الطلبية وفق حدود الشراء.')} disabled={loading || totals.total <= 0 || orderPolicyGuard.blocked || orderPolicyGuard.below_minimum || orderPolicyGuard.invalid_range || orderItemLimitViolations.length > 0 || orderMissingCostItems.length > 0} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" />اعتماد الطلبية</button>}
+          {statusEditable && <button onClick={() => run(() => management.approveOrder(selected.order.id), 'تم اعتماد الطلبية وفق حدود الشراء.')} disabled={loading || totals.total <= 0 || orderPolicyGuard.blocked || orderPolicyGuard.below_minimum || orderPolicyGuard.invalid_range || orderItemLimitViolations.length > 0 || orderMissingCostItems.length > 0 || orderUnverifiedCostItems.length > 0} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" />اعتماد الطلبية</button>}
           {statusReturnable && <button onClick={() => run(() => unified.returnToReview(selected.order.id), 'تمت إعادة الطلبية للمراجعة.')} disabled={loading} className="rounded-lg border border-amber-300 px-4 py-2 disabled:opacity-50">إعادة للمراجعة</button>}
           {statusCancelable && <button type="button" onClick={() => setShowCancelOrder((value) => !value)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50">إلغاء الطلبية</button>}
           {!statusEditable && !statusReturnable && !statusCancelable && <div className="rounded-lg border bg-slate-50 px-4 py-2 text-sm text-slate-600">{anySupplierSent && status === 'معتمدة' ? 'تم إرسال جزء من الطلبية لمورد واحد على الأقل — تم قفل الرجوع للمراجعة حتى لا تختلف النسخة المرسلة عن النظام.' : `الطلبية في مرحلة ${status} — التعديلات المالية والكميات مقفولة.`}</div>}
