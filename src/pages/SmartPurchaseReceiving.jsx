@@ -74,13 +74,13 @@ export default function SmartPurchaseReceiving() {
     try {
       if (mode === 'receipt') {
         const receiptRows = [
-          ...receiptResult.details.filter((detail) => detail.row).map((detail) => ({
+          ...receiptResult.details.map((detail) => ({
             product_code: detail.row?.product_code || detail.item.product_code || '',
             product_name: detail.row?.product_name || detail.item.product_name,
             received_quantity: detail.received,
             invoiced_quantity: detail.received,
-            actual_unit_cost: detail.actualPrice,
-            actual_total: detail.received * detail.actualPrice,
+            actual_unit_cost: detail.actualPrice > 0 ? detail.actualPrice : detail.expectedPrice,
+            actual_total: detail.received * (detail.actualPrice > 0 ? detail.actualPrice : detail.expectedPrice),
             notes: detail.status,
           })),
           ...receiptResult.unexpected.map((row) => ({
@@ -97,7 +97,7 @@ export default function SmartPurchaseReceiving() {
           order_id: selected.order.id,
           supplier_name: supplierName,
           supplier_invoice_number: '',
-          receipt_date: new Date().toISOString().slice(0, 10),
+          receipt_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()),
           file_name: fileName,
           rows: receiptRows,
         });
@@ -130,7 +130,7 @@ export default function SmartPurchaseReceiving() {
       setLoading(false);
     }
   }
-  function exportRemaining() { if (!supplierResult) return; const exportRows = supplierResult.remaining.map(({ item, remaining }) => ({ 'اسم الصنف': item.product_name || '', 'سعر الجمهور': expectedCost(item), 'الكمية المطلوبة': remaining })); downloadWorkbook({ 'المتبقي لمورد آخر': exportRows }, `${safeFileName(orderTitle(selected.order))}_المتبقي_لمورد_آخر.xlsx`); }
+  function exportRemaining() { if (!supplierResult) return; const exportRows = supplierResult.remaining.map(({ item, remaining }) => ({ 'اسم الصنف': item.product_name || '', 'تكلفة الوحدة المتوقعة': expectedCost(item), 'الكمية المطلوبة': remaining })); downloadWorkbook({ 'المتبقي لمورد آخر': exportRows }, `${safeFileName(orderTitle(selected.order))}_المتبقي_لمورد_آخر.xlsx`); }
   function exportReceiptReport() { if (!receiptResult) return; const summary = [{ 'البيان': 'اسم الطلبية', 'القيمة': orderTitle(selected.order) }, { 'البيان': 'الكود المرجعي', 'القيمة': selected.order.order_number || '' }, { 'البيان': 'عدد الأصناف المطلوبة', 'القيمة': receiptResult.details.length }, { 'البيان': 'القيمة المتوقعة', 'القيمة': receiptExpectedTotal }, { 'البيان': 'قيمة الفاتورة الفعلية', 'القيمة': receiptActualTotal }, { 'البيان': 'فرق القيمة', 'القيمة': Number((receiptActualTotal - receiptExpectedTotal).toFixed(2)) }, { 'البيان': 'حالة التحكم المالي', 'القيمة': invoiceGuard.status }, { 'البيان': 'أصناف سليمة', 'القيمة': receiptResult.details.filter((row) => row.status === 'سليم').length }, { 'البيان': 'أصناف بها ملاحظات', 'القيمة': receiptResult.details.filter((row) => row.status !== 'سليم').length }, { 'البيان': 'أصناف غير متوقعة', 'القيمة': receiptResult.unexpected.length }]; const details = receiptResult.details.map((row) => ({ 'الصنف المطلوب': row.item.product_name || '', 'الكود': row.item.product_code || '', 'الكمية المطلوبة': row.ordered, 'الصنف الموجود بالملف': row.row?.product_name || '', 'الكمية المستلمة': row.received, 'فرق الكمية': row.difference, 'السعر المتوقع': row.expectedPrice, 'السعر الفعلي': row.actualPrice, 'فرق القيمة': Number(row.valueDifference.toFixed(2)), 'طريقة المطابقة': row.method, 'نسبة الثقة %': Number((row.confidence * 100).toFixed(1)), 'النتيجة': row.status })); const unexpected = receiptResult.unexpected.map((row) => ({ 'الصنف الموجود بالملف': row.product_name, 'الكود': row.product_code, 'الكمية': row.quantity, 'السعر': row.price, 'أقرب صنف مطلوب': row.closest_item?.product_name || '', 'نسبة التشابه %': Number((row.similarity * 100).toFixed(1)), 'النتيجة': row.status })); downloadWorkbook({ 'الملخص': summary, 'مطابقة الأصناف': details, 'أصناف غير متوقعة': unexpected }, `${safeFileName(orderTitle(selected.order))}_تقرير_الاستلام_والمطابقة.xlsx`); }
   const supplierStats = supplierResult ? { confirmed: supplierResult.confirmed.length, remaining: supplierResult.remaining.length, unexpected: supplierResult.unexpected.length } : null;
   const receiptStats = receiptResult ? { ok: receiptResult.details.filter((row) => row.status === 'سليم').length, issues: receiptResult.details.filter((row) => row.status !== 'سليم').length, unexpected: receiptResult.unexpected.length } : null;
