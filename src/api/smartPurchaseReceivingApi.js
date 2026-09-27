@@ -33,7 +33,7 @@ async function receivingRpc(action, payload = {}) {
 async function importReceipt(payload) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_import_receipt_v2`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_import_receipt_v3`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_payload: payload }),
@@ -45,6 +45,9 @@ async function importReceipt(payload) {
       duplicate_supplier_invoice: 'رقم فاتورة المورد ده مسجل بالفعل لنفس الطلبية.',
       supplier_required: 'حدد المورد قبل تسجيل الاستلام.',
       receipt_value_above_limit: 'قيمة الاستلام تتجاوز الحد المالي المسموح للطلبية.',
+      receipt_value_above_supplier_limit: 'قيمة فاتورة المورد تتجاوز قيمة الأصناف المتبقية له داخل الطلبية.',
+      cross_supplier_receipt_rows: 'الملف يحتوي على صنف مسند لمورد آخر داخل نفس الطلبية.',
+      supplier_has_no_remaining_items: 'لا توجد كميات متبقية لهذا المورد تسمح بتسجيل استلام جديد.',
       invalid_rows: 'بيانات الاستلام غير صالحة.',
       forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
       order_not_found: 'الطلبية غير موجودة.',
