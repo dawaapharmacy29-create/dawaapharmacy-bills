@@ -156,6 +156,34 @@ export default function SmartPurchaseReceiving() {
   function exportReceiptReport() { if (!receiptResult) return; const summary = [{ 'البيان': 'اسم الطلبية', 'القيمة': orderTitle(selected.order) }, { 'البيان': 'الكود المرجعي', 'القيمة': selected.order.order_number || '' }, { 'البيان': 'عدد الأصناف المطلوبة', 'القيمة': receiptResult.details.length }, { 'البيان': 'القيمة المتوقعة', 'القيمة': receiptExpectedTotal }, { 'البيان': 'قيمة الفاتورة الفعلية', 'القيمة': receiptActualTotal }, { 'البيان': 'فرق القيمة', 'القيمة': Number((receiptActualTotal - receiptExpectedTotal).toFixed(2)) }, { 'البيان': 'حالة التحكم المالي', 'القيمة': invoiceGuard.status }, { 'البيان': 'أصناف سليمة', 'القيمة': receiptResult.details.filter((row) => row.status === 'سليم').length }, { 'البيان': 'أصناف بها ملاحظات', 'القيمة': receiptResult.details.filter((row) => row.status !== 'سليم').length }, { 'البيان': 'أصناف غير متوقعة', 'القيمة': receiptResult.unexpected.length }]; const details = receiptResult.details.map((row) => ({ 'الصنف المطلوب': row.item.product_name || '', 'الكود': row.item.product_code || '', 'الكمية المطلوبة': row.ordered, 'الصنف الموجود بالملف': row.row?.product_name || '', 'الكمية المستلمة': row.received, 'فرق الكمية': row.difference, 'السعر المتوقع': row.expectedPrice, 'السعر الفعلي': row.actualPrice, 'فرق القيمة': Number(row.valueDifference.toFixed(2)), 'طريقة المطابقة': row.method, 'نسبة الثقة %': Number((row.confidence * 100).toFixed(1)), 'النتيجة': row.status })); const unexpected = receiptResult.unexpected.map((row) => ({ 'الصنف الموجود بالملف': row.product_name, 'الكود': row.product_code, 'الكمية': row.quantity, 'السعر': row.price, 'أقرب صنف مطلوب': row.closest_item?.product_name || '', 'نسبة التشابه %': Number((row.similarity * 100).toFixed(1)), 'النتيجة': row.status })); downloadWorkbook({ 'الملخص': summary, 'مطابقة الأصناف': details, 'أصناف غير متوقعة': unexpected }, `${safeFileName(orderTitle(selected.order))}_تقرير_الاستلام_والمطابقة.xlsx`); }
   const supplierStats = supplierResult ? { confirmed: supplierResult.confirmed.length, remaining: supplierResult.remaining.length, unexpected: supplierResult.unexpected.length } : null;
   const receiptStats = receiptResult ? { ok: receiptResult.details.filter((row) => row.status === 'سليم').length, issues: receiptResult.details.filter((row) => row.status !== 'سليم').length, unexpected: receiptResult.unexpected.length } : null;
+  const receivingResolutionItems = useMemo(() => (selected?.items || []).filter((item) => activeQuantity(item) > 0), [selected]);
+  const pendingResolutionItems = useMemo(() => receivingResolutionItems.filter((item) => String(item.resolution_status || 'pending') === 'pending'), [receivingResolutionItems]);
+  const followupResolutionItems = useMemo(() => receivingResolutionItems.filter((item) => String(item.resolution_status || '') === 'followup_required'), [receivingResolutionItems]);
+  const closeReadyLocal = receivingResolutionItems.length > 0 && pendingResolutionItems.length === 0 && followupResolutionItems.length === 0;
+
+  async function resolveReceivingItem(item, resolutionStatus) {
+    if (!selected?.order?.id || !item?.id) return;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      await api.resolveItem(selected.order.id, item.id, resolutionStatus);
+      const detail = await api.getOrder(selected.order.id);
+      setSelected(detail);
+      setMessage('تم حفظ قرار الاستلام للصنف.');
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  }
+
+  async function closeCurrentOrder() {
+    if (!selected?.order?.id) return;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      await api.closeOrder(selected.order.id);
+      setMessage('تم إغلاق الطلبية بعد حسم كل فروق الاستلام.');
+      setSelected(null);
+      await refresh();
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  }
 
   return <div dir="rtl" className="p-3 md:p-6 space-y-5">
     <header className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><PackageCheck className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">دورة تنفيذ ومطابقة الطلبية</h1><p className="text-sm text-slate-500 mt-1">رد المورد، استخراج المتبقي، ثم مطابقة ما وصل فعليًا مع المطلوب.</p></div></div><button onClick={refresh} className="rounded-lg border bg-white px-4 py-2 flex items-center gap-2"><RefreshCw className="w-4 h-4" />تحديث</button></header>
@@ -165,6 +193,50 @@ export default function SmartPurchaseReceiving() {
       <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className="text-sm text-slate-400 p-3">لا توجد طلبيات متاحة.</p>}</div></aside>
       <main className="space-y-4">{!selected && <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">اختر طلبية للبدء.</div>}{selected && <>
         <section className="rounded-2xl border bg-white p-4 shadow-sm"><h2 className="text-xl font-bold">{orderTitle(selected.order)}</h2><p className="text-xs text-slate-400 mt-1">{selected.order.order_number}</p><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {orderSuppliers.length} مورد • {supplierName ? `${orderItems.length} صنف للمورد المختار` : 'اختر المورد لبدء المطابقة'}</p><div className="mt-4 grid sm:grid-cols-2 gap-2"><button onClick={() => { setMode('supplier_response'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'supplier_response' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>1. تسجيل رد المورد واستخراج المتبقي</button><button onClick={() => { setMode('receipt'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'receipt' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>2. رفع المشتريات ومطابقة الاستلام</button></div></section>
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold">إغلاق الطلبية بعد الاستلام</h3>
+              <p className="text-xs text-slate-500 mt-1">الأصناف السليمة تُقفل تلقائيًا. أي نقص أو زيادة أو فرق سعر/فاتورة يحتاج قرار واضح قبل الإغلاق النهائي.</p>
+            </div>
+            <button type="button" onClick={closeCurrentOrder} disabled={loading || !closeReadyLocal} className="rounded-lg bg-slate-900 px-4 py-2 font-bold text-white disabled:opacity-40">إغلاق الطلبية نهائيًا</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+            {[
+              ['إجمالي البنود', receivingResolutionItems.length],
+              ['قرارات معلقة', pendingResolutionItems.length],
+              ['متابعة مفتوحة', followupResolutionItems.length],
+              ['جاهزية الإغلاق', closeReadyLocal ? 'جاهزة' : 'غير جاهزة'],
+            ].map(([label, value]) => <div key={label} className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}
+          </div>
+          {(pendingResolutionItems.length > 0 || followupResolutionItems.length > 0) && <div className="space-y-2">
+            {receivingResolutionItems.filter((item) => ['pending','followup_required'].includes(String(item.resolution_status || 'pending'))).map((item) => {
+              const approved = activeQuantity(item);
+              const received = Math.max(0, num(item.received_quantity));
+              const invoiced = Math.max(0, num(item.invoiced_quantity));
+              const expected = expectedCost(item);
+              const actual = Math.max(0, num(item.actual_unit_cost));
+              const shortage = received < approved;
+              const overage = received > approved;
+              const priceIssue = received > 0 && expected > 0 && actual > 0 && Math.abs(actual - expected) > Math.max(0.01, expected * 0.03);
+              const invoiceIssue = invoiced !== received;
+              return <div key={item.id} className="rounded-xl border p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div><div className="font-bold">{item.product_name}</div><div className="text-xs text-slate-500 mt-1">معتمد {approved} • مستلم {received} • مفوتر {invoiced}{priceIssue ? ` • السعر المتوقع ${money(expected)} / الفعلي ${money(actual)}` : ''}</div></div>
+                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${item.resolution_status === 'followup_required' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>{item.resolution_status === 'followup_required' ? 'متابعة مفتوحة' : 'قرار مطلوب'}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {shortage && <button type="button" disabled={loading} onClick={() => resolveReceivingItem(item, 'accepted_shortage')} className="rounded-lg border px-3 py-2 text-xs font-bold">اعتماد النقص</button>}
+                  {overage && <button type="button" disabled={loading} onClick={() => resolveReceivingItem(item, 'accepted_overage')} className="rounded-lg border px-3 py-2 text-xs font-bold">اعتماد الزيادة</button>}
+                  {priceIssue && <button type="button" disabled={loading} onClick={() => resolveReceivingItem(item, 'accepted_price_variance')} className="rounded-lg border px-3 py-2 text-xs font-bold">اعتماد فرق السعر</button>}
+                  {invoiceIssue && <button type="button" disabled={loading} onClick={() => resolveReceivingItem(item, 'accepted_invoice_variance')} className="rounded-lg border px-3 py-2 text-xs font-bold">اعتماد فرق الفاتورة</button>}
+                  <button type="button" disabled={loading} onClick={() => resolveReceivingItem(item, 'followup_required')} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">يحتاج متابعة</button>
+                </div>
+              </div>;
+            })}
+          </div>}
+        </section>
+
         {supplierName && <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
           <div className="font-bold text-emerald-950 mb-3">موقف المورد التراكمي</div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
