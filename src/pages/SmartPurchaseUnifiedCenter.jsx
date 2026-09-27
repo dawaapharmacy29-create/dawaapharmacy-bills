@@ -17,7 +17,7 @@ import {
   mergePurchaseRows,
   normalizeProductKey,
 } from '@/lib/purchasePlanning';
-import { evaluateOrderValue } from '@/lib/purchasePolicyEngine';
+import { applyItemPurchaseLimits, evaluateOrderValue } from '@/lib/purchasePolicyEngine';
 import { explicitDiscountPercent, independentReferenceUnitPrice, purchaseLineTotal, purchaseUnitCost, referenceUnitPrice } from '@/lib/purchasePricing';
 
 const BRANCHES = ['دواء الشامي', 'دواء شكري'];
@@ -238,7 +238,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [branch, setBranch] = useState('دواء الشامي');
   const [creationTitle, setCreationTitle] = useState('');
   const [editingTitle, setEditingTitle] = useState('');
-  const [coverageDays, setCoverageDays] = useState(7);
+  const [coverageDays, setCoverageDays] = useState(14);
   const [financialMode, setFinancialMode] = useState('medium');
   const [demandTransferPreview, setDemandTransferPreview] = useState(null);
   const [creationMinimum, setCreationMinimum] = useState('');
@@ -321,7 +321,10 @@ export default function SmartPurchaseUnifiedCenter() {
           setBranchPolicy(policy || null);
           setCreationMinimum(Number(policy?.minimum_order_value || 0) > 0 ? String(policy.minimum_order_value) : '');
           setCreationBudget(Number(policy?.maximum_order_value || 0) > 0 ? String(policy.maximum_order_value) : '');
-          setCoverageDays(Math.max(1, Number(policy?.default_coverage_days || 7)));
+          const savedDays = Math.max(1, Number(policy?.default_coverage_days || 14));
+          if (savedDays === 7) { setFinancialMode('critical'); setCoverageDays(7); }
+          else if (savedDays === 30) { setFinancialMode('comfortable'); setCoverageDays(30); }
+          else { setFinancialMode('medium'); setCoverageDays(14); }
         }
       } catch (err) {
         if (!cancelled) setError((current) => current || `تعذر تحميل سياسة طلبية ${branch}: ${err.message}`);
@@ -387,7 +390,7 @@ export default function SmartPurchaseUnifiedCenter() {
   }
 
   async function readFile(file) {
-    setError(''); setMessage(''); setFileName(file.name);
+    setError(''); setMessage(''); setFileName(file.name); setDemandTransferPreview(null);
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
       const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '', raw: true });
@@ -403,6 +406,7 @@ export default function SmartPurchaseUnifiedCenter() {
   }
   function changeMapping(field, value) {
     const next = { ...mapping, [field]: value };
+    setDemandTransferPreview(null);
     setMapping(next); buildPreview(rawRows, next); setMappingSource('تم تعديل ربط الأعمدة يدويًا');
   }
   function updatePreviewLimit(item, field, value) {
@@ -497,7 +501,9 @@ export default function SmartPurchaseUnifiedCenter() {
 
   const plannedCandidates = useMemo(() => buildPurchaseCandidates(previewWithPolicies, { coverage_days: coverageDays }).map((item) => {
     const intelligence = demandTransferByKey.get(normalizeProductKey(item));
-    const smartBuyQuantity = intelligence ? Math.max(0, number(intelligence.buy_quantity)) : item.suggested_quantity;
+    const rawSmartBuyQuantity = intelligence ? Math.max(0, number(intelligence.buy_quantity)) : item.suggested_quantity;
+    const smartLimit = intelligence ? applyItemPurchaseLimits(rawSmartBuyQuantity, item) : null;
+    const smartBuyQuantity = smartLimit?.blocked ? rawSmartBuyQuantity : (smartLimit?.quantity ?? rawSmartBuyQuantity);
     return {
       ...item,
       suggested_quantity: smartBuyQuantity,
@@ -510,6 +516,8 @@ export default function SmartPurchaseUnifiedCenter() {
       gross_need_before_transfer: intelligence ? Math.max(0, number(intelligence.gross_need)) : item.suggested_quantity,
       movement_class: intelligence?.movement_class || '',
       smart_purchase_decision: intelligence?.decision || 'buy',
+      smart_purchase_limit_status: smartLimit?.status || item.purchase_limit_status,
+      smart_purchase_limit_reasons: smartLimit?.reasons || item.purchase_limit_reasons,
     };
   }).filter((item) => number(item.suggested_quantity) > 0), [previewWithPolicies, coverageDays, demandTransferByKey]);
   const invalidItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_blocked), [plannedCandidates]);
@@ -529,6 +537,7 @@ export default function SmartPurchaseUnifiedCenter() {
 
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
+    if (preview.length > 0 && (!demandTransferPreview || demandTransferPreview.branch !== branch)) return setError('شغّل «تحليل ذكي قبل الشراء» على الملف الحالي قبل إنشاء الطلبية.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
     if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
     if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
@@ -746,9 +755,9 @@ export default function SmartPurchaseUnifiedCenter() {
       <h2 className="font-bold flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-teal-600" />إنشاء طلبية من B-Connect أو Excel</h2>
       <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <label className="text-sm">اسم الطلبية<input type="text" maxLength="120" value={creationTitle} onChange={(event) => setCreationTitle(event.target.value)} placeholder="مثال: طلبية أول أغسطس — فرع الشامي" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">اسم واضح للمراجعة والبحث، والكود المرجعي سيظهر تحته.</span></label>
-        <label className="text-sm">الفرع<select value={branch} onChange={(event) => setBranch(event.target.value)} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label className="text-sm">الفرع<select value={branch} onChange={(event) => { setBranch(event.target.value); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { const mode = event.target.value; setFinancialMode(mode); setCoverageDays(mode === 'critical' ? 7 : mode === 'comfortable' ? 30 : 14); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="critical">حرج — 7 أيام</option><option value="medium">متوسط — 14 يوم</option><option value="comfortable">مريح — 30 يوم</option></select><span className="text-[11px] text-slate-500">يحدد التغطية المستهدفة قبل توزيع الميزانية.</span></label>
-        <label className="text-sm">التغطية النهائية المطلوبة بالأيام<input type="number" min="1" value={coverageDays} onChange={(event) => { setCoverageDays(Math.max(1, number(event.target.value))); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمكن تعديلها يدويًا بعد اختيار الوضع المالي.</span></label>
+        <label className="text-sm">التغطية الناتجة بالأيام<input type="number" value={coverageDays} readOnly className="mt-1 w-full rounded-lg border bg-slate-50 p-2" /><span className="text-[11px] text-slate-500">7 حرج • 14 متوسط • 30 مريح.</span></label>
         <label className="text-sm">الحد الأدنى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationMinimum} onChange={(event) => setCreationMinimum(event.target.value)} placeholder="مثال: 10000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمنع إنشاء طلبية أصغر من الحد التشغيلي.</span></label>
         <label className="text-sm">الحد الأقصى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يوزع الكميات داخل السقف المالي.</span></label>
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
