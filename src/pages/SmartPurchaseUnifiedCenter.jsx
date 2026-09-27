@@ -417,7 +417,7 @@ export default function SmartPurchaseUnifiedCenter() {
   async function runDemandTransferPreview() {
     setLoading(true); setError(''); setMessage('');
     try {
-      const result = await unified.demandTransferPreview(branch, financialMode);
+      const result = await unified.demandTransferPreview(branch, financialMode, previewWithPolicies);
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
       setCoverageDays(days);
@@ -491,13 +491,27 @@ export default function SmartPurchaseUnifiedCenter() {
     };
   }), [preview, policyByKey]);
 
-  const plannedCandidates = useMemo(() => buildPurchaseCandidates(previewWithPolicies, { coverage_days: coverageDays }).map((item) => ({
-    ...item,
-    requested_quantity: item.suggested_quantity,
-    approved_quantity: item.suggested_quantity,
-    expected_unit_cost: purchaseUnitCost({ ...item, expected_unit_cost: 0 }),
-    supplier_name: '',
-  })), [previewWithPolicies, coverageDays]);
+  const demandTransferByKey = useMemo(() => new Map(
+    (demandTransferPreview?.plan || []).map((row) => [normalizeProductKey(row), row])
+  ), [demandTransferPreview]);
+
+  const plannedCandidates = useMemo(() => buildPurchaseCandidates(previewWithPolicies, { coverage_days: coverageDays }).map((item) => {
+    const intelligence = demandTransferByKey.get(normalizeProductKey(item));
+    const smartBuyQuantity = intelligence ? Math.max(0, number(intelligence.buy_quantity)) : item.suggested_quantity;
+    return {
+      ...item,
+      suggested_quantity: smartBuyQuantity,
+      requested_quantity: smartBuyQuantity,
+      approved_quantity: smartBuyQuantity,
+      expected_unit_cost: purchaseUnitCost({ ...item, expected_unit_cost: 0 }),
+      supplier_name: '',
+      transfer_from_branch: intelligence?.transfer_from_branch || '',
+      suggested_transfer_quantity: Math.max(0, number(intelligence?.suggested_transfer_qty)),
+      gross_need_before_transfer: intelligence ? Math.max(0, number(intelligence.gross_need)) : item.suggested_quantity,
+      movement_class: intelligence?.movement_class || '',
+      smart_purchase_decision: intelligence?.decision || 'buy',
+    };
+  }).filter((item) => number(item.suggested_quantity) > 0), [previewWithPolicies, coverageDays, demandTransferByKey]);
   const invalidItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_blocked), [plannedCandidates]);
   const adjustedItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_adjusted), [plannedCandidates]);
   const creationBudgetPlan = useMemo(() => {
@@ -555,6 +569,11 @@ export default function SmartPurchaseUnifiedCenter() {
           minimum_order_quantity: number(item.minimum_order_quantity),
           maximum_order_quantity: number(item.maximum_order_quantity),
           package_multiple: number(item.package_multiple),
+          transfer_from_branch: item.transfer_from_branch || '',
+          suggested_transfer_quantity: number(item.suggested_transfer_quantity),
+          gross_need_before_transfer: number(item.gross_need_before_transfer),
+          movement_class: item.movement_class || '',
+          smart_purchase_decision: item.smart_purchase_decision || '',
         })),
       });
 
