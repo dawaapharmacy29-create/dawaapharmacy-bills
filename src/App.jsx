@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from './pages/LoginPage';
@@ -51,9 +51,7 @@ const ReviewNeededInvoices = lazy(() => import('./components/invoices/ReviewNeed
 const DataReviewCenter = lazy(() => import('./pages/DataReviewCenter'));
 const BranchSettlements = lazy(() => import('./pages/BranchSettlements'));
 const PurchaseWorkflowCenter = lazy(() => import('./pages/PurchaseWorkflowCenter'));
-const SmartPurchaseCenter = lazy(() => import('./pages/SmartPurchaseCenter'));
 const SmartPurchaseReceiving = lazy(() => import('./pages/SmartPurchaseReceiving'));
-const SmartPurchaseOrderManagement = lazy(() => import('./pages/SmartPurchaseOrderManagement'));
 const SmartPurchaseInsights = lazy(() => import('./pages/SmartPurchaseInsights'));
 const PurchaseCommandCenter = lazy(() => import('./pages/PurchaseCommandCenter'));
 const TeamMergeCenter = lazy(() => import('./pages/TeamMergeCenter'));
@@ -123,8 +121,8 @@ const AuthenticatedApp = () => {
     <Route path="/branch-settlements" element={<RoleRouteGuard adminOnly><BranchSettlements /></RoleRouteGuard>} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
     <Route path="/purchase-center" element={<PurchaseCommandCenter />} />
-    <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
-    <Route path="/smart-purchase-orders/manage" element={<SmartPurchaseOrderManagement />} />
+    <Route path="/smart-purchase-orders" element={<Navigate to="/purchase-center#purchase-order-workspace" replace />} />
+    <Route path="/smart-purchase-orders/manage" element={<Navigate to="/purchase-center#purchase-order-workspace" replace />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
     <Route path="/smart-purchase-insights" element={<SmartPurchaseInsights />} />
   </Route><Route path="*" element={<PageNotFound />} /></Routes></Suspense>;
