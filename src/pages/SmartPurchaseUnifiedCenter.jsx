@@ -608,6 +608,22 @@ export default function SmartPurchaseUnifiedCenter() {
     }
   }
 
+  function resolveSupplierRecommendationQuantity(item, recommended = {}, neededQty = 0) {
+    const internalMin = Math.max(0, number(item?.minimum_order_quantity));
+    const internalMax = Math.max(0, number(item?.maximum_order_quantity));
+    const supplierMoq = Math.max(0, number(recommended?.minimum_order_quantity));
+    const available = Math.max(0, number(recommended?.available_quantity));
+    const packageMultiple = Math.max(0, Math.floor(number(item?.package_multiple)));
+    const raw = Math.max(0, number(recommended?.purchase_qty || neededQty), internalMin, supplierMoq);
+    const qty = packageMultiple > 1 ? Math.ceil(raw / packageMultiple) * packageMultiple : Math.ceil(raw);
+    const conflict = !item
+      || qty <= 0
+      || (internalMax > 0 && qty > internalMax)
+      || (available > 0 && qty > available)
+      || number(recommended?.net_unit_cost) <= 0;
+    return { qty, conflict, packageMultiple };
+  }
+
   async function applySupplierRecommendations() {
     if (!selected?.order?.id || !supplierDecision?.items?.length) return;
     const currentById = new Map(items.map((item) => [String(item.id), item]));
@@ -615,14 +631,11 @@ export default function SmartPurchaseUnifiedCenter() {
       .filter((decision) => decision?.recommended?.offer_id && decision?.recommended?.quantity_fully_available !== false)
       .map((decision) => {
         const item = currentById.get(String(decision.item_id));
-        const qty = Math.max(0, number(decision.recommended.purchase_qty || decision.needed_qty));
-        const min = number(item?.minimum_order_quantity);
-        const max = number(item?.maximum_order_quantity);
-        const conflict = !item || (qty > 0 && min > 0 && qty < min) || (qty > 0 && max > 0 && qty > max);
-        return conflict ? null : {
+        const resolved = resolveSupplierRecommendationQuantity(item, decision.recommended, decision.needed_qty);
+        return resolved.conflict ? null : {
           item_id: decision.item_id,
           offer_id: decision.recommended.offer_id,
-          approved_quantity: qty,
+          approved_quantity: resolved.qty,
         };
       })
       .filter(Boolean);
@@ -757,7 +770,7 @@ export default function SmartPurchaseUnifiedCenter() {
             ['فجوات توافر', supplierDecision.summary.availability_gaps || 0],
             ['تكلفة مقترحة', `${money(supplierDecision.summary.recommended_cash_cost)} ج`],
           ].map(([label, value]) => <div key={label} className="rounded-lg border bg-white p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}
-          {supplierDecision?.items?.length > 0 && <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1250px] w-full text-xs"><thead className="bg-slate-50"><tr>{['الصنف','الحالة','المورد المقترح','الكمية','MOQ','المتاح','البونص','تكلفة فعالة','مدة التوريد','أداء المورد','السبب'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{supplierDecision.items.map((decision) => { const rec = decision.recommended || {}; const current = items.find((item) => String(item.id) === String(decision.item_id)); const qty = number(rec.purchase_qty || decision.needed_qty); const max = number(current?.maximum_order_quantity); const min = number(current?.minimum_order_quantity); const internalConflict = (qty > 0 && min > 0 && qty < min) || (qty > 0 && max > 0 && qty > max); return <tr key={decision.item_id} className={`border-t ${decision.status === 'no_offer' || decision.status === 'availability_gap' || internalConflict ? 'bg-red-50/50' : decision.status === 'moq_overbuy' ? 'bg-amber-50/50' : ''}`}><td className="p-2 font-bold">{decision.product_name}</td><td className="p-2">{internalConflict ? 'يتعارض مع حد الصنف' : decision.status === 'no_offer' ? 'بدون عرض' : decision.status === 'availability_gap' ? 'المتاح لا يكفي' : decision.status === 'moq_overbuy' ? 'MOQ يزيد الكمية' : 'جاهز'}</td><td className="p-2 font-semibold">{rec.supplier_name || '—'}</td><td className="p-2">{rec.purchase_qty ?? '—'}</td><td className="p-2">{rec.minimum_order_quantity ?? '—'}</td><td className="p-2">{rec.availability_unknown ? 'غير محدد' : (rec.available_quantity ?? '—')}</td><td className="p-2">{rec.earned_bonus_units || 0}</td><td className="p-2">{rec.effective_unit_cost ? `${money(rec.effective_unit_cost)} ج` : '—'}</td><td className="p-2">{rec.lead_time_days != null ? `${rec.lead_time_days} يوم` : '—'}</td><td className="p-2">{rec.performance_score != null ? `${money(rec.performance_score)}/100` : 'بدون تاريخ'}</td><td className="p-2 max-w-[320px]">{rec.reason || '—'}</td></tr>; })}</tbody></table></div>}
+          {supplierDecision?.items?.length > 0 && <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1250px] w-full text-xs"><thead className="bg-slate-50"><tr>{['الصنف','الحالة','المورد المقترح','الكمية','MOQ','المتاح','البونص','تكلفة فعالة','مدة التوريد','أداء المورد','السبب'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{supplierDecision.items.map((decision) => { const rec = decision.recommended || {}; const current = items.find((item) => String(item.id) === String(decision.item_id)); const resolved = resolveSupplierRecommendationQuantity(current, rec, decision.needed_qty); const qty = resolved.qty; const max = number(current?.maximum_order_quantity); const min = number(current?.minimum_order_quantity); const internalConflict = resolved.conflict || (qty > 0 && min > 0 && qty < min) || (qty > 0 && max > 0 && qty > max); return <tr key={decision.item_id} className={`border-t ${decision.status === 'no_offer' || decision.status === 'availability_gap' || internalConflict ? 'bg-red-50/50' : decision.status === 'moq_overbuy' ? 'bg-amber-50/50' : ''}`}><td className="p-2 font-bold">{decision.product_name}</td><td className="p-2">{internalConflict ? 'يتعارض مع حد الصنف' : decision.status === 'no_offer' ? 'بدون عرض' : decision.status === 'availability_gap' ? 'المتاح لا يكفي' : decision.status === 'moq_overbuy' ? 'MOQ يزيد الكمية' : 'جاهز'}</td><td className="p-2 font-semibold">{rec.supplier_name || '—'}</td><td className="p-2">{internalConflict ? '—' : qty}{resolved.packageMultiple > 1 && !internalConflict ? <div className="text-[10px] text-slate-400">مضاعف عبوة {resolved.packageMultiple}</div> : null}</td><td className="p-2">{rec.minimum_order_quantity ?? '—'}</td><td className="p-2">{rec.availability_unknown ? 'غير محدد' : (rec.available_quantity ?? '—')}</td><td className="p-2">{rec.earned_bonus_units || 0}</td><td className="p-2">{rec.effective_unit_cost ? `${money(rec.effective_unit_cost)} ج` : '—'}</td><td className="p-2">{rec.lead_time_days != null ? `${rec.lead_time_days} يوم` : '—'}</td><td className="p-2">{rec.performance_score != null ? `${money(rec.performance_score)}/100` : 'بدون تاريخ'}</td><td className="p-2 max-w-[320px]">{rec.reason || '—'}</td></tr>; })}</tbody></table></div>}
         </section>
 
         {orderMissingCostItems.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {orderMissingCostItems.length} صنف بكميات معتمدة بدون تكلفة شراء موجبة. لن يسمح النظام بالاعتماد قبل إدخال التكلفة.</div>}
