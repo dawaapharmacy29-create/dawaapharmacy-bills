@@ -60,7 +60,11 @@ async function saveSnapshot(payload) {
 }
 
 export const smartPurchaseReceivingApi = {
-  listOrders: () => receivingRpc('list_orders'),
+  listOrders: async () => {
+    const rows = await receivingRpc('list_orders');
+    const allowed = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received']);
+    return (rows || []).filter((order) => allowed.has(String(order.status || '').trim()));
+  },
   getOrder: (id) => receivingRpc('get_order', { id }),
   importReceipt,
   saveWorkflowSnapshot: saveSnapshot,
