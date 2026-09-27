@@ -129,7 +129,6 @@ export const smartPurchaseUnifiedApi = {
   approveAndReserve: (payload) => rpc('approve_order', { order_id: payload.order_id }),
   returnToReview: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
   releaseReservation: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
-  markSent: (orderId) => standaloneRpc('smart_purchase_mark_sent_v2', { p_order_id: orderId }),
   cancelOrder: (orderId, reason) => standaloneRpc('smart_purchase_cancel_order_v2', {
     p_order_id: orderId,
     p_reason: reason,
