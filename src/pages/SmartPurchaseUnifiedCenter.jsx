@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { smartPurchaseUnifiedApi as unified } from '@/api/smartPurchaseUnifiedApi';
 import { smartPurchaseOrderManagementApi as management } from '@/api/smartPurchaseOrderManagementApi';
 import { smartPurchaseApi } from '@/api/smartPurchaseApi';
+import { smartPurchaseProductPolicyApi } from '@/api/smartPurchaseProductPolicyApi';
 import {
   AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Send,
   Upload, ShoppingCart, SlidersHorizontal, Save, WalletCards, Calculator, Eye, ArrowUpDown,
@@ -188,6 +189,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [mappingSource, setMappingSource] = useState('');
   const [preview, setPreview] = useState([]);
   const [previewErrors, setPreviewErrors] = useState([]);
+  const [productPolicies, setProductPolicies] = useState([]);
+  const [policiesLoading, setPoliciesLoading] = useState(false);
   const [orderMinimum, setOrderMinimum] = useState('');
   const [budgetLimit, setBudgetLimit] = useState('');
   const [budgetPreviewVisible, setBudgetPreviewVisible] = useState(false);
@@ -216,6 +219,25 @@ export default function SmartPurchaseUnifiedCenter() {
     finally { setLoading(false); }
   }
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPolicies() {
+      setPoliciesLoading(true);
+      try {
+        const rows = await smartPurchaseProductPolicyApi.list(branch);
+        if (!cancelled) setProductPolicies(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        if (!cancelled) {
+          setProductPolicies([]);
+          setError((current) => current || `تعذر تحميل سياسات أصناف ${branch}: ${err.message}`);
+        }
+      } finally {
+        if (!cancelled) setPoliciesLoading(false);
+      }
+    }
+    loadPolicies();
+    return () => { cancelled = true; };
+  }, [branch]);
 
   async function openOrder(id) {
     setLoading(true); setError(''); setMessage(''); setBudgetPreviewVisible(false);
@@ -291,13 +313,57 @@ export default function SmartPurchaseUnifiedCenter() {
     localStorage.setItem(MAPPING_KEY, JSON.stringify(all)); setMappingSource('تم حفظ القالب على هذا الجهاز');
   }
 
-  const plannedCandidates = useMemo(() => buildPurchaseCandidates(preview, { coverage_days: coverageDays }).map((item) => ({
+  async function saveCurrentProductPolicies() {
+    const rows = plannedCandidates
+      .filter((item) => number(item.minimum_order_quantity) > 0 || number(item.maximum_order_quantity) > 0 || number(item.target_coverage_days) > 0 || number(item.package_multiple) > 0)
+      .map((item) => ({
+        product_key: normalizeProductKey(item),
+        product_code: item.product_code || '',
+        product_name: item.product_name,
+        minimum_order_quantity: number(item.minimum_order_quantity),
+        maximum_order_quantity: number(item.maximum_order_quantity),
+        target_coverage_days: number(item.target_coverage_days),
+        package_multiple: number(item.package_multiple),
+        is_active: true,
+      }));
+    if (!rows.length) return setError('لا توجد حدود أصناف محددة لحفظها كسياسات دائمة.');
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const result = await smartPurchaseProductPolicyApi.upsertMany(branch, rows);
+      const refreshed = await smartPurchaseProductPolicyApi.list(branch);
+      setProductPolicies(Array.isArray(refreshed) ? refreshed : []);
+      setMessage(`تم حفظ ${result?.updated || rows.length} سياسة صنف لفرع ${branch}. ستُطبق تلقائيًا في الطلبيات القادمة.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const policyByKey = useMemo(() => new Map(
+    productPolicies.map((policy) => [String(policy.product_key || '').trim(), policy])
+  ), [productPolicies]);
+
+  const previewWithPolicies = useMemo(() => preview.map((row) => {
+    const policy = policyByKey.get(normalizeProductKey(row));
+    if (!policy) return row;
+    return {
+      ...row,
+      minimum_order_quantity: number(row.minimum_order_quantity) > 0 ? number(row.minimum_order_quantity) : number(policy.minimum_order_quantity),
+      maximum_order_quantity: number(row.maximum_order_quantity) > 0 ? number(row.maximum_order_quantity) : number(policy.maximum_order_quantity),
+      target_coverage_days: number(policy.target_coverage_days),
+      package_multiple: number(policy.package_multiple),
+      purchase_policy_source: 'saved_policy',
+    };
+  }), [preview, policyByKey]);
+
+  const plannedCandidates = useMemo(() => buildPurchaseCandidates(previewWithPolicies, { coverage_days: coverageDays }).map((item) => ({
     ...item,
     requested_quantity: item.suggested_quantity,
     approved_quantity: item.suggested_quantity,
     expected_unit_cost: purchaseUnitCost({ ...item, expected_unit_cost: 0 }),
     supplier_name: '',
-  })), [preview, coverageDays]);
+  })), [previewWithPolicies, coverageDays]);
   const invalidItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_blocked), [plannedCandidates]);
   const adjustedItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_adjusted), [plannedCandidates]);
   const creationBudgetPlan = useMemo(() => {
@@ -466,6 +532,10 @@ export default function SmartPurchaseUnifiedCenter() {
         <label className="text-sm">الحد الأقصى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يوزع الكميات داخل السقف المالي.</span></label>
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
       </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span>{policiesLoading ? 'جاري تحميل سياسات الأصناف…' : `سياسات محفوظة للفرع: ${productPolicies.length}`}</span>
+        {plannedCandidates.length > 0 && <button type="button" onClick={saveCurrentProductPolicies} disabled={loading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-teal-700 disabled:opacity-50">حفظ حدود الأصناف كسياسات دائمة</button>}
+      </div>
       {openOrderForBranch && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">يوجد طلبية مفتوحة للفرع: {openOrderForBranch.order_number}. تم منع إنشاء طلبية مكررة حتى إغلاقها.</div>}
       {headers.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex justify-between gap-2"><div><h3 className="font-bold">ربط الأعمدة</h3><p className="text-xs text-blue-700">{mappingSource}</p></div><button onClick={saveMapping} className="rounded-lg border bg-white px-3 py-2 flex gap-2"><Save className="w-4 h-4" />حفظ القالب</button></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{Object.entries(FIELD_LABELS).map(([field, label]) => <label key={field} className="text-xs font-semibold">{label}{field === 'product_name' && <span className="text-red-600"> *</span>}<select value={mapping[field] || ''} onChange={(event) => changeMapping(field, event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">غير موجود</option>{headers.map((header) => <option key={header}>{header}</option>)}</select></label>)}</div></div>}
       {preview.length > 0 && <>
@@ -482,7 +552,7 @@ export default function SmartPurchaseUnifiedCenter() {
             : creationOrderGuard.below_minimum ? `الطلبية أقل من الحد الأدنى بـ ${money(creationOrderGuard.remaining_to_minimum)} ج.`
             : `قيمة الطلبية داخل الحدود المحددة. المتبقي حتى الحد الأقصى: ${money(creationOrderGuard.remaining_to_maximum)} ج.`}
         </div>}
-        <div className="overflow-auto rounded-xl border"><table className="min-w-[1350px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود', 'الصنف', 'الرصيد', 'المتوسط اليومي', 'الحد الأدنى', 'الحد الأقصى', 'الاحتياج الخام', 'الكمية النهائية', 'التغطية بعد الوصول', 'تكلفة الوحدة', 'الإجمالي'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{rowsForCreation.slice(0, 30).map((item) => <tr key={item.product_code || item.product_name} className={`border-t ${item.purchase_limit_adjusted ? 'bg-amber-50/40' : ''}`}><td className="p-2">{item.product_code || '—'}</td><td className="p-2 font-semibold">{item.product_name}{item.purchase_limit_adjusted && <div className="text-[11px] text-amber-700">تم ضبط الكمية حسب حدود الصنف</div>}</td><td className="p-2">{item.current_stock}</td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><input type="number" min="0" value={number(item.minimum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'minimum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2"><input type="number" min="0" value={number(item.maximum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'maximum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2">{number(item.raw_suggested_quantity)}</td><td className="p-2 font-bold">{number(item.approved_quantity || item.suggested_quantity)}</td><td className="p-2">{item.projected_coverage_days?.toFixed?.(1) || coverageDays} يوم</td><td className="p-2">{money(netUnitPrice(item))}</td><td className="p-2 font-bold">{money(purchaseLineTotal(item, number(item.approved_quantity || item.suggested_quantity)))}</td></tr>)}</tbody></table></div>
+        <div className="overflow-auto rounded-xl border"><table className="min-w-[1350px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود', 'الصنف', 'الرصيد', 'المتوسط اليومي', 'الحد الأدنى', 'الحد الأقصى', 'الاحتياج الخام', 'الكمية النهائية', 'التغطية بعد الوصول', 'تكلفة الوحدة', 'الإجمالي'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{rowsForCreation.slice(0, 30).map((item) => <tr key={item.product_code || item.product_name} className={`border-t ${item.purchase_limit_adjusted ? 'bg-amber-50/40' : ''}`}><td className="p-2">{item.product_code || '—'}</td><td className="p-2 font-semibold">{item.product_name}{item.purchase_limit_adjusted && <div className="text-[11px] text-amber-700">تم ضبط الكمية حسب حدود الصنف</div>}{item.purchase_policy_source === 'saved_policy' && <div className="text-[11px] text-teal-700">سياسة محفوظة للفرع</div>}</td><td className="p-2">{item.current_stock}</td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><input type="number" min="0" value={number(item.minimum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'minimum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2"><input type="number" min="0" value={number(item.maximum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'maximum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2">{number(item.raw_suggested_quantity)}</td><td className="p-2 font-bold">{number(item.approved_quantity || item.suggested_quantity)}</td><td className="p-2">{item.projected_coverage_days?.toFixed?.(1) || coverageDays} يوم</td><td className="p-2">{money(netUnitPrice(item))}</td><td className="p-2 font-bold">{money(purchaseLineTotal(item, number(item.approved_quantity || item.suggested_quantity)))}</td></tr>)}</tbody></table></div>
         <button disabled={loading || !mapping.product_name || Boolean(openOrderForBranch)} onClick={importAndCreate} className="rounded-lg bg-teal-600 px-5 py-2.5 text-white font-bold flex items-center gap-2 disabled:opacity-50"><ShoppingCart className="w-4 h-4" />إنشاء الطلبية بالمقادير المعروضة</button>
       </>}
     </section>}
