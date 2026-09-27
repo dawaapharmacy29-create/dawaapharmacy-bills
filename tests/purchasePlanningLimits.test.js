@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBudgetPlan, calculatePurchaseNeed } from '../src/lib/purchasePlanning.js';
+import { independentReferenceUnitPrice, purchaseUnitCost } from '../src/lib/purchasePricing.js';
 
 test('purchase planning raises a real need to the configured item minimum', () => {
   const row = {
@@ -89,4 +90,17 @@ test('saved product coverage target overrides the order default coverage', () =>
   assert.equal(result.target_coverage_days, 14);
   assert.equal(result.suggested_quantity, 14);
   assert.equal(result.coverage_policy_source, 'saved_product_policy');
+});
+
+
+test('net purchase cost is not discounted again when no independent reference price exists', () => {
+  const item = { expected_unit_cost: 80, expected_discount: 20 };
+  assert.equal(independentReferenceUnitPrice(item), 0);
+  assert.equal(purchaseUnitCost(item), 80);
+});
+
+test('independent reference price remains separate from expected net cost', () => {
+  const item = { last_purchase_price: 100, expected_unit_cost: 80, expected_discount: 20 };
+  assert.equal(independentReferenceUnitPrice(item), 100);
+  assert.equal(purchaseUnitCost(item), 80);
 });
