@@ -84,4 +84,19 @@ export const smartPurchaseReceivingApi = {
   getOrder: (id) => receivingRpc('get_order', { id }),
   importReceipt,
   saveWorkflowSnapshot: saveSnapshot,
+  resolveItem: (orderId, itemId, resolutionStatus, note = '') => {
+    const sessionToken = token();
+    if (!sessionToken) return Promise.reject(new Error('انتهت الجلسة. سجل الدخول مرة أخرى.'));
+    return fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_resolve_receiving_item_v1`, {
+      method: 'POST',
+      headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_session_token: sessionToken, p_order_id: orderId, p_item_id: itemId, p_resolution_status: resolutionStatus, p_note: note }),
+    }).then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.ok === false) throw new Error(String(data?.error || data?.message || 'فشل حفظ قرار الاستلام.'));
+      return data.data;
+    });
+  },
+  closeReadiness: (orderId) => standaloneReceivingRpc('smart_purchase_receiving_close_readiness_v1', { p_order_id: orderId }),
+  closeOrder: (orderId) => standaloneReceivingRpc('smart_purchase_close_order_v1', { p_order_id: orderId }),
 };
