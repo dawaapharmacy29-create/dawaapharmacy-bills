@@ -4,6 +4,7 @@ import { smartPurchaseUnifiedApi as unified } from '@/api/smartPurchaseUnifiedAp
 import { smartPurchaseOrderManagementApi as management } from '@/api/smartPurchaseOrderManagementApi';
 import { smartPurchaseApi } from '@/api/smartPurchaseApi';
 import { smartPurchaseProductPolicyApi } from '@/api/smartPurchaseProductPolicyApi';
+import { smartPurchaseBranchPolicyApi } from '@/api/smartPurchaseBranchPolicyApi';
 import {
   AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RefreshCw,
   Upload, ShoppingCart, SlidersHorizontal, Save, WalletCards, Calculator, Eye, ArrowUpDown,
@@ -230,6 +231,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [previewErrors, setPreviewErrors] = useState([]);
   const [productPolicies, setProductPolicies] = useState([]);
   const [policiesLoading, setPoliciesLoading] = useState(false);
+  const [branchPolicy, setBranchPolicy] = useState(null);
+  const [branchPolicyLoading, setBranchPolicyLoading] = useState(false);
   const [orderMinimum, setOrderMinimum] = useState('');
   const [budgetLimit, setBudgetLimit] = useState('');
   const [budgetPreviewVisible, setBudgetPreviewVisible] = useState(false);
@@ -283,6 +286,27 @@ export default function SmartPurchaseUnifiedCenter() {
       }
     }
     loadPolicies();
+    return () => { cancelled = true; };
+  }, [branch]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBranchPolicy() {
+      setBranchPolicyLoading(true);
+      try {
+        const policy = await smartPurchaseBranchPolicyApi.get(branch);
+        if (!cancelled) {
+          setBranchPolicy(policy || null);
+          setCreationMinimum(Number(policy?.minimum_order_value || 0) > 0 ? String(policy.minimum_order_value) : '');
+          setCreationBudget(Number(policy?.maximum_order_value || 0) > 0 ? String(policy.maximum_order_value) : '');
+          setCoverageDays(Math.max(1, Number(policy?.default_coverage_days || 7)));
+        }
+      } catch (err) {
+        if (!cancelled) setError((current) => current || `تعذر تحميل سياسة طلبية ${branch}: ${err.message}`);
+      } finally {
+        if (!cancelled) setBranchPolicyLoading(false);
+      }
+    }
+    loadBranchPolicy();
     return () => { cancelled = true; };
   }, [branch]);
 
@@ -364,6 +388,23 @@ export default function SmartPurchaseUnifiedCenter() {
   function saveMapping() {
     const all = loadMappings(); all[signature(headers)] = mapping;
     localStorage.setItem(MAPPING_KEY, JSON.stringify(all)); setMappingSource('تم حفظ القالب على هذا الجهاز');
+  }
+  async function saveCurrentBranchPolicy() {
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const saved = await smartPurchaseBranchPolicyApi.save({
+        branch,
+        minimumOrderValue: number(creationMinimum),
+        maximumOrderValue: number(creationBudget),
+        defaultCoverageDays: coverageDays,
+      });
+      setBranchPolicy(saved);
+      setMessage(`تم حفظ إعدادات طلبية ${branch} كافتراضي: تغطية ${coverageDays} يوم${number(creationMinimum) > 0 ? ` • حد أدنى ${money(creationMinimum)} ج` : ''}${number(creationBudget) > 0 ? ` • حد أقصى ${money(creationBudget)} ج` : ''}.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function saveCurrentProductPolicies() {
@@ -631,7 +672,9 @@ export default function SmartPurchaseUnifiedCenter() {
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        <span>{policiesLoading ? 'جاري تحميل سياسات الأصناف…' : `سياسات محفوظة للفرع: ${productPolicies.length}`}</span>
+        <span>{policiesLoading ? 'جاري تحميل سياسات الأصناف…' : `سياسات أصناف محفوظة: ${productPolicies.length}`}</span>
+        <span>{branchPolicyLoading ? 'جاري تحميل سياسة الطلبية…' : branchPolicy ? 'تم تطبيق افتراضي الفرع على الطلبية الجديدة' : 'لا يوجد افتراضي محفوظ للطلبية'}</span>
+        <button type="button" onClick={saveCurrentBranchPolicy} disabled={loading || branchPolicyLoading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-blue-700 disabled:opacity-50">حفظ قيم الطلبية كافتراضي للفرع</button>
         {plannedCandidates.length > 0 && <button type="button" onClick={saveCurrentProductPolicies} disabled={loading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-teal-700 disabled:opacity-50">حفظ حدود الأصناف كسياسات دائمة</button>}
       </div>
       {openOrderForBranch && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">يوجد طلبية مفتوحة للفرع: {openOrderForBranch.order_number}. تم منع إنشاء طلبية مكررة حتى إغلاقها.</div>}
