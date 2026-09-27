@@ -51,6 +51,7 @@ const FIELD_LABELS = {
   pending_incoming: 'الكمية المنتظر وصولها',
   minimum_order_quantity: 'الحد الأدنى للصنف',
   maximum_order_quantity: 'الحد الأقصى للصنف',
+  package_multiple: 'مضاعف العبوة',
 };
 const ALIASES = {
   product_code: ['كود الصنف', 'الكود', 'كود', 'code', 'item code', 'product code'],
@@ -64,6 +65,7 @@ const ALIASES = {
   pending_incoming: ['كمية منتظر وصولها', 'منتظر وصول', 'pending incoming', 'incoming qty', 'on order'],
   minimum_order_quantity: ['الحد الأدنى للصنف', 'حد أدنى', 'اقل كمية', 'أقل كمية', 'internal minimum quantity', 'min purchase qty', 'min qty'],
   maximum_order_quantity: ['الحد الأقصى للصنف', 'حد أقصى', 'اكبر كمية', 'أكبر كمية', 'maximum order quantity', 'max qty'],
+  package_multiple: ['مضاعف العبوة', 'عبوة', 'باك', 'كرتونة', 'pack multiple', 'package multiple', 'order multiple'],
 };
 const monthKey = (header) => {
   const match = String(header || '').trim().match(/^(20\d{2})[\/-](0?[1-9]|1[0-2])$/);
@@ -359,6 +361,7 @@ export default function SmartPurchaseUnifiedCenter() {
         last_purchase_price: number(row[nextMapping.last_purchase_price]),
         minimum_order_quantity: Math.max(0, number(row[nextMapping.minimum_order_quantity])),
         maximum_order_quantity: Math.max(0, number(row[nextMapping.maximum_order_quantity])),
+        package_multiple: Math.max(0, Math.floor(number(row[nextMapping.package_multiple]))),
       };
     });
     const errors = parsed.filter((row) => !isValidProductName(row.product_name)).map((row) => `صف ${row.row_number}: اسم الصنف غير صالح`);
@@ -518,6 +521,7 @@ export default function SmartPurchaseUnifiedCenter() {
           priority_score: number(item.priority_score),
           minimum_order_quantity: number(item.minimum_order_quantity),
           maximum_order_quantity: number(item.maximum_order_quantity),
+          package_multiple: number(item.package_multiple),
         })),
       });
 
@@ -545,9 +549,11 @@ export default function SmartPurchaseUnifiedCenter() {
     const qty = itemQuantity(item);
     const min = number(item.minimum_order_quantity);
     const max = number(item.maximum_order_quantity);
+    const pack = Math.max(0, Math.floor(number(item.package_multiple)));
     return (min > 0 && max > 0 && min > max)
       || (qty > 0 && min > 0 && qty < min)
-      || (qty > 0 && max > 0 && qty > max);
+      || (qty > 0 && max > 0 && qty > max)
+      || (qty > 0 && pack > 1 && qty % pack !== 0);
   }), [items]);
   const visibleItems = useMemo(() => items.filter((item) => {
     if (hideZero && itemQuantity(item) <= 0) return false;
