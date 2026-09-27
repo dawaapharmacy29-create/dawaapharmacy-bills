@@ -89,7 +89,7 @@ async function orderEvaluationFallback(orderId) {
 
 export const smartPurchaseAdvancedApi = {
   supplierPerformance: () => supplierPerformanceFallback(),
-  orderEvaluation: (orderId) => standaloneRpc('smart_purchase_order_evaluation_v2', { p_order_id: orderId }),
+  orderEvaluation: (orderId) => standaloneRpc('smart_purchase_order_evaluation_guarded_v2', { p_order_id: orderId }),
   createCustomerFollowups: (orderId) => followupsRpc('create', { order_id: orderId }),
   listFollowups: (orderId = '') => followupsRpc('list', { order_id: orderId }),
   updateFollowups: (rows = []) => followupsRpc('update', { rows }),
