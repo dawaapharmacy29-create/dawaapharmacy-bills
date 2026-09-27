@@ -275,6 +275,8 @@ export default function SmartPurchaseUnifiedCenter() {
     expected_unit_cost: purchaseUnitCost({ ...item, expected_unit_cost: 0 }),
     supplier_name: '',
   })), [preview, coverageDays]);
+  const invalidItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_blocked), [plannedCandidates]);
+  const adjustedItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_adjusted), [plannedCandidates]);
   const creationBudgetPlan = useMemo(() => {
     const value = number(creationBudget);
     return value > 0 ? buildBudgetPlan(plannedCandidates, value) : null;
@@ -291,6 +293,7 @@ export default function SmartPurchaseUnifiedCenter() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
     if (openOrderForBranch) return setError(`يوجد طلبية مفتوحة للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أغلقها قبل إنشاء طلبية جديدة.`);
+    if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
     if (creationBudget && rowsForCreation.length === 0) return setError('الحد الأقصى لا يكفي لإضافة أي صنف بسعره الحالي.');
     if (creationBudgetPlan?.protected_items_unmet > 0) return setError(`الحد الأقصى الحالي لا يكفي للحفاظ على الحد الأدنى لـ ${creationBudgetPlan.protected_items_unmet} صنف محمي. ارفع الحد الأقصى أو راجع حدود الأصناف.`);
     if (creationOrderGuard.invalid_range) return setError('حد الطلبية الأدنى لا يمكن أن يكون أكبر من الحد الأقصى.');
@@ -410,8 +413,10 @@ export default function SmartPurchaseUnifiedCenter() {
       {preview.length > 0 && <>
         <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[
           ['الأصناف بعد إزالة التكرار', preview.length], ['تحتاج شراء', plannedCandidates.length], ['أخطاء الصفوف', previewErrors.length],
-          ['أصناف الطلبية', rowsForCreation.length], ['التكلفة المتوقعة', `${money(creationTotal)} ج`], ['الميزانية المتبقية', creationBudgetPlan ? `${money(creationBudgetPlan.remaining)} ج` : '—'],
+          ['حدود عدّلت الكمية', adjustedItemLimits.length], ['حدود غير صالحة', invalidItemLimits.length], ['أصناف الطلبية', rowsForCreation.length],
+          ['التكلفة المتوقعة', `${money(creationTotal)} ج`], ['المتبقي للحد الأقصى', creationBudgetPlan ? `${money(creationBudgetPlan.remaining)} ج` : '—'],
         ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}</div>
+        {invalidItemLimits.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {invalidItemLimits.length} صنف بحد أدنى أكبر من الحد الأقصى، وتم منع إنشاء الطلبية حتى تصحيحها.</div>}
         {creationBudgetPlan && <div className={`rounded-xl border p-3 text-sm ${creationBudgetPlan.protected_items_unmet > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>داخل الحد الأقصى: {creationBudgetPlan.active_items} صنف، {creationBudgetPlan.total_quantity} وحدة، خُفّض {creationBudgetPlan.reduced_items} صنف، وصُفّر {creationBudgetPlan.zeroed_items} صنف.{creationBudgetPlan.protected_items_unmet > 0 ? ` يوجد ${creationBudgetPlan.protected_items_unmet} صنف لن يصل للحد الأدنى المحمي.` : ''}</div>}
         {(creationMinimum || creationBudget) && <div className={`rounded-xl border p-3 text-sm ${creationOrderGuard.invalid_range || creationOrderGuard.above_maximum ? 'border-red-200 bg-red-50 text-red-700' : creationOrderGuard.below_minimum || creationOrderGuard.warning ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
           {creationOrderGuard.invalid_range ? 'راجع الحدود: الحد الأدنى أكبر من الحد الأقصى.'
