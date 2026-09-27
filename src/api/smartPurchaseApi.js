@@ -24,6 +24,38 @@ function errorMessage(data, status) {
   return `فشل الطلب (${status})`;
 }
 
+async function directRpc(functionName, body = {}) {
+  const sessionToken = token();
+  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+    method: 'POST',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_session_token: sessionToken, ...body }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+      forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+      forbidden_branch: 'لا توجد صلاحية على هذا الفرع.',
+      import_not_found: 'ملف التحليل غير موجود.',
+      import_branch_mismatch: 'فرع ملف التحليل لا يطابق فرع الطلبية.',
+      open_order_exists: 'يوجد طلبية مفتوحة بالفعل لهذا الفرع.',
+      invalid_create_payload: 'بيانات إنشاء الطلبية غير مكتملة.',
+      empty_plan: 'خطة الطلبية فارغة.',
+      invalid_item_name: 'يوجد صنف بدون اسم صالح.',
+      item_min_exceeds_max: 'يوجد صنف الحد الأدنى له أكبر من الحد الأقصى.',
+      item_limits_violation: 'إحدى الكميات تخالف الحد الأدنى أو الأقصى للصنف.',
+      order_min_exceeds_max: 'الحد الأدنى للطلبية أكبر من الحد الأقصى.',
+      order_below_minimum: 'قيمة الطلبية أقل من الحد الأدنى المحدد.',
+      order_above_maximum: 'قيمة الطلبية أعلى من الحد الأقصى المحدد.',
+    };
+    const code = data?.error || data?.message;
+    throw new Error(messages[code] || errorMessage(data, response.status));
+  }
+  return data.data;
+}
+
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
@@ -94,6 +126,15 @@ export const smartPurchaseApi = {
   getImport: (id) => rpc('get_import', { id }),
   importRows: (payload) => rpc('import', preparePurchaseCandidates(payload)),
   createOrder: (payload) => rpc('create_order', payload),
+  createOrderFromPlan: ({ importId, branch, title, budget = 0, minimumOrderValue = 0, maximumOrderValue = 0, items = [] }) => directRpc('smart_purchase_create_order_from_plan_v2', {
+    p_import_id: importId,
+    p_branch: branch,
+    p_title: title,
+    p_budget: Number(budget || 0),
+    p_minimum_order_value: Number(minimumOrderValue || 0),
+    p_maximum_order_value: Number(maximumOrderValue || 0),
+    p_items: items,
+  }),
   listOrders: () => rpc('list_orders'),
   getOrder: (id) => rpc('get_order', { id }),
 };
