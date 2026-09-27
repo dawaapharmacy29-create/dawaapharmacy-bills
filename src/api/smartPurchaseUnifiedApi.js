@@ -99,4 +99,12 @@ export const smartPurchaseUnifiedApi = {
   returnToReview: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
   releaseReservation: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
   markSent: (orderId) => standaloneRpc('smart_purchase_mark_sent_v2', { p_order_id: orderId }),
+  supplierDispatches: (orderId) => standaloneRpc('smart_purchase_supplier_dispatch_v2', {
+    p_action: 'list',
+    p_payload: { order_id: orderId },
+  }),
+  markSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_supplier_dispatch_v2', {
+    p_action: 'mark_supplier_sent',
+    p_payload: { order_id: orderId, supplier_name: supplierName },
+  }),
 };
