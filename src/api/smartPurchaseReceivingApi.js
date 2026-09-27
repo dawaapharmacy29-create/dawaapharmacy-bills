@@ -8,6 +8,33 @@ function token() {
   catch { return ''; }
 }
 
+async function standaloneReceivingRpc(functionName, body = {}) {
+  const sessionToken = token();
+  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+    method: 'POST',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_session_token: sessionToken, ...body }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+      forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+      forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
+      order_not_found: 'الطلبية غير موجودة.',
+      item_not_found: 'الصنف غير موجود داخل الطلبية.',
+      receiving_items_unresolved: 'ما زال يوجد أصناف لم يتم اتخاذ قرار نهائي بشأنها.',
+      receiving_followup_open: 'يوجد أصناف عليها متابعة مفتوحة ولا يمكن إغلاق الطلبية.',
+      order_not_closable: 'الطلبية ليست في مرحلة تسمح بالإغلاق.',
+      invalid_resolution: 'قرار الاستلام غير صالح.',
+    };
+    const code = data?.error || data?.message;
+    throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+  }
+  return data.data;
+}
+
 async function receivingRpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
