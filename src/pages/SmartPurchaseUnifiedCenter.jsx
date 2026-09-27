@@ -133,23 +133,51 @@ function exportWorkbook(payload) {
   XLSX.writeFile(workbook, `${String(order.title || order.order_number || 'طلبية').replace(/[\/:*?"<>|]/g, '-')}_${order.order_number || ''}_مراجعة_داخلية.xlsx`);
 }
 
-function exportSendFile(payload) {
+function supplierGroups(payload) {
+  const groups = new Map();
+  for (const item of (payload.items || []).filter((row) => itemQuantity(row) > 0)) {
+    const supplier = String(item.supplier_name || '').trim();
+    if (!supplier) continue;
+    if (!groups.has(supplier)) groups.set(supplier, []);
+    groups.get(supplier).push(item);
+  }
+  return groups;
+}
+
+function exportSendFiles(payload) {
   const order = payload.order || {};
-  const items = (payload.items || [])
-    .filter((item) => itemQuantity(item) > 0)
-    .sort((a, b) => String(a.product_name || '').localeCompare(String(b.product_name || ''), 'ar'));
-  const sheet = XLSX.utils.json_to_sheet(items.map((item) => ({
-    'اسم الصنف': item.product_name || '',
-    'السعر المرجعي': itemPrice(item),
-    'الكمية المطلوبة': itemQuantity(item),
-  })));
-  sheet['!dir'] = 'rtl';
-  sheet['!autofilter'] = { ref: sheet['!ref'] || 'A1:C1' };
-  sheet['!freeze'] = { ySplit: 1 };
-  sheet['!cols'] = [{ wch: 45 }, { wch: 16 }, { wch: 18 }];
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, 'الطلبية');
-  XLSX.writeFile(workbook, `${String(order.title || order.order_number || 'طلبية').replace(/[\/:*?"<>|]/g, '-')}_${order.order_number || ''}_جاهز_للإرسال.xlsx`);
+  const groups = supplierGroups(payload);
+  if (!groups.size) throw new Error('لا يوجد مورد محدد للأصناف المعتمدة.');
+
+  for (const [supplier, rows] of groups.entries()) {
+    const items = [...rows].sort((a, b) => String(a.product_name || '').localeCompare(String(b.product_name || ''), 'ar'));
+    const sheet = XLSX.utils.json_to_sheet(items.map((item) => ({
+      'اسم الصنف': item.product_name || '',
+      'الكمية المطلوبة': itemQuantity(item),
+      'تكلفة الوحدة المتوقعة': Number(netUnitPrice(item).toFixed(2)),
+    })));
+    sheet['!dir'] = 'rtl';
+    sheet['!autofilter'] = { ref: sheet['!ref'] || 'A1:C1' };
+    sheet['!freeze'] = { ySplit: 1 };
+    sheet['!cols'] = [{ wch: 45 }, { wch: 18 }, { wch: 22 }];
+
+    const summary = XLSX.utils.aoa_to_sheet([
+      ['المورد', supplier],
+      ['رقم الطلبية', order.order_number || ''],
+      ['الفرع', order.branch || ''],
+      ['عدد الأصناف', items.length],
+      ['إجمالي الكميات', items.reduce((sum, item) => sum + itemQuantity(item), 0)],
+      ['إجمالي التكلفة المتوقعة', items.reduce((sum, item) => sum + itemTotal(item), 0)],
+    ]);
+    summary['!dir'] = 'rtl';
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, summary, 'ملخص');
+    XLSX.utils.book_append_sheet(workbook, sheet, 'الطلبية');
+    const safeSupplier = supplier.replace(/[\/:*?"<>|]/g, '-');
+    const safeOrder = String(order.title || order.order_number || 'طلبية').replace(/[\/:*?"<>|]/g, '-');
+    XLSX.writeFile(workbook, `${safeOrder}_${order.order_number || ''}_${safeSupplier}.xlsx`);
+  }
 }
 
 async function runPool(rows, worker, concurrency = 8) {
@@ -620,7 +648,14 @@ export default function SmartPurchaseUnifiedCenter() {
     <div className="grid lg:grid-cols-[250px_minmax(0,1fr)] gap-3">
       <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{(data.orders || []).map((order) => <button key={order.id} onClick={() => openOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold text-base">{order.title || `طلبية ${order.branch}`}</div><div className="text-[11px] text-slate-400 mt-1 font-mono">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {normStatus(order.status)}</div><div className="font-bold mt-1">{money(order.approved_total || order.expected_total)} ج</div></button>)}</div></aside>
       <main className="min-w-0 space-y-3">{selected ? <>
-        <section className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex flex-wrap justify-between gap-3"><div className="min-w-[260px]"><div className="flex flex-wrap items-center gap-2"><input value={editingTitle || selected.order.title || `طلبية ${selected.order.branch}`} onFocus={() => setEditingTitle(selected.order.title || `طلبية ${selected.order.branch}`)} onChange={(event) => setEditingTitle(event.target.value)} disabled={!statusEditable} className="min-w-[260px] rounded-lg border px-3 py-2 text-xl font-bold disabled:bg-transparent disabled:border-transparent" /><button type="button" disabled={!editingTitle.trim() || editingTitle.trim() === (selected.order.title || `طلبية ${selected.order.branch}`) || !statusEditable} onClick={() => run(() => unified.updateOrderTitle(selected.order.id, editingTitle.trim()), 'تم تحديث اسم الطلبية.', selected.order.id)} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">حفظ الاسم</button></div><div className="mt-1 text-xs text-slate-400 font-mono">المرجع: {selected.order.order_number}</div><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {status}</p></div><div className="flex gap-2"><button onClick={() => exportSendFile(selected)} className="rounded-lg bg-teal-600 text-white px-3 py-2 flex gap-2"><Download className="w-4 h-4" />ملف جاهز للإرسال</button><button onClick={() => exportWorkbook(selected)} className="rounded-lg border px-3 py-2 flex gap-2"><FileSpreadsheet className="w-4 h-4" />مراجعة داخلية</button>{status === 'معتمدة' && <button onClick={() => run(() => unified.markSent(selected.order.id), 'تم تسجيل إرسال الطلبية.')} className="rounded-lg bg-blue-600 text-white px-3 py-2 flex gap-2"><Send className="w-4 h-4" />تم الإرسال للمورد</button>}
+        <section className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex flex-wrap justify-between gap-3"><div className="min-w-[260px]"><div className="flex flex-wrap items-center gap-2"><input value={editingTitle || selected.order.title || `طلبية ${selected.order.branch}`} onFocus={() => setEditingTitle(selected.order.title || `طلبية ${selected.order.branch}`)} onChange={(event) => setEditingTitle(event.target.value)} disabled={!statusEditable} className="min-w-[260px] rounded-lg border px-3 py-2 text-xl font-bold disabled:bg-transparent disabled:border-transparent" /><button type="button" disabled={!editingTitle.trim() || editingTitle.trim() === (selected.order.title || `طلبية ${selected.order.branch}`) || !statusEditable} onClick={() => run(() => unified.updateOrderTitle(selected.order.id, editingTitle.trim()), 'تم تحديث اسم الطلبية.', selected.order.id)} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">حفظ الاسم</button></div><div className="mt-1 text-xs text-slate-400 font-mono">المرجع: {selected.order.order_number}</div><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {status}</p></div><div className="flex gap-2"><button
+          onClick={() => {
+            try { exportSendFiles(selected); setError(''); setMessage(`تم تجهيز ${supplierGroups(selected).size} ملف — ملف مستقل لكل مورد.`); }
+            catch (err) { setError(err.message); }
+          }}
+          disabled={!['معتمدة', 'تم الإرسال للمورد'].includes(status)}
+          className="rounded-lg bg-teal-600 text-white px-3 py-2 flex gap-2 disabled:opacity-40"
+        ><Download className="w-4 h-4" />{supplierGroups(selected).size > 1 ? 'ملفات الموردين' : 'ملف المورد'}</button><button onClick={() => exportWorkbook(selected)} className="rounded-lg border px-3 py-2 flex gap-2"><FileSpreadsheet className="w-4 h-4" />مراجعة داخلية</button>{status === 'معتمدة' && <button onClick={() => run(() => unified.markSent(selected.order.id), 'تم تسجيل إرسال الطلبية.')} className="rounded-lg bg-blue-600 text-white px-3 py-2 flex gap-2"><Send className="w-4 h-4" />تم الإرسال للمورد</button>}
         {statusReceivable && <a href="/smart-purchase-receiving" className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-bold text-teal-800">فتح الاستلام والمطابقة</a>}</div></div><div className="mt-4 flex overflow-x-auto">{STATUS_STEPS.map((step, index) => <div key={step} className="min-w-[115px] flex-1"><div className={`h-2 ${index <= stepIndex ? 'bg-teal-500' : 'bg-slate-200'}`} /><div className={`text-[11px] mt-1 ${index <= stepIndex ? 'font-bold text-teal-700' : 'text-slate-400'}`}>{step}</div></div>)}</div></section>
         <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['الأصناف', totals.items], ['الكميات', totals.quantity], ['متوسط الخصم', `${money(totals.average_discount)}%`], ['القيمة المرجعية', `${money(items.reduce((sum, item) => sum + itemQuantity(item) * itemPrice(item), 0))} ج`], ['تكلفة الشراء المتوقعة', `${money(totals.total)} ج`]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3"><h3 className="font-bold flex items-center gap-2"><WalletCards className="w-5 h-5" />التحكم المالي الذكي</h3><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3"><label className="text-sm">الحد الأدنى لقيمة الطلبية<input type="number" min="0" value={orderMinimum} onChange={(event) => setOrderMinimum(event.target.value)} disabled={!statusEditable} className="mt-1 w-full rounded-lg border bg-white p-2 disabled:bg-slate-100" /></label><label className="text-sm">الحد الأقصى لقيمة الطلبية<input type="number" min="0" value={budgetLimit} onChange={(event) => { setBudgetLimit(event.target.value); setBudgetPreviewVisible(false); }} disabled={!statusEditable} className="mt-1 w-full rounded-lg border bg-white p-2 disabled:bg-slate-100" /></label><div className="rounded-xl bg-white border p-3"><div className="text-xs text-slate-500">التكلفة الحالية</div><div className="font-bold text-lg">{money(totals.total)} ج</div></div><button onClick={saveOrderPolicy} disabled={loading || !statusEditable} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold disabled:opacity-50">حفظ الحدود</button><button onClick={() => setBudgetPreviewVisible(true)} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold flex justify-center items-center gap-2"><Eye className="w-5 h-5" />معاينة التوزيع</button></div><div className="flex justify-end"><button onClick={applyBudgetPlan} disabled={!budgetPreviewVisible || loading || !statusEditable} className="rounded-xl bg-emerald-700 text-white px-4 py-3 font-bold flex justify-center items-center gap-2 disabled:opacity-50"><Calculator className="w-5 h-5" />تطبيق خطة الكميات</button></div>{orderPolicyGuard.invalid_range && <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">الحد الأدنى أكبر من الحد الأقصى.</div>}{orderPolicyGuard.below_minimum && <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">القيمة الحالية أقل من الحد الأدنى بـ {money(orderPolicyGuard.remaining_to_minimum)} ج.</div>}{budgetPreviewVisible && budgetPlan && <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[['التكلفة بعد الضبط', `${money(budgetPlan.total)} ج`], ['المتبقي', `${money(budgetPlan.remaining)} ج`], ['الأصناف', budgetPlan.active_items], ['الكميات', budgetPlan.total_quantity], ['المخفضة', budgetPlan.reduced_items], ['المصفرة', budgetPlan.zeroed_items]].map(([label, value]) => <div key={label} className="rounded-lg bg-white border p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}</section>
