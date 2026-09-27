@@ -194,6 +194,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [orderMinimum, setOrderMinimum] = useState('');
   const [budgetLimit, setBudgetLimit] = useState('');
   const [budgetPreviewVisible, setBudgetPreviewVisible] = useState(false);
+  const [supplierDecision, setSupplierDecision] = useState(null);
   const [onlyUrgent, setOnlyUrgent] = useState(false);
   const [onlyCustomers, setOnlyCustomers] = useState(false);
   const [hideZero, setHideZero] = useState(true);
@@ -240,7 +241,7 @@ export default function SmartPurchaseUnifiedCenter() {
   }, [branch]);
 
   async function openOrder(id) {
-    setLoading(true); setError(''); setMessage(''); setBudgetPreviewVisible(false);
+    setLoading(true); setError(''); setSupplierDecision(null); setMessage(''); setBudgetPreviewVisible(false);
     try {
       const detail = await loadHydratedOrder(id);
       setSelected(detail);
@@ -486,6 +487,47 @@ export default function SmartPurchaseUnifiedCenter() {
     );
   }
 
+  async function reviewSupplierOffers() {
+    if (!selected?.order?.id) return;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const decision = await unified.supplierDecision(selected.order.id);
+      setSupplierDecision(decision);
+      setMessage('تم تحليل عروض الموردين الحالية. راجع الاختيارات قبل تطبيقها.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applySupplierRecommendations() {
+    if (!selected?.order?.id || !supplierDecision?.items?.length) return;
+    const currentById = new Map(items.map((item) => [String(item.id), item]));
+    const plan = supplierDecision.items
+      .filter((decision) => decision?.recommended?.offer_id && decision?.recommended?.quantity_fully_available !== false)
+      .map((decision) => {
+        const item = currentById.get(String(decision.item_id));
+        const qty = Math.max(0, number(decision.recommended.purchase_qty || decision.needed_qty));
+        const min = number(item?.minimum_order_quantity);
+        const max = number(item?.maximum_order_quantity);
+        const conflict = !item || (qty > 0 && min > 0 && qty < min) || (qty > 0 && max > 0 && qty > max);
+        return conflict ? null : {
+          item_id: decision.item_id,
+          offer_id: decision.recommended.offer_id,
+          approved_quantity: qty,
+        };
+      })
+      .filter(Boolean);
+    if (!plan.length) return setError('لا توجد توصيات مورد قابلة للتطبيق بدون كسر حدود الأصناف.');
+    await run(
+      () => management.applySupplierPlan(selected.order.id, plan),
+      `تم تطبيق ${plan.length} اختيار مورد بعد التحقق من الحدود والتوافر.`,
+      selected.order.id,
+    );
+    setSupplierDecision(null);
+  }
+
   async function saveOrderPolicy() {
     if (!selected?.order?.id) return;
     await run(
@@ -568,6 +610,24 @@ export default function SmartPurchaseUnifiedCenter() {
         <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['الأصناف', totals.items], ['الكميات', totals.quantity], ['متوسط الخصم', `${money(totals.average_discount)}%`], ['القيمة المرجعية', `${money(items.reduce((sum, item) => sum + itemQuantity(item) * itemPrice(item), 0))} ج`], ['تكلفة الصيدلية بعد الخصم', `${money(totals.total)} ج`]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3"><h3 className="font-bold flex items-center gap-2"><WalletCards className="w-5 h-5" />التحكم المالي الذكي</h3><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3"><label className="text-sm">الحد الأدنى لقيمة الطلبية<input type="number" min="0" value={orderMinimum} onChange={(event) => setOrderMinimum(event.target.value)} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="mt-1 w-full rounded-lg border bg-white p-2 disabled:bg-slate-100" /></label><label className="text-sm">الحد الأقصى لقيمة الطلبية<input type="number" min="0" value={budgetLimit} onChange={(event) => { setBudgetLimit(event.target.value); setBudgetPreviewVisible(false); }} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="mt-1 w-full rounded-lg border bg-white p-2 disabled:bg-slate-100" /></label><div className="rounded-xl bg-white border p-3"><div className="text-xs text-slate-500">التكلفة الحالية</div><div className="font-bold text-lg">{money(totals.total)} ج</div></div><button onClick={saveOrderPolicy} disabled={loading || ['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold disabled:opacity-50">حفظ الحدود</button><button onClick={() => setBudgetPreviewVisible(true)} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold flex justify-center items-center gap-2"><Eye className="w-5 h-5" />معاينة التوزيع</button></div><div className="flex justify-end"><button onClick={applyBudgetPlan} disabled={!budgetPreviewVisible || loading || ['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="rounded-xl bg-emerald-700 text-white px-4 py-3 font-bold flex justify-center items-center gap-2 disabled:opacity-50"><Calculator className="w-5 h-5" />تطبيق خطة الكميات</button></div>{orderPolicyGuard.invalid_range && <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">الحد الأدنى أكبر من الحد الأقصى.</div>}{orderPolicyGuard.below_minimum && <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">القيمة الحالية أقل من الحد الأدنى بـ {money(orderPolicyGuard.remaining_to_minimum)} ج.</div>}{budgetPreviewVisible && budgetPlan && <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[['التكلفة بعد الضبط', `${money(budgetPlan.total)} ج`], ['المتبقي', `${money(budgetPlan.remaining)} ج`], ['الأصناف', budgetPlan.active_items], ['الكميات', budgetPlan.total_quantity], ['المخفضة', budgetPlan.reduced_items], ['المصفرة', budgetPlan.zeroed_items]].map(([label, value]) => <div key={label} className="rounded-lg bg-white border p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}</section>
         
+        <section className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h3 className="font-bold text-blue-950">قرار الموردين</h3><p className="text-xs text-blue-700 mt-1">مقارنة التكلفة الفعلية بعد البونص وMOQ والتوافر ومدة التوريد وأداء المورد السابق.</p></div>
+            <div className="flex gap-2">
+              <button type="button" onClick={reviewSupplierOffers} disabled={loading || ['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="rounded-lg border border-blue-300 bg-white px-4 py-2 font-bold text-blue-800 disabled:opacity-50">تحليل عروض الموردين</button>
+              {supplierDecision?.items?.length > 0 && <button type="button" onClick={applySupplierRecommendations} disabled={loading || ['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-50">تطبيق التوصيات الصالحة</button>}
+            </div>
+          </div>
+          {supplierDecision?.summary && <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[
+            ['الأصناف', supplierDecision.summary.items || 0],
+            ['جاهزة', supplierDecision.summary.ready || 0],
+            ['بدون عرض', supplierDecision.summary.without_offers || 0],
+            ['فجوات توافر', supplierDecision.summary.availability_gaps || 0],
+            ['تكلفة مقترحة', `${money(supplierDecision.summary.recommended_cash_cost)} ج`],
+          ].map(([label, value]) => <div key={label} className="rounded-lg border bg-white p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}
+          {supplierDecision?.items?.length > 0 && <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1250px] w-full text-xs"><thead className="bg-slate-50"><tr>{['الصنف','الحالة','المورد المقترح','الكمية','MOQ','المتاح','البونص','تكلفة فعالة','مدة التوريد','أداء المورد','السبب'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{supplierDecision.items.map((decision) => { const rec = decision.recommended || {}; const current = items.find((item) => String(item.id) === String(decision.item_id)); const qty = number(rec.purchase_qty || decision.needed_qty); const max = number(current?.maximum_order_quantity); const min = number(current?.minimum_order_quantity); const internalConflict = (qty > 0 && min > 0 && qty < min) || (qty > 0 && max > 0 && qty > max); return <tr key={decision.item_id} className={`border-t ${decision.status === 'no_offer' || decision.status === 'availability_gap' || internalConflict ? 'bg-red-50/50' : decision.status === 'moq_overbuy' ? 'bg-amber-50/50' : ''}`}><td className="p-2 font-bold">{decision.product_name}</td><td className="p-2">{internalConflict ? 'يتعارض مع حد الصنف' : decision.status === 'no_offer' ? 'بدون عرض' : decision.status === 'availability_gap' ? 'المتاح لا يكفي' : decision.status === 'moq_overbuy' ? 'MOQ يزيد الكمية' : 'جاهز'}</td><td className="p-2 font-semibold">{rec.supplier_name || '—'}</td><td className="p-2">{rec.purchase_qty ?? '—'}</td><td className="p-2">{rec.minimum_order_quantity ?? '—'}</td><td className="p-2">{rec.availability_unknown ? 'غير محدد' : (rec.available_quantity ?? '—')}</td><td className="p-2">{rec.earned_bonus_units || 0}</td><td className="p-2">{rec.effective_unit_cost ? `${money(rec.effective_unit_cost)} ج` : '—'}</td><td className="p-2">{rec.lead_time_days != null ? `${rec.lead_time_days} يوم` : '—'}</td><td className="p-2">{rec.performance_score != null ? `${money(rec.performance_score)}/100` : 'بدون تاريخ'}</td><td className="p-2 max-w-[320px]">{rec.reason || '—'}</td></tr>; })}</tbody></table></div>}
+        </section>
+
         {orderItemLimitViolations.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {orderItemLimitViolations.length} صنف كميته الحالية تخالف الحد الأدنى أو الأقصى. لن يسمح النظام باعتماد الطلبية قبل تصحيحها.</div>}
         {orderTotalMismatch && <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800 flex flex-wrap items-center justify-between gap-3">
           <div><strong>تنبيه سلامة البيانات:</strong> القيمة المخزنة للطلبية {money(storedOrderTotal)} ج بينما مجموع البنود الحالي {money(totals.total)} ج، والفرق {money(Math.abs(orderTotalDifference))} ج.</div>
