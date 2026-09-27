@@ -148,6 +148,27 @@ async function runPool(rows, worker, concurrency = 8) {
   }));
 }
 
+async function loadHydratedOrder(id) {
+  const detail = await loadHydratedOrder(id);
+  const importId = detail?.order?.source_import_id;
+  if (!importId || !(detail?.items || []).length) return detail;
+  try {
+    const source = await smartPurchaseApi.getImport(importId);
+    const byId = new Map((source?.items || []).map((item) => [String(item.id), item]));
+    const byKey = new Map((source?.items || []).map((item) => [normalizeProductKey(item), item]));
+    return {
+      ...detail,
+      items: (detail.items || []).map((item) => {
+        const analysis = byId.get(String(item.analysis_item_id)) || byKey.get(normalizeProductKey(item)) || {};
+        return { ...analysis, ...item };
+      }),
+      analysis_source: source?.import || null,
+    };
+  } catch {
+    return detail;
+  }
+}
+
 export default function SmartPurchaseUnifiedCenter() {
   const [data, setData] = useState({ orders: [], pending_actions: {} });
   const [selected, setSelected] = useState(null);
@@ -185,7 +206,7 @@ export default function SmartPurchaseUnifiedCenter() {
       setData(next || { orders: [], pending_actions: {} });
       const id = openId || selected?.order?.id;
       if (id) {
-        const detail = await unified.getOrder(id);
+        const detail = await loadHydratedOrder(id);
         setSelected(detail);
         const computedTotal = (detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0);
         setBudgetLimit(String(Math.ceil(number(detail.order?.budget) || computedTotal)));
@@ -198,7 +219,7 @@ export default function SmartPurchaseUnifiedCenter() {
   async function openOrder(id) {
     setLoading(true); setError(''); setMessage(''); setBudgetPreviewVisible(false);
     try {
-      const detail = await unified.getOrder(id);
+      const detail = await loadHydratedOrder(id);
       setSelected(detail);
       const computedTotal = (detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0);
       setBudgetLimit(String(Math.ceil(number(detail.order?.budget) || computedTotal)));
@@ -317,7 +338,7 @@ export default function SmartPurchaseUnifiedCenter() {
         budget: number(creationBudget) > 0 ? number(creationBudget) : null,
       });
 
-      const createdOrder = await smartPurchaseApi.getOrder(created.id);
+      const createdOrder = await loadHydratedOrder(created.id);
       const intendedByKey = new Map(rowsForCreation.map((item) => [
         normalizeProductKey(item),
         number(item.approved_quantity || item.suggested_quantity),
