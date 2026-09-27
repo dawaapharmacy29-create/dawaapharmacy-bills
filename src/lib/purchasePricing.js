@@ -8,13 +8,18 @@ export function explicitDiscountPercent(item = {}) {
   return Math.min(100, Math.max(0, value));
 }
 
-export function referenceUnitPrice(item = {}) {
+export function independentReferenceUnitPrice(item = {}) {
   return Math.max(0, toNumber(
     item.public_price
     ?? item.reference_price
     ?? item.last_purchase_price
-    ?? item.expected_unit_cost
   ));
+}
+
+export function referenceUnitPrice(item = {}) {
+  const independent = independentReferenceUnitPrice(item);
+  if (independent > 0) return independent;
+  return Math.max(0, toNumber(item.expected_unit_cost));
 }
 
 export function purchaseUnitCost(item = {}) {
