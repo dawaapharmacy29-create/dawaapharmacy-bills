@@ -159,7 +159,8 @@ export default function SmartPurchaseReceiving() {
   const receivingResolutionItems = useMemo(() => (selected?.items || []).filter((item) => activeQuantity(item) > 0), [selected]);
   const pendingResolutionItems = useMemo(() => receivingResolutionItems.filter((item) => String(item.resolution_status || 'pending') === 'pending'), [receivingResolutionItems]);
   const followupResolutionItems = useMemo(() => receivingResolutionItems.filter((item) => String(item.resolution_status || '') === 'followup_required'), [receivingResolutionItems]);
-  const closeReadyLocal = receivingResolutionItems.length > 0 && pendingResolutionItems.length === 0 && followupResolutionItems.length === 0;
+  const receivingStarted = Boolean((selected?.receipts || []).length);
+  const closeReadyLocal = receivingStarted && receivingResolutionItems.length > 0 && pendingResolutionItems.length === 0 && followupResolutionItems.length === 0;
 
   async function resolveReceivingItem(item, resolutionStatus) {
     if (!selected?.order?.id || !item?.id) return;
@@ -193,7 +194,7 @@ export default function SmartPurchaseReceiving() {
       <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className="text-sm text-slate-400 p-3">لا توجد طلبيات متاحة.</p>}</div></aside>
       <main className="space-y-4">{!selected && <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">اختر طلبية للبدء.</div>}{selected && <>
         <section className="rounded-2xl border bg-white p-4 shadow-sm"><h2 className="text-xl font-bold">{orderTitle(selected.order)}</h2><p className="text-xs text-slate-400 mt-1">{selected.order.order_number}</p><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {orderSuppliers.length} مورد • {supplierName ? `${orderItems.length} صنف للمورد المختار` : 'اختر المورد لبدء المطابقة'}</p><div className="mt-4 grid sm:grid-cols-2 gap-2"><button onClick={() => { setMode('supplier_response'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'supplier_response' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>1. تسجيل رد المورد واستخراج المتبقي</button><button onClick={() => { setMode('receipt'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'receipt' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>2. رفع المشتريات ومطابقة الاستلام</button></div></section>
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+        {receivingStarted && <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-bold">إغلاق الطلبية بعد الاستلام</h3>
@@ -235,7 +236,8 @@ export default function SmartPurchaseReceiving() {
               </div>;
             })}
           </div>}
-        </section>
+        </section>}
+        {!receivingStarted && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">قرارات الفروق والإغلاق النهائي هتظهر بعد تسجيل أول استلام فعلي على الطلبية.</div>}
 
         {supplierName && <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
           <div className="font-bold text-emerald-950 mb-3">موقف المورد التراكمي</div>
