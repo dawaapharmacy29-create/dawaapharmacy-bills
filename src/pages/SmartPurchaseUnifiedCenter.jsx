@@ -149,7 +149,7 @@ async function runPool(rows, worker, concurrency = 8) {
 }
 
 async function loadHydratedOrder(id) {
-  const detail = await loadHydratedOrder(id);
+  const detail = await unified.getOrder(id);
   const importId = detail?.order?.source_import_id;
   if (!importId || !(detail?.items || []).length) return detail;
   try {
