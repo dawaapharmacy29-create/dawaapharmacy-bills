@@ -108,6 +108,7 @@ export const smartPurchaseOrderManagementApi = {
   listOffers: (filters = {}) => legacyRpc('list_offers', filters),
   importOffers: (payload) => legacyRpc('import_offers', payload),
   updateItem: atomicUpdateItem,
+  applyQuantityPlan: (orderId, items) => directRpc('smart_purchase_apply_budget_plan', { p_order_id: orderId, p_items: items }),
   optimizeSuppliers: async (orderId) => {
     try { return await legacyRpc('optimize_suppliers', { order_id: orderId }); }
     catch (error) {
