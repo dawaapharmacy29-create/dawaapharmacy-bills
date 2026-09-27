@@ -94,8 +94,8 @@ export const smartPurchaseUnifiedApi = {
     p_branch: branch,
     p_target_budget: targetBudget == null || targetBudget === '' ? null : Number(targetBudget),
   }),
-  supplierDecision: (orderId) => standaloneRpc('smart_purchase_supplier_decision_v2', { p_order_id: orderId }),
-  supplierAllocationPlan: (orderId) => standaloneRpc('smart_purchase_supplier_allocation_plan_v1', { p_order_id: orderId }),
+  supplierDecision: (orderId) => standaloneRpc('smart_purchase_supplier_decision_guarded_v2', { p_order_id: orderId }),
+  supplierAllocationPlan: (orderId) => standaloneRpc('smart_purchase_supplier_allocation_plan_guarded_v2', { p_order_id: orderId }),
   supplierOfferHealth: () => standaloneRpc('smart_purchase_supplier_offer_health_v1', {}),
   supplierPerformance: (branch = 'all') => standaloneRpc('smart_purchase_supplier_performance_v1', { p_branch: branch }),
   importSupplierOffers: ({ fileName, rows }) => standaloneRpc('smart_purchase_import_supplier_offers_v1', {
@@ -123,7 +123,7 @@ export const smartPurchaseUnifiedApi = {
   returnToReview: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
   releaseReservation: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
   markSent: (orderId) => standaloneRpc('smart_purchase_mark_sent_v2', { p_order_id: orderId }),
-  supplierDispatches: (orderId) => standaloneRpc('smart_purchase_supplier_dispatch_v2', {
+  supplierDispatches: (orderId) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v2', {
     p_action: 'list',
     p_payload: { order_id: orderId },
   }),
