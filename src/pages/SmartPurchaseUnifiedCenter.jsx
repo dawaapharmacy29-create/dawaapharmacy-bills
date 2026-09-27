@@ -470,12 +470,12 @@ export default function SmartPurchaseUnifiedCenter() {
     minimum_order_value: number(creationMinimum),
     maximum_order_value: number(creationBudget),
   }), [creationTotal, creationMinimum, creationBudget]);
-  const openOrderForBranch = (data.orders || []).find((order) => order.branch === branch && ['مسودة', 'تم التحليل', 'معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا'].includes(normStatus(order.status)));
+  const openOrderForBranch = (data.orders || []).find((order) => order.branch === branch && ['مسودة', 'تم التحليل', 'معتمدة'].includes(normStatus(order.status)));
 
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
-    if (openOrderForBranch) return setError(`يوجد طلبية مفتوحة للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أغلقها قبل إنشاء طلبية جديدة.`);
+    if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
     if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
     if (creationBudget && rowsForCreation.length === 0) return setError('الحد الأقصى لا يكفي لإضافة أي صنف بسعره الحالي.');
     if (creationBudgetPlan?.protected_items_unmet > 0) return setError(`الحد الأقصى الحالي لا يكفي للحفاظ على الحد الأدنى لـ ${creationBudgetPlan.protected_items_unmet} صنف محمي. ارفع الحد الأقصى أو راجع حدود الأصناف.`);
@@ -677,7 +677,7 @@ export default function SmartPurchaseUnifiedCenter() {
         <button type="button" onClick={saveCurrentBranchPolicy} disabled={loading || branchPolicyLoading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-blue-700 disabled:opacity-50">حفظ قيم الطلبية كافتراضي للفرع</button>
         {plannedCandidates.length > 0 && <button type="button" onClick={saveCurrentProductPolicies} disabled={loading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-teal-700 disabled:opacity-50">حفظ حدود الأصناف كسياسات دائمة</button>}
       </div>
-      {openOrderForBranch && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">يوجد طلبية مفتوحة للفرع: {openOrderForBranch.order_number}. تم منع إنشاء طلبية مكررة حتى إغلاقها.</div>}
+      {openOrderForBranch && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع: {openOrderForBranch.order_number}. تم منع إنشاء طلبية موازية حتى اعتمادها وإرسالها.</div>}
       {headers.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex justify-between gap-2"><div><h3 className="font-bold">ربط الأعمدة</h3><p className="text-xs text-blue-700">{mappingSource}</p></div><button onClick={saveMapping} className="rounded-lg border bg-white px-3 py-2 flex gap-2"><Save className="w-4 h-4" />حفظ القالب</button></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{Object.entries(FIELD_LABELS).map(([field, label]) => <label key={field} className="text-xs font-semibold">{label}{field === 'product_name' && <span className="text-red-600"> *</span>}<select value={mapping[field] || ''} onChange={(event) => changeMapping(field, event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">غير موجود</option>{headers.map((header) => <option key={header}>{header}</option>)}</select></label>)}</div></div>}
       {preview.length > 0 && <>
         <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[
