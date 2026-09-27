@@ -59,7 +59,7 @@ async function directRpc(functionName, body = {}) {
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_center_guarded_v2`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_center_guarded_v3`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
