@@ -48,11 +48,10 @@ const navGroups = [
       { label: "الأداة الموحدة (ابدأ من هنا)", items: [
         { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap },
       ]},
-      { label: "خطوات الطلبية بالتفصيل", items: [
-        { path: "/smart-purchase-orders", label: "1. رفع وتحليل ملف الطلبية", icon: BrainCircuit },
-        { path: "/smart-purchase-orders/manage", label: "2. مراجعة العروض واعتماد الطلبية", icon: FileSearch },
-        { path: "/smart-purchase-receiving", label: "3. الاستلام والمطابقة", icon: PackageCheck },
-        { path: "/smart-purchase-insights", label: "4. تقييم الأداء بعد التنفيذ", icon: BarChart3 },
+      { label: "تنفيذ ومتابعة الطلبية", items: [
+        { path: "/purchase-center", label: "إنشاء ومراجعة واعتماد الطلبية", icon: BrainCircuit },
+        { path: "/smart-purchase-receiving", label: "الاستلام والمطابقة", icon: PackageCheck },
+        { path: "/smart-purchase-insights", label: "تقييم الأداء بعد التنفيذ", icon: BarChart3 },
       ]},
       { label: "مراقبة ومراجعة الطلبيات", items: [
         { path: "/purchase-workflow", label: "متابعة الاختناقات والنواقص", icon: GitBranch },
