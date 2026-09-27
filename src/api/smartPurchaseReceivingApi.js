@@ -33,6 +33,8 @@ async function importReceipt(payload) {
   if (!response.ok || data?.ok === false) {
     const messages = {
       duplicate_receipt_file: 'ملف الاستلام ده مسجل بالفعل لنفس الطلبية والمورد.',
+      duplicate_supplier_invoice: 'رقم فاتورة المورد ده مسجل بالفعل لنفس الطلبية.',
+      supplier_required: 'حدد المورد قبل تسجيل الاستلام.',
       receipt_value_above_limit: 'قيمة الاستلام تتجاوز الحد المالي المسموح للطلبية.',
       invalid_rows: 'بيانات الاستلام غير صالحة.',
       forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
