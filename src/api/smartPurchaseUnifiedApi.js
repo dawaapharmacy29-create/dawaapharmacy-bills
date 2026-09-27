@@ -14,7 +14,17 @@ async function standaloneRpc(functionName, body) {
     body: JSON.stringify({ p_session_token: sessionToken, ...body }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) throw new Error(data?.message || data?.error || `فشل الطلب (${response.status})`);
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+      forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+      order_not_found: 'الطلبية غير موجودة.',
+      items_without_supplier: 'يوجد أصناف معتمدة بدون مورد.',
+      order_not_ready_to_send: 'الطلبية لازم تكون معتمدة قبل تسجيل إرسالها للمورد.',
+    };
+    const code = data?.error || data?.message;
+    throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+  }
   return Object.prototype.hasOwnProperty.call(data || {}, 'data') ? data.data : data;
 }
 
@@ -88,5 +98,5 @@ export const smartPurchaseUnifiedApi = {
   approveAndReserve: (payload) => rpc('approve_order', { order_id: payload.order_id }),
   returnToReview: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
   releaseReservation: (orderId, newStatus = 'مسودة') => rpc('release_reservation', { order_id: orderId, new_status: newStatus }),
-  markSent: (orderId) => rpc('mark_sent', { order_id: orderId }),
+  markSent: (orderId) => standaloneRpc('smart_purchase_mark_sent_v2', { p_order_id: orderId }),
 };
