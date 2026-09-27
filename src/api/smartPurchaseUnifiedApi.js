@@ -25,6 +25,9 @@ async function standaloneRpc(functionName, body) {
       open_order_exists: 'يوجد طلبية مفتوحة بالفعل لهذا الفرع.',
       order_title_locked: 'لا يمكن تعديل اسم الطلبية بعد الاعتماد أو بدء التنفيذ.',
       invalid_title: 'اسم الطلبية يجب أن يكون من حرفين إلى 120 حرفًا.',
+      cancel_reason_required: 'اكتب سبب واضح لإلغاء الطلبية.',
+      order_not_cancelable: 'الطلبية في مرحلة لا تسمح بالإلغاء.',
+      order_execution_started: 'لا يمكن إلغاء الطلبية بعد بدء الإرسال أو الاستلام.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
@@ -127,6 +130,10 @@ export const smartPurchaseUnifiedApi = {
   returnToReview: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
   releaseReservation: (orderId) => unifiedV2Rpc('return_to_review', { order_id: orderId }),
   markSent: (orderId) => standaloneRpc('smart_purchase_mark_sent_v2', { p_order_id: orderId }),
+  cancelOrder: (orderId, reason) => standaloneRpc('smart_purchase_cancel_order_v2', {
+    p_order_id: orderId,
+    p_reason: reason,
+  }),
   supplierDispatches: (orderId) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v2', {
     p_action: 'list',
     p_payload: { order_id: orderId },
