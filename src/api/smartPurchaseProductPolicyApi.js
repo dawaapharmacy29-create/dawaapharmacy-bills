@@ -12,6 +12,7 @@ function errorText(data, status) {
   const messages = {
     invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
     forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+    forbidden_branch: 'لا توجد صلاحية على هذا الفرع.',
     branch_required: 'حدد الفرع أولًا.',
     invalid_items: 'بيانات سياسات الأصناف غير صحيحة.',
     item_min_exceeds_max: 'الحد الأدنى للصنف أكبر من الحد الأقصى.',
@@ -25,7 +26,7 @@ function errorText(data, status) {
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_product_policies_v2`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_product_policies_guarded_v2`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
