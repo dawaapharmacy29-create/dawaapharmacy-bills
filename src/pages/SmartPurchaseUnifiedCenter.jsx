@@ -155,14 +155,14 @@ function exportSendFiles(payload) {
   for (const [supplier, rows] of groups.entries()) {
     const items = [...rows].sort((a, b) => String(a.product_name || '').localeCompare(String(b.product_name || ''), 'ar'));
     const sheet = XLSX.utils.json_to_sheet(items.map((item) => ({
+      'كود الصنف': item.product_code || '',
       'اسم الصنف': item.product_name || '',
       'الكمية المطلوبة': itemQuantity(item),
-      'تكلفة الوحدة المتوقعة': Number(netUnitPrice(item).toFixed(2)),
     })));
     sheet['!dir'] = 'rtl';
     sheet['!autofilter'] = { ref: sheet['!ref'] || 'A1:C1' };
     sheet['!freeze'] = { ySplit: 1 };
-    sheet['!cols'] = [{ wch: 45 }, { wch: 18 }, { wch: 22 }];
+    sheet['!cols'] = [{ wch: 16 }, { wch: 45 }, { wch: 18 }];
 
     const summary = XLSX.utils.aoa_to_sheet([
       ['المورد', supplier],
@@ -170,7 +170,7 @@ function exportSendFiles(payload) {
       ['الفرع', order.branch || ''],
       ['عدد الأصناف', items.length],
       ['إجمالي الكميات', items.reduce((sum, item) => sum + itemQuantity(item), 0)],
-      ['إجمالي التكلفة المتوقعة', items.reduce((sum, item) => sum + itemTotal(item), 0)],
+      ['ملاحظة', 'ملف إرسال للمورد — لا يحتوي على أسعار أو سياسات شراء داخلية'],
     ]);
     summary['!dir'] = 'rtl';
 
