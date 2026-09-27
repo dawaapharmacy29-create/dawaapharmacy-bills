@@ -11,13 +11,22 @@ function token() {
 async function receivingRpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_receiving_center`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_receiving_read_v2`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) throw new Error(data?.message || data?.error || `فشل الطلب (${response.status})`);
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+      forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+      forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
+      order_not_found: 'الطلبية غير موجودة.',
+    };
+    const code = data?.error || data?.message;
+    throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+  }
   return data.data;
 }
 
@@ -51,7 +60,7 @@ async function importReceipt(payload) {
 async function saveSnapshot(payload) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_save_workflow_snapshot`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_save_workflow_snapshot_guarded_v2`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_payload: payload }),
@@ -66,7 +75,7 @@ async function saveSnapshot(payload) {
 export const smartPurchaseReceivingApi = {
   listOrders: async () => {
     const rows = await receivingRpc('list_orders');
-    const allowed = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received']);
+    const allowed = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received', 'وصلت جزئيًا']);
     return (rows || []).filter((order) => allowed.has(String(order.status || '').trim()));
   },
   getOrder: (id) => receivingRpc('get_order', { id }),
