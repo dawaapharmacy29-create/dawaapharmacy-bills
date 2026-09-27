@@ -16,6 +16,24 @@ function errorText(value, fallback) {
   if (value?.details) return String(value.details);
   try { return JSON.stringify(value); } catch { return fallback; }
 }
+
+async function standaloneRpc(functionName, body = {}) {
+  const sessionToken = token();
+  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+    method: 'POST',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_session_token: sessionToken, ...body }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) throw new Error(errorText(data?.error || data?.message || data, `فشل الطلب (${response.status})`));
+  return Object.prototype.hasOwnProperty.call(data || {}, 'data') ? data.data : data;
+}
+
+async function followupsRpc(action, payload = {}) {
+  return standaloneRpc('smart_purchase_followups_v2', { p_action: action, p_payload: payload });
+}
+
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
@@ -70,11 +88,11 @@ async function orderEvaluationFallback(orderId) {
 }
 
 export const smartPurchaseAdvancedApi = {
-  supplierPerformance: () => withFallback(() => rpc('supplier_performance'), supplierPerformanceFallback),
-  orderEvaluation: (orderId) => withFallback(() => rpc('order_evaluation', { order_id: orderId }), () => orderEvaluationFallback(orderId)),
-  createCustomerFollowups: () => Promise.resolve({ created: 0 }),
-  listFollowups: (orderId = '') => withFallback(() => rpc('list_followups', { order_id: orderId }), async () => []),
-  updateFollowups: () => Promise.resolve({ updated: 0 }),
+  supplierPerformance: () => supplierPerformanceFallback(),
+  orderEvaluation: (orderId) => standaloneRpc('smart_purchase_order_evaluation_v2', { p_order_id: orderId }),
+  createCustomerFollowups: (orderId) => followupsRpc('create', { order_id: orderId }),
+  listFollowups: (orderId = '') => followupsRpc('list', { order_id: orderId }),
+  updateFollowups: (rows = []) => followupsRpc('update', { rows }),
   budgetPreview: (orderId, budget) => withFallback(() => rpc('optimize_budget_preview', { order_id: orderId, budget }), async () => {
     const evaluation = await orderEvaluationFallback(orderId);
     const items = evaluation.items || [];
