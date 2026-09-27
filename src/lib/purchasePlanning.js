@@ -52,7 +52,7 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
   const pendingIncoming = Math.max(0, toNumber(row.pending_incoming));
   const availableStock = currentStock + pendingIncoming;
   const averageDaily = estimateDailyUsage(row);
-  const targetStock = Math.max(0, Math.ceil(averageDaily * targetDays));
+  const targetStock = Math.max(0, Math.ceil(Number((averageDaily * targetDays).toFixed(6))));
   const rawSuggestedQuantity = Math.max(0, targetStock - availableStock);
   const limitDecision = applyItemPurchaseLimits(rawSuggestedQuantity, row);
   const suggestedQuantity = limitDecision.blocked ? rawSuggestedQuantity : limitDecision.quantity;
