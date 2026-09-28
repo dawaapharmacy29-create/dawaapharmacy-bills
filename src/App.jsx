@@ -54,6 +54,7 @@ const PurchaseWorkflowCenter = lazy(() => import('./pages/PurchaseWorkflowCenter
 const SmartPurchaseReceiving = lazy(() => import('./pages/SmartPurchaseReceiving'));
 const SmartPurchaseInsights = lazy(() => import('./pages/SmartPurchaseInsights'));
 const PurchaseCommandCenter = lazy(() => import('./pages/PurchaseCommandCenter'));
+const PurchaseCenterClean = lazy(() => import('./pages/PurchaseCenterClean'));
 const TeamMergeCenter = lazy(() => import('./pages/TeamMergeCenter'));
 const AdminSettingsCenter = lazy(() => import('./pages/AdminSettingsCenter'));
 const SystemStatus = lazy(() => import('./pages/SystemStatus'));
@@ -121,6 +122,7 @@ const AuthenticatedApp = () => {
     <Route path="/branch-settlements" element={<RoleRouteGuard adminOnly><BranchSettlements /></RoleRouteGuard>} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
     <Route path="/purchase-center" element={<PurchaseCommandCenter />} />
+    <Route path="/purchase-center-clean" element={<PurchaseCenterClean />} />
     <Route path="/smart-purchase-orders" element={<Navigate to="/purchase-center#purchase-order-workspace" replace />} />
     <Route path="/smart-purchase-orders/manage" element={<Navigate to="/purchase-center#purchase-order-workspace" replace />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
