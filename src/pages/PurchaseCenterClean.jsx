@@ -190,6 +190,19 @@ export default function PurchaseCenterClean() {
     return rows.sort((a, b) => Number(b.buy_estimated_cost || 0) - Number(a.buy_estimated_cost || 0));
   }, [plan]);
 
+  const reviewWatchlistRows = useMemo(() => {
+    if (!plan) return [];
+    return [
+      ...(plan.review_watchlist?.shokry?.items || []).map((row) => ({ ...row, branch: 'دواء شكري' })),
+      ...(plan.review_watchlist?.shamy?.items || []).map((row) => ({ ...row, branch: 'دواء الشامي' })),
+    ].sort((a, b) => Number(b.review_priority || 0) - Number(a.review_priority || 0));
+  }, [plan]);
+
+  const reviewWatchlistCounts = {
+    shokry: Number(plan?.review_watchlist?.shokry?.total_active_review_stockouts || 0),
+    shamy: Number(plan?.review_watchlist?.shamy?.total_active_review_stockouts || 0),
+  };
+
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -420,7 +433,7 @@ export default function PurchaseCenterClean() {
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
             <Metric label="مراجعة سريعة" value={quickReviewRows.length} />
-            <Metric label="Review Watchlist" value={(plan.review_watchlist?.shokry_total || 0) + (plan.review_watchlist?.shamy_total || 0)} />
+            <Metric label="Review Watchlist" value={reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
             <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
           </section>
@@ -432,7 +445,7 @@ export default function PurchaseCenterClean() {
             <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
           </section>
 
-          {(plan.review_watchlist?.shokry_total > 0 || plan.review_watchlist?.shamy_total > 0) && (
+          {(reviewWatchlistCounts.shokry > 0 || reviewWatchlistCounts.shamy > 0) && (
             <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 shadow-sm">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -442,8 +455,8 @@ export default function PurchaseCenterClean() {
                   </p>
                 </div>
                 <div className="flex gap-2 text-xs font-bold">
-                  <span className="rounded-full border border-violet-200 bg-white px-3 py-1">شكري: {plan.review_watchlist?.shokry_total || 0}</span>
-                  <span className="rounded-full border border-violet-200 bg-white px-3 py-1">الشامي: {plan.review_watchlist?.shamy_total || 0}</span>
+                  <span className="rounded-full border border-violet-200 bg-white px-3 py-1">شكري: {reviewWatchlistCounts.shokry}</span>
+                  <span className="rounded-full border border-violet-200 bg-white px-3 py-1">الشامي: {reviewWatchlistCounts.shamy}</span>
                 </div>
               </div>
               <div className="overflow-auto rounded-xl border border-violet-100 bg-white">
@@ -460,7 +473,7 @@ export default function PurchaseCenterClean() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(plan.review_watchlist?.items || []).map((row) => (
+                    {reviewWatchlistRows.map((row) => (
                       <tr key={`${row.branch}-${row.product_key}`} className="border-t">
                         <td className="p-2 font-semibold">{row.branch}</td>
                         <td className="p-2">
@@ -477,7 +490,7 @@ export default function PurchaseCenterClean() {
                   </tbody>
                 </table>
               </div>
-              <div className="mt-2 text-xs text-violet-700">يتم عرض أعلى 15 صنف فقط من كل فرع حسب انتشار الطلب، مع إبقاء العدد الكلي ظاهرًا.</div>
+              <div className="mt-2 text-xs text-violet-700">يتم عرض أعلى 25 صنف فقط من كل فرع حسب قوة الطلب وانتشار العملاء، مع إبقاء العدد الكلي ظاهرًا.</div>
             </section>
           )}
 
