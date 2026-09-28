@@ -168,6 +168,21 @@ export default function PurchaseCenterClean() {
     return rows;
   }, [plan]);
 
+  const quickReviewRows = useMemo(() => {
+    if (!plan) return [];
+    const rows = [];
+    for (const [branchKey, branchData] of [['shokry', plan.shokry], ['shamy', plan.shamy]]) {
+      for (const item of branchData?.plan || []) {
+        if (!item.requires_quick_review || Number(item.buy_quantity || 0) <= 0) continue;
+        rows.push({
+          ...item,
+          branch: BRANCH_META[branchKey].label,
+        });
+      }
+    }
+    return rows.sort((a, b) => Number(b.buy_estimated_cost || 0) - Number(a.buy_estimated_cost || 0));
+  }, [plan]);
+
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -407,6 +422,55 @@ export default function PurchaseCenterClean() {
             <Metric label="بناء الخطة" value={`${timings.planMs} ms`} />
             <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
           </section>
+
+          {quickReviewRows.length > 0 && (
+            <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-black text-amber-900">مراجعة سريعة قبل إنشاء المسودتين</h2>
+                  <p className="mt-1 text-sm text-amber-800">أصناف لا يتم استبعادها تلقائيًا، لكنها تستحق نظرة سريعة بسبب القيمة أو نمط الطلب.</p>
+                </div>
+                <span className="rounded-full border border-amber-300 bg-white px-3 py-1 text-sm font-black text-amber-900">{quickReviewRows.length} صنف</span>
+              </div>
+              <div className="overflow-auto rounded-xl border border-amber-200 bg-white">
+                <table className="min-w-[980px] w-full text-sm">
+                  <thead className="bg-amber-50/70">
+                    <tr>
+                      <th className="p-2 text-right">الفرع</th>
+                      <th className="p-2 text-right">الصنف</th>
+                      <th className="p-2 text-right">الشراء</th>
+                      <th className="p-2 text-right">القيمة</th>
+                      <th className="p-2 text-right">Smart Monthly</th>
+                      <th className="p-2 text-right">السبب</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {quickReviewRows.map((row) => {
+                      const reasons = (row.quick_review_reasons || []).map((reason) => ({
+                        high_line_value: 'قيمة السطر مرتفعة',
+                        qty_above_smart_monthly: 'الكمية أعلى من الاستهلاك الشهري الذكي',
+                        dominant_customer: 'اعتماد مرتفع على عميل واحد',
+                        high_outlier_share: 'نسبة Outlier مرتفعة',
+                      }[reason] || reason));
+                      return (
+                        <tr key={`${row.branch}-${row.product_key || row.product_code || row.product_name}`} className="border-t">
+                          <td className="p-2 font-semibold">{row.branch}</td>
+                          <td className="p-2">
+                            <div className="font-semibold">{row.product_name}</div>
+                            <div className="text-xs text-slate-400">{row.product_code || 'بدون كود'}</div>
+                          </td>
+                          <td className="p-2 font-black text-teal-700">{qty(row.buy_quantity)}</td>
+                          <td className="p-2 font-bold">{money(row.buy_estimated_cost)} ج</td>
+                          <td className="p-2">{qty(row.smart_monthly_consumption)}</td>
+                          <td className="p-2 text-xs text-amber-800">{reasons.join(' • ')}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           <div className="grid gap-5 xl:grid-cols-2">
             <BranchPlanCard branchKey="shokry" data={plan.shokry} mode={plan.modes?.['دواء شكري']} />
