@@ -83,7 +83,13 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     if (rawShokryStock === 0) quality.zero_shokry += 1;
     const shamyStock = Math.max(0, rawShamyStock);
     const shokryStock = Math.max(0, rawShokryStock);
-    rowsOut.push({ ...common, shamy_stock: shamyStock, shokry_stock: shokryStock });
+    rowsOut.push({
+      ...common,
+      shamy_stock: shamyStock,
+      shokry_stock: shokryStock,
+      shamy_stock_negative: rawShamyStock < 0,
+      shokry_stock_negative: rawShokryStock < 0,
+    });
     shamy.push({ ...common, current_stock: shamyStock });
     shokry.push({ ...common, current_stock: shokryStock });
   });
