@@ -126,9 +126,10 @@ export const smartPurchaseUnifiedApi = {
         });
         staged += Number(result?.staged_rows || chunk.length);
       }
-      const finalized = await standaloneRpc('smart_purchase_finalize_stock_sync_v1', {
+      const finalized = await standaloneRpc('smart_purchase_finalize_stock_sync_checked_v1', {
         p_branch: branch,
         p_stock_sync_id: syncId,
+        p_expected_rows: rows.length,
       });
       return {
         saved: Number(finalized?.applied_rows || staged),
