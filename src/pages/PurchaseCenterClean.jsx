@@ -159,6 +159,17 @@ export default function PurchaseCenterClean() {
     return normalizeDualBranchStockRows(rows, file.name);
   }
 
+  async function runPlannerOnly() {
+    setPhase('planning');
+    const result = await purchaseApi.dualBranchInstantPlan();
+    if (result?.planner !== 'dual_branch_instant_plan_v1') {
+      throw new Error('لم يتم تشغيل مخطط الفرعين المعتمد.');
+    }
+    setPlan(result);
+    setPhase('ready');
+    return result;
+  }
+
   async function saveAndPlan(stockMaster) {
     if (runRef.current) return;
     runRef.current = true;
@@ -173,16 +184,23 @@ export default function PurchaseCenterClean() {
         throw new Error('تم إيقاف التحليل لأن حفظ الرصيد لم يكتمل بطريقة Atomic للفرعين.');
       }
       setSaveResult(saved);
-
-      setPhase('planning');
-      const result = await purchaseApi.dualBranchInstantPlan();
-      if (result?.planner !== 'dual_branch_instant_plan_v1') {
-        throw new Error('لم يتم تشغيل مخطط الفرعين المعتمد.');
-      }
-      setPlan(result);
-      setPhase('ready');
+      await runPlannerOnly();
     } catch (err) {
       setError(err?.message || 'تعذر تجهيز خطة المشتريات.');
+      setPhase('error');
+    } finally {
+      runRef.current = false;
+    }
+  }
+
+  async function replan() {
+    if (runRef.current || !saveResult) return;
+    runRef.current = true;
+    setError('');
+    try {
+      await runPlannerOnly();
+    } catch (err) {
+      setError(err?.message || 'تعذر إعادة التحليل.');
       setPhase('error');
     } finally {
       runRef.current = false;
@@ -345,7 +363,7 @@ export default function PurchaseCenterClean() {
             <button
               type="button"
               disabled={busy || !parsed}
-              onClick={() => parsed && saveAndPlan(parsed)}
+              onClick={replan}
               className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
             >
               <RefreshCw className="h-4 w-4" />
