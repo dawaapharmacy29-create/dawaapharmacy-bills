@@ -94,6 +94,29 @@ export const smartPurchaseUnifiedApi = {
   cycleBudgetGuard: (branch = 'all') => standaloneRpc('smart_purchase_cycle_budget_guard', { p_branch: branch }),
   decisionDailyChange: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
+  saveCurrentSnapshot: (branch, rows = []) => standaloneRpc('smart_purchase_save_current_snapshot_v1', {
+    p_branch: branch,
+    p_rows: rows,
+  }),
+  saveDualBranchStockMaster: async ({ shamy = [], shokry = [], chunkSize = 1000 }) => {
+    const saveBranch = async (branch, rows) => {
+      let saved = 0;
+      for (let offset = 0; offset < rows.length; offset += chunkSize) {
+        const chunk = rows.slice(offset, offset + chunkSize);
+        const result = await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
+          p_branch: branch,
+          p_rows: chunk,
+        });
+        saved += Number(result?.saved_rows || chunk.length);
+      }
+      return saved;
+    };
+    const [shamySaved, shokrySaved] = await Promise.all([
+      saveBranch('دواء الشامي', shamy),
+      saveBranch('دواء شكري', shokry),
+    ]);
+    return { shamy_saved: shamySaved, shokry_saved: shokrySaved, total_saved: shamySaved + shokrySaved };
+  },
   demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
     await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
       p_branch: branch,
