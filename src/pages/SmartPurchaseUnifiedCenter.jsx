@@ -406,6 +406,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const dashboardRunningRef = useRef(false);
   const dashboardRefreshPendingRef = useRef(null);
+  const stockSaveRunningRef = useRef(false);
   const analysisRunningRef = useRef(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -676,6 +677,8 @@ export default function SmartPurchaseUnifiedCenter() {
 
   async function persistDualStockMaster(silent = false) {
     if (!dualStockMaster) return null;
+    if (stockSaveRunningRef.current) return null;
+    stockSaveRunningRef.current = true;
     if (!silent) { setLoading(true); setError(''); setMessage(''); }
     try {
       const result = await unified.saveDualBranchStockMaster(dualStockMaster);
@@ -686,6 +689,7 @@ export default function SmartPurchaseUnifiedCenter() {
       setError(err.message);
       throw err;
     } finally {
+      stockSaveRunningRef.current = false;
       if (!silent) setLoading(false);
     }
   }
