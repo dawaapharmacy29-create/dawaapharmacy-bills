@@ -140,6 +140,8 @@ export const smartPurchaseUnifiedApi = {
       inventory_eligible: row.inventory_eligible !== false,
       shamy_stock: Number(row.shamy_stock || 0),
       shokry_stock: Number(row.shokry_stock || 0),
+      shamy_stock_negative: row.shamy_stock_negative === true,
+      shokry_stock_negative: row.shokry_stock_negative === true,
     }));
     let staged = 0;
     const totalChunks = Math.ceil(compactRows.length / chunkSize);
