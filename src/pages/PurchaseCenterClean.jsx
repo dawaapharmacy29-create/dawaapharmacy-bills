@@ -125,6 +125,7 @@ export default function PurchaseCenterClean() {
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
   const [draftResult, setDraftResult] = useState(null);
+  const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
   const runRef = useRef(false);
@@ -162,6 +163,7 @@ export default function PurchaseCenterClean() {
 
   async function runPlannerOnly(expectedSyncId = saveResult?.stock_sync_id) {
     setPhase('planning');
+    const startedAt = performance.now();
     const result = await purchaseApi.dualBranchInstantPlan();
     if (result?.planner !== 'dual_branch_instant_plan_v1') {
       throw new Error('لم يتم تشغيل مخطط الفرعين المعتمد.');
@@ -170,11 +172,12 @@ export default function PurchaseCenterClean() {
       throw new Error('تم إيقاف الخطة لأن التحليل لا يطابق نفس نسخة ملف الرصيد المحفوظ.');
     }
     setPlan(result);
+    setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
     return result;
   }
 
-  async function saveAndPlan(stockMaster) {
+  async function saveAndPlan(stockMaster, flowStartedAt = performance.now()) {
     if (runRef.current) return;
     runRef.current = true;
     setError('');
@@ -184,7 +187,10 @@ export default function PurchaseCenterClean() {
 
     try {
       setPhase('saving');
+      const saveStartedAt = performance.now();
       const saved = await purchaseApi.saveDualBranchStockMaster(stockMaster);
+      const saveMs = Math.round(performance.now() - saveStartedAt);
+      setTimings((current) => ({ ...current, saveMs }));
       if (!saved?.shamy_atomic_finalize || !saved?.shokry_atomic_finalize) {
         throw new Error('تم إيقاف التحليل لأن حفظ الرصيد لم يكتمل بطريقة Atomic للفرعين.');
       }
@@ -221,11 +227,15 @@ export default function PurchaseCenterClean() {
     setSaveResult(null);
     setError('');
     setPhase('reading');
+    const flowStartedAt = performance.now();
 
     try {
+      const readStartedAt = performance.now();
       const stockMaster = await readWorkbook(file);
+      const readMs = Math.round(performance.now() - readStartedAt);
+      setTimings({ readMs, saveMs: 0, planMs: 0, totalMs: 0 });
       setParsed(stockMaster);
-      await saveAndPlan(stockMaster);
+      await saveAndPlan(stockMaster, flowStartedAt);
     } catch (err) {
       setError(err?.message || 'تعذر قراءة ملف الرصيد.');
       setPhase('error');
@@ -330,12 +340,19 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <Metric label="إجمالي قيمة الشراء" value={`${money(plan.totals?.buy_value)} ج`} />
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
             <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
+          </section>
+
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <Metric label="قراءة الملف" value={`${timings.readMs} ms`} />
+            <Metric label="حفظ الفرعين" value={`${timings.saveMs} ms`} />
+            <Metric label="بناء الخطة" value={`${timings.planMs} ms`} />
+            <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
           </section>
 
           <div className="grid gap-5 xl:grid-cols-2">
@@ -391,10 +408,18 @@ export default function PurchaseCenterClean() {
                   المسودتان ستُنشآن من نفس plan_hash بدون إعادة حساب الكميات. لا يوجد اعتماد أو إرسال للمورد في هذه الخطوة.
                 </div>
                 {plan.creation_guard?.can_create_dual === false && (
-                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-sm font-semibold text-red-700">
-                    إنشاء المسودتين متوقف حاليًا:
-                    {plan.creation_guard?.shokry_open_order ? ' يوجد طلبية مفتوحة لشكري.' : ''}
-                    {plan.creation_guard?.shamy_open_order ? ' يوجد طلبية مفتوحة للشامي.' : ''}
+                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    <div className="font-black">إنشاء المسودتين متوقف بسبب طلبية مفتوحة:</div>
+                    <div className="mt-2 space-y-1">
+                      {[...(plan.creation_guard?.shokry_open_orders || []), ...(plan.creation_guard?.shamy_open_orders || [])].map((order) => (
+                        <div key={order.id} className="rounded border border-red-100 bg-white/70 px-2 py-1">
+                          <span className="font-mono">{order.order_number}</span>
+                          {' • '}{order.status}
+                          {' • '}{new Date(order.created_at).toLocaleDateString('ar-EG')}
+                          {order.title ? ` • ${order.title}` : ''}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {draftResult && (
