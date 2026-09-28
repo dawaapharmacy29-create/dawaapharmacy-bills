@@ -600,7 +600,7 @@ export default function SmartPurchaseUnifiedCenter() {
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
       setCoverageDays(days);
-      const v5Ready = ['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7'].includes(result?.method?.engine);
+      const v5Ready = ['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7','smart_purchase_demand_transfer_preview_v8'].includes(result?.method?.engine);
       setMessage(v5Ready
         ? `تم تحليل الاحتياج بمحرك V5 على تغطية ${days} يوم: التاريخ لا ينشئ طلبًا جديدًا وحده، ومطابقة الفرع الآخر تعمل بالكود أو الاسم.`
         : `تم عرض نتيجة مؤقتة بالمحرك السابق على تغطية ${days} يوم. محرك V5 لم يُفعّل على قاعدة البيانات بعد، لذلك إنشاء الطلبية مقفول حتى تفعيل الإصلاح.`);
