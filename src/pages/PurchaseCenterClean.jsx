@@ -54,12 +54,27 @@ function BranchPlanCard({ branchKey, data, mode }) {
         </div>
       </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="أصناف شراء" value={summary.buy_now_items || 0} />
-        <Metric label="وحدات شراء" value={qty(summary.suggested_buy_units)} />
+        <Metric label="نواقص حرجة" value={(summary.stockout_items || 0) + (summary.below_min_items || 0)} />
+        <Metric label="احتياج الفترة" value={`${money(summary.period_need_value)} ج`} />
+        <Metric label="شراء اليوم" value={`${money(summary.suggested_buy_value)} ج`} />
         <Metric label="تحويلات" value={(summary.transfer_only_items || 0) + (summary.transfer_then_buy_items || 0)} />
-        <Metric label="المؤجل ماليًا" value={summary.deferred_budget_items || 0} />
         <Metric label="Safe Order Today" value={`${money(mode?.safe_order_today)} ج`} />
+      </div>
+      <div className="mx-4 mb-4 flex flex-wrap gap-2 text-xs">
+        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.stock_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+          الرصيد {data?.method?.data_quality?.stock_snapshot_fresh ? 'حديث' : 'قديم'}
+        </span>
+        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.movement_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+          الحركة {data?.method?.data_quality?.movement_snapshot_fresh ? 'حديثة' : 'قديمة'}
+        </span>
+        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.financial_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+          الوضع المالي {data?.method?.data_quality?.financial_snapshot_fresh ? 'حديث' : 'قديم'}
+        </span>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
+          الهدف المالي: {summary.financial_target === 'min' ? 'Min' : summary.financial_target === 'max' ? 'Max' : 'Reorder'}
+        </span>
       </div>
 
       <div className="border-t p-4">
