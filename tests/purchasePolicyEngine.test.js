@@ -11,8 +11,10 @@ test('resolves item min/max aliases without inventing limits', () => {
   assert.deepEqual(resolveItemPurchaseLimits({ min_quantity: 3, max_quantity: 12 }), {
     minimum: 3,
     maximum: 12,
+    package_multiple: 0,
     has_minimum: true,
     has_maximum: true,
+    has_package_multiple: false,
     invalid_range: false,
   });
   assert.equal(resolveItemPurchaseLimits({}).has_minimum, false);
