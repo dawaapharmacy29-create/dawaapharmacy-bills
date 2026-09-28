@@ -114,6 +114,41 @@ function findHistoryHeader(headers, aliases) {
     || headers.find((header) => aliases.some((alias) => norm(header).includes(norm(alias)) || norm(alias).includes(norm(header))))
     || '';
 }
+
+function normalizePurchaseHistoryMatrix(matrix) {
+  const output = [];
+  let supplier = '';
+  let purchaseDate = '';
+  for (const rawRow of matrix) {
+    const row = Array.isArray(rawRow) ? rawRow : [];
+    const normalizedCells = row.map((cell) => norm(cell));
+    const supplierHeaderIndex = normalizedCells.findIndex((cell) => ['إسم المورد','اسم المورد'].some((alias) => cell === norm(alias)));
+    const hasItemHeaders = normalizedCells.some((cell) => cell === norm('ن.الربح'))
+      && normalizedCells.some((cell) => cell === norm('س.شراء'));
+    if (supplierHeaderIndex >= 0 && hasItemHeaders) {
+      supplier = String(row[20] ?? '').trim();
+      purchaseDate = normalizeDateValue(row[22]);
+      continue;
+    }
+    const qty = Math.max(0, number(row[11]));
+    const bonus = Math.max(0, number(row[10]));
+    const unitCost = Math.max(0, number(row[5]));
+    const productName = String(row[14] ?? '').trim();
+    const productCode = String(row[15] ?? '').trim();
+    if (!supplier || !productName || qty <= 0 || unitCost <= 0) continue;
+    output.push({
+      product_code: productCode,
+      product_name: productName,
+      supplier_name: supplier,
+      purchase_qty: qty,
+      bonus_qty: bonus,
+      unit_cost: unitCost,
+      purchase_date: purchaseDate,
+    });
+  }
+  return output;
+}
+
 function normalizeHistoryRows(kind, rows) {
   const headers = Object.keys(rows[0] || {});
   const codeCol = findHistoryHeader(headers, ['كود الصنف','الكود','كود','product code','item code','code']);
@@ -121,12 +156,24 @@ function normalizeHistoryRows(kind, rows) {
   if (!nameCol) throw new Error('لم أتعرف على عمود اسم الصنف في الملف.');
 
   if (kind === 'movement_6m') {
-    const qtyCol = findHistoryHeader(headers, ['كمية البيع','مبيعات 6 شهور','اجمالي الكمية','إجمالي الكمية','الكمية','كمية','sales qty','quantity','qty']);
-    if (!qtyCol) throw new Error('لم أتعرف على عمود كمية المبيعات في ملف الست شهور.');
+    let qtyCol = findHistoryHeader(headers, ['كمية البيع','مبيعات 6 شهور','اجمالي الكمية','إجمالي الكمية','الكمية','كمية','sales qty','quantity','qty']);
+    let resolvedCodeCol = codeCol;
+    let resolvedNameCol = nameCol;
+    const sample = rows.slice(0, 20);
+    const looksShiftedAbouElAzm = headers.some((header) => norm(header) === norm('الموظف'))
+      && codeCol
+      && sample.filter((row) => String(row[codeCol] ?? '').trim()).length === 0
+      && sample.filter((row) => /^\d+(?:\.0+)?$/.test(String(row[nameCol] ?? '').trim())).length >= Math.min(5, sample.length);
+    if (looksShiftedAbouElAzm) {
+      resolvedCodeCol = nameCol;
+      resolvedNameCol = findHistoryHeader(headers, ['الشركة']);
+      qtyCol = findHistoryHeader(headers, ['الوحدة']);
+    }
+    if (!qtyCol || !resolvedNameCol) throw new Error('لم أتعرف على كمية/اسم الصنف في ملف الست شهور.');
     const grouped = new Map();
     for (const row of rows) {
-      const code = String(row[codeCol] ?? '').trim();
-      const name = String(row[nameCol] ?? '').trim();
+      const code = String(row[resolvedCodeCol] ?? '').trim();
+      const name = String(row[resolvedNameCol] ?? '').trim();
       if (!name) continue;
       const key = code || norm(name);
       const current = grouped.get(key) || { product_code: code, product_name: name, sales_6m: 0 };
@@ -137,7 +184,7 @@ function normalizeHistoryRows(kind, rows) {
   }
 
   if (kind === 'customer_history') {
-    const customerCol = findHistoryHeader(headers, ['كود العميل','رقم العميل','اسم العميل','العميل','رقم الموبايل','الموبايل','customer code','customer name','customer','mobile','phone']);
+    const customerCol = findHistoryHeader(headers, ['كود العميل','رقم العميل','اسم العميل','إسم العميل','العميل','رقم الموبايل','الموبايل','customer code','customer name','customer','mobile','phone']);
     if (!customerCol) throw new Error('لم أتعرف على عمود العميل في ملف مبيعات العملاء.');
     const grouped = new Map();
     rows.forEach((row, index) => {
@@ -429,9 +476,14 @@ export default function SmartPurchaseUnifiedCenter() {
     setHistoryLoading(true); setError(''); setMessage('');
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '', raw: true });
-      if (!rows.length) throw new Error('الملف فارغ.');
-      const normalizedRows = normalizeHistoryRows(historyKind, rows);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const normalizedRows = historyKind === 'purchase_history'
+        ? normalizePurchaseHistoryMatrix(XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true }))
+        : (() => {
+            const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+            if (!rows.length) throw new Error('الملف فارغ.');
+            return normalizeHistoryRows(historyKind, rows);
+          })();
       if (!normalizedRows.length) throw new Error('لم أجد صفوفًا صالحة للحفظ بعد قراءة الملف.');
       const chunkSize = 500;
       let processed = 0;
