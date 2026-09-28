@@ -8,6 +8,21 @@ function token() {
   catch { return ''; }
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('انتهت مهلة الاتصال بالخادم. لم يتم تكرار العملية تلقائيًا لحماية البيانات؛ راجع حالة الصفحة ثم أعد المحاولة.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function errorText(data, status) {
   const messages = {
     invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
@@ -26,7 +41,7 @@ function errorText(data, status) {
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_product_policies_guarded_v2`, {
+  const response = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_product_policies_guarded_v2`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
