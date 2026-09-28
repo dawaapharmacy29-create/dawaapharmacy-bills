@@ -124,6 +124,7 @@ export default function PurchaseCenterClean() {
   const [parsed, setParsed] = useState(null);
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
+  const [draftResult, setDraftResult] = useState(null);
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
   const runRef = useRef(false);
@@ -178,6 +179,7 @@ export default function PurchaseCenterClean() {
     runRef.current = true;
     setError('');
     setPlan(null);
+    setDraftResult(null);
     setSaveResult(null);
 
     try {
@@ -215,6 +217,7 @@ export default function PurchaseCenterClean() {
     setFileName(file.name);
     setParsed(null);
     setPlan(null);
+    setDraftResult(null);
     setSaveResult(null);
     setError('');
     setPhase('reading');
@@ -229,11 +232,32 @@ export default function PurchaseCenterClean() {
     }
   }
 
-  const busy = ['reading', 'saving', 'planning'].includes(phase);
+  async function createDrafts() {
+    if (runRef.current || !plan?.stock_sync_id || !plan?.plan_hash) return;
+    runRef.current = true;
+    setError('');
+    setPhase('creating');
+    try {
+      const result = await purchaseApi.createDualDrafts({
+        stockSyncId: plan.stock_sync_id,
+        planHash: plan.plan_hash,
+      });
+      setDraftResult(result);
+      setPhase('ready');
+    } catch (err) {
+      setError(err?.message || 'تعذر إنشاء مسودتي الفرعين.');
+      setPhase('error');
+    } finally {
+      runRef.current = false;
+    }
+  }
+
+  const busy = ['reading', 'saving', 'planning', 'creating'].includes(phase);
   const statusText =
     phase === 'reading' ? 'جاري قراءة ملف الرصيد والتحقق من الأعمدة...' :
     phase === 'saving' ? 'جاري حفظ رصيد الفرعين بأمان...' :
     phase === 'planning' ? 'جاري بناء طلبية شكري والشامي والتحويلات...' :
+    phase === 'creating' ? 'جاري إنشاء مسودتي شكري والشامي من نفس الخطة...' :
     '';
 
   return (
@@ -359,20 +383,50 @@ export default function PurchaseCenterClean() {
             </div>
           </section>
 
-          <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <div>
-              <div className="font-black text-amber-900">المرحلة الحالية: خطة مراجعة فقط</div>
-              <div className="mt-1 text-sm text-amber-800">لم يتم إنشاء أو اعتماد أي طلبية فعلية. سنوصل زر إنشاء المسودتين بعد تثبيت التطابق 100% بين الخطة والطلبية.</div>
+          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="font-black text-amber-900">المرحلة الحالية: مراجعة الخطة ثم إنشاء المسودتين</div>
+                <div className="mt-1 text-sm text-amber-800">
+                  المسودتان ستُنشآن من نفس plan_hash بدون إعادة حساب الكميات. لا يوجد اعتماد أو إرسال للمورد في هذه الخطوة.
+                </div>
+                {plan.creation_guard?.can_create_dual === false && (
+                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-sm font-semibold text-red-700">
+                    إنشاء المسودتين متوقف حاليًا:
+                    {plan.creation_guard?.shokry_open_order ? ' يوجد طلبية مفتوحة لشكري.' : ''}
+                    {plan.creation_guard?.shamy_open_order ? ' يوجد طلبية مفتوحة للشامي.' : ''}
+                  </div>
+                )}
+                {draftResult && (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">
+                    {draftResult.already_created ? 'المسودتان كانتا منشأتين بالفعل من نفس الخطة.' : 'تم إنشاء المسودتين بنجاح من نفس الخطة.'}
+                    <div className="mt-1 font-mono text-[11px]">
+                      شكري: {draftResult.shokry_order_id || '—'} • الشامي: {draftResult.shamy_order_id || '—'}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy || !saveResult}
+                  onClick={replan}
+                  className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  إعادة التحليل
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || !plan.creation_guard?.can_create_dual || Boolean(draftResult)}
+                  onClick={createDrafts}
+                  className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40"
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  إنشاء مسودتي شكري والشامي
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              disabled={busy || !parsed}
-              onClick={replan}
-              className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
-            >
-              <RefreshCw className="h-4 w-4" />
-              إعادة التحليل
-            </button>
           </section>
         </>
       )}
