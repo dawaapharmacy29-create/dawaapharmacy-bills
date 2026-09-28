@@ -826,9 +826,10 @@ export default function SmartPurchaseUnifiedCenter() {
   const invalidItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_blocked), [plannedCandidates]);
   const adjustedItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_adjusted), [plannedCandidates]);
   const creationBudgetPlan = useMemo(() => {
+    if (demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10') return null;
     const value = number(creationBudget);
     return value > 0 ? buildBudgetPlan(plannedCandidates, value) : null;
-  }, [plannedCandidates, creationBudget]);
+  }, [plannedCandidates, creationBudget, demandTransferPreview]);
   const rowsForCreation = creationBudgetPlan ? creationBudgetPlan.rows.filter((item) => number(item.approved_quantity) > 0) : plannedCandidates;
   const creationTotal = rowsForCreation.reduce((sum, item) => sum + purchaseLineTotal(item, number(item.approved_quantity || item.suggested_quantity)), 0);
   const creationOrderGuard = useMemo(() => evaluateOrderValue(creationTotal, {
