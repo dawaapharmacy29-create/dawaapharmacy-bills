@@ -693,7 +693,8 @@ export default function SmartPurchaseUnifiedCenter() {
     setLoading(true); setError(''); setMessage('');
     try {
       if (dualStockMaster && !dualStockMasterSaved) await persistDualStockMaster(true);
-      const result = await unified.demandTransferPreview(branch, financialMode, previewWithPolicies, creationBudget);
+      const analysisRows = dualStockMaster ? [] : previewWithPolicies;
+      const result = await unified.demandTransferPreview(branch, financialMode, analysisRows, creationBudget);
       setDemandTransferPreview(result || null);
       const engine = result?.method?.engine || '';
       const smartReady = engine === 'smart_purchase_demand_transfer_preview_v10';
