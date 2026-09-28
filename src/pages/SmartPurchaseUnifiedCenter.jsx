@@ -392,7 +392,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [dashboardWarning, setDashboardWarning] = useState('');
 
   async function refresh(openId) {
-    setLoading(true); setError('');
+    setLoading(true);
+    setDashboardWarning('');
     try {
       const next = await unified.dashboard();
       setData(next || { orders: [], pending_actions: {} });
@@ -410,7 +411,11 @@ export default function SmartPurchaseUnifiedCenter() {
         setOrderMinimum(String(number(detail.order?.minimum_order_value) || ''));
         setBudgetLimit(String(number(detail.order?.maximum_order_value) || number(detail.order?.budget) || Math.ceil(computedTotal)));
       }
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setDashboardWarning(err?.message === 'canceling statement due to statement timeout'
+        ? 'تعذر تحديث لوحة الطلبات العامة مؤقتًا بسبب بطء الاستعلام. تحليل الطلبية الذكي يعمل بشكل مستقل.'
+        : `تعذر تحديث لوحة الطلبات العامة: ${err.message}`);
+    }
     finally { setLoading(false); }
   }
   useEffect(() => { refresh(); }, []);
@@ -600,10 +605,19 @@ export default function SmartPurchaseUnifiedCenter() {
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
       setCoverageDays(days);
-      const v5Ready = ['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7','smart_purchase_demand_transfer_preview_v8','smart_purchase_demand_transfer_preview_v9'].includes(result?.method?.engine);
-      setMessage(v5Ready
-        ? `تم تحليل الاحتياج بمحرك V5 على تغطية ${days} يوم: التاريخ لا ينشئ طلبًا جديدًا وحده، ومطابقة الفرع الآخر تعمل بالكود أو الاسم.`
-        : `تم عرض نتيجة مؤقتة بالمحرك السابق على تغطية ${days} يوم. محرك V5 لم يُفعّل على قاعدة البيانات بعد، لذلك إنشاء الطلبية مقفول حتى تفعيل الإصلاح.`);
+      const engine = result?.method?.engine || '';
+      const smartReady = [
+        'smart_purchase_demand_transfer_preview_v5',
+        'smart_purchase_demand_transfer_preview_v6',
+        'smart_purchase_demand_transfer_preview_v7',
+        'smart_purchase_demand_transfer_preview_v8',
+        'smart_purchase_demand_transfer_preview_v9',
+      ].includes(engine);
+      setMessage(smartReady
+        ? (engine === 'smart_purchase_demand_transfer_preview_v9'
+          ? 'تم التحليل بمحرك V9 الديناميكي: كل صنف له نقطة إعادة طلب وهدف كمية خاص به حسب المبيعات، ترند الحركة، تاريخ الشراء، انتشار العملاء، رأس المال، والتحويل بين الفروع.'
+          : `تم تحليل الاحتياج بالمحرك ${engine.replace('smart_purchase_demand_transfer_preview_','').toUpperCase()}.`)
+        : 'تم عرض نتيجة بمحرك غير معتمد حاليًا؛ إنشاء الطلبية سيظل مقفولًا للحماية.');
     } catch (err) {
       setError(err.message);
     } finally {
