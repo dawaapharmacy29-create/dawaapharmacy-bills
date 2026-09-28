@@ -404,6 +404,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const dashboardRunningRef = useRef(false);
   const analysisRunningRef = useRef(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -449,6 +450,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [dashboardWarning, setDashboardWarning] = useState('');
 
   async function refresh(openId) {
+    if (dashboardRunningRef.current) return;
+    dashboardRunningRef.current = true;
     setDashboardLoading(true);
     setDashboardWarning('');
     try {
@@ -473,6 +476,7 @@ export default function SmartPurchaseUnifiedCenter() {
         ? 'تعذر تحديث لوحة الطلبات العامة مؤقتًا بسبب بطء الاستعلام. تحليل الطلبية الذكي يعمل بشكل مستقل.'
         : `تعذر تحديث لوحة الطلبات العامة: ${err.message}`);
     } finally {
+      dashboardRunningRef.current = false;
       setDashboardLoading(false);
     }
   }
@@ -1046,7 +1050,7 @@ export default function SmartPurchaseUnifiedCenter() {
   return <div dir="rtl" className="p-3 md:p-4 space-y-4">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2"><ShoppingCart className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">مركز الطلبية الموحد</h1><p className="text-sm text-slate-500">إنشاء ومراجعة الطلبية، ضبط الميزانية، ثم تصدير ملف جاهز للإرسال.</p></div></div>
-      <div className="flex gap-2"><button onClick={() => setShowImport((value) => !value)} className="rounded-lg bg-teal-600 text-white px-4 py-2 flex gap-2"><Upload className="w-4 h-4" />طلبية جديدة</button><button onClick={() => refresh()} className="rounded-lg border bg-white px-4 py-2 flex gap-2"><RefreshCw className="w-4 h-4" />تحديث</button></div>
+      <div className="flex gap-2"><button onClick={() => setShowImport((value) => !value)} className="rounded-lg bg-teal-600 text-white px-4 py-2 flex gap-2"><Upload className="w-4 h-4" />طلبية جديدة</button><button onClick={() => refresh()} disabled={dashboardLoading} className="rounded-lg border bg-white px-4 py-2 flex gap-2 disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${dashboardLoading ? 'animate-spin' : ''}`} />تحديث</button></div>
     </header>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</div>}
     {dashboardWarning && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{dashboardWarning}</div>}
