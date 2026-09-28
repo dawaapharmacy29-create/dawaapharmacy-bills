@@ -95,10 +95,12 @@ export const smartPurchaseUnifiedApi = {
   decisionDailyChange: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
   demandTransferPreview: async (branch, financialMode = 'medium', rows = []) => {
-    const common = { p_branch: branch, p_rows: rows };
-    await standaloneRpc('smart_purchase_save_current_snapshot_v1', common);
-    return standaloneRpc('smart_purchase_demand_transfer_preview_v6', {
-      ...common,
+    await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
+      p_branch: branch,
+      p_rows: rows,
+    });
+    return standaloneRpc('smart_purchase_demand_transfer_preview_v7', {
+      p_branch: branch,
       p_financial_mode: financialMode,
     });
   },
