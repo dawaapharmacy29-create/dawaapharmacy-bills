@@ -427,6 +427,55 @@ export default function PurchaseCenterClean() {
             <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
           </section>
 
+          {(plan.review_watchlist?.shokry_total > 0 || plan.review_watchlist?.shamy_total > 0) && (
+            <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 shadow-sm">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-black text-violet-900">Watchlist — أصناف تحتاج عين بشرية وليست شراء آلي</h2>
+                  <p className="mt-1 text-sm text-violet-700">
+                    رصيدها صفر وعليها طلب حديث، لكن ثقة السياسة لم تصل لمستوى الشراء التلقائي. لا يتم إضافة أي كمية منها للمسودتين.
+                  </p>
+                </div>
+                <div className="flex gap-2 text-xs font-bold">
+                  <span className="rounded-full border border-violet-200 bg-white px-3 py-1">شكري: {plan.review_watchlist?.shokry_total || 0}</span>
+                  <span className="rounded-full border border-violet-200 bg-white px-3 py-1">الشامي: {plan.review_watchlist?.shamy_total || 0}</span>
+                </div>
+              </div>
+              <div className="overflow-auto rounded-xl border border-violet-100 bg-white">
+                <table className="min-w-[980px] w-full text-sm">
+                  <thead className="bg-violet-50/70">
+                    <tr>
+                      <th className="p-2 text-right">الفرع</th>
+                      <th className="p-2 text-right">الصنف</th>
+                      <th className="p-2 text-right">الوحدة</th>
+                      <th className="p-2 text-right">Smart Monthly</th>
+                      <th className="p-2 text-right">عملاء 30 يوم</th>
+                      <th className="p-2 text-right">فواتير 30 يوم</th>
+                      <th className="p-2 text-right">الثقة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(plan.review_watchlist?.items || []).map((row) => (
+                      <tr key={`${row.branch}-${row.product_key}`} className="border-t">
+                        <td className="p-2 font-semibold">{row.branch}</td>
+                        <td className="p-2">
+                          <div className="font-semibold">{row.product_name}</div>
+                          <div className="text-xs text-slate-400">{row.product_code || 'بدون كود'}</div>
+                        </td>
+                        <td className="p-2">{row.stock_unit || '—'}</td>
+                        <td className="p-2">{qty(row.smart_monthly_consumption)}</td>
+                        <td className="p-2">{row.customers_30d || 0}</td>
+                        <td className="p-2">{row.invoices_30d || 0}</td>
+                        <td className="p-2">{qty(row.confidence_score)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 text-xs text-violet-700">يتم عرض أعلى 15 صنف فقط من كل فرع حسب انتشار الطلب، مع إبقاء العدد الكلي ظاهرًا.</div>
+            </section>
+          )}
+
           {quickReviewRows.length > 0 && (
             <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
