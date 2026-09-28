@@ -389,6 +389,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [historyKind, setHistoryKind] = useState('movement_6m');
   const [historyStatus, setHistoryStatus] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [dashboardWarning, setDashboardWarning] = useState('');
 
   async function refresh(openId) {
     setLoading(true); setError('');
