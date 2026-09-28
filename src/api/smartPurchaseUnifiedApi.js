@@ -122,6 +122,34 @@ export const smartPurchaseUnifiedApi = {
     p_branch: branch,
     p_rows: rows,
   }),
+  saveDualBranchStockMasterClean: async ({ rows = [], chunkSize = 1800 }) => {
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد صفوف رصيد صالحة للحفظ.');
+    const syncId = `dual-stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    let staged = 0;
+    for (let offset = 0; offset < rows.length; offset += chunkSize) {
+      const chunk = rows.slice(offset, offset + chunkSize);
+      const result = await standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
+        p_stock_sync_id: syncId,
+        p_rows: chunk,
+      });
+      staged += Number(result?.staged_rows || chunk.length);
+    }
+    const finalized = await standaloneRpc('smart_purchase_finalize_dual_stock_master_v1', {
+      p_stock_sync_id: syncId,
+      p_expected_rows: rows.length,
+    });
+    return {
+      stock_sync_id: syncId,
+      staged_rows: staged,
+      shamy_saved: Number(finalized?.shamy_saved || 0),
+      shokry_saved: Number(finalized?.shokry_saved || 0),
+      shamy_stale_disabled: Number(finalized?.shamy_stale_disabled || 0),
+      shokry_stale_disabled: Number(finalized?.shokry_stale_disabled || 0),
+      dual_atomic_finalize: finalized?.dual_atomic_finalize === true,
+      row_count_verified: finalized?.row_count_verified === true,
+      total_saved: Number(finalized?.shamy_saved || 0) + Number(finalized?.shokry_saved || 0),
+    };
+  },
   saveDualBranchStockMaster: async ({ shamy = [], shokry = [], chunkSize = 1000 }) => {
     const syncId = `stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const saveBranch = async (branch, rows) => {
