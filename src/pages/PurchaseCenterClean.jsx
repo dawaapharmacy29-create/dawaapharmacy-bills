@@ -412,10 +412,12 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
             <Metric label="إجمالي قيمة الشراء" value={`${money(plan.totals?.buy_value)} ج`} />
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
+            <Metric label="مراجعة سريعة" value={quickReviewRows.length} />
+            <Metric label="Review Watchlist" value={(plan.review_watchlist?.shokry_total || 0) + (plan.review_watchlist?.shamy_total || 0)} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
             <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
           </section>
