@@ -83,6 +83,8 @@ test('tracks negative stock as a quality signal while clamping it to zero for pl
   assert.equal(result.quality.negative_shokry, 1);
   assert.equal(result.rows[0].shamy_stock, 0);
   assert.equal(result.rows[0].shokry_stock, 0);
+  assert.equal(result.rows[0].shamy_stock_negative, true);
+  assert.equal(result.rows[0].shokry_stock_negative, true);
 });
 
 test('counts fractional stock without rounding it away', () => {
