@@ -601,7 +601,7 @@ export default function SmartPurchaseUnifiedCenter() {
   async function runDemandTransferPreview() {
     setLoading(true); setError(''); setMessage('');
     try {
-      const result = await unified.demandTransferPreview(branch, financialMode, previewWithPolicies);
+      const result = await unified.demandTransferPreview(branch, financialMode, previewWithPolicies, creationBudget);
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
       setCoverageDays(days);
@@ -612,9 +612,12 @@ export default function SmartPurchaseUnifiedCenter() {
         'smart_purchase_demand_transfer_preview_v7',
         'smart_purchase_demand_transfer_preview_v8',
         'smart_purchase_demand_transfer_preview_v9',
+        'smart_purchase_demand_transfer_preview_v10',
       ].includes(engine);
       setMessage(smartReady
-        ? (engine === 'smart_purchase_demand_transfer_preview_v9'
+        ? (engine === 'smart_purchase_demand_transfer_preview_v10'
+          ? 'تم التحليل بمحرك V10: تم فصل احتياج الفترة عن طلبية اليوم، وتوزيع ميزانية التنفيذ حسب الأولوية وتاريخ الشراء.'
+          : engine === 'smart_purchase_demand_transfer_preview_v9'
           ? 'تم التحليل بمحرك V9 الديناميكي: كل صنف له نقطة إعادة طلب وهدف كمية خاص به حسب المبيعات، ترند الحركة، تاريخ الشراء، انتشار العملاء، رأس المال، والتحويل بين الفروع.'
           : `تم تحليل الاحتياج بالمحرك ${engine.replace('smart_purchase_demand_transfer_preview_','').toUpperCase()}.`)
         : 'تم عرض نتيجة بمحرك غير معتمد حاليًا؛ إنشاء الطلبية سيظل مقفولًا للحماية.');
@@ -748,7 +751,7 @@ export default function SmartPurchaseUnifiedCenter() {
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (preview.length > 0 && (!demandTransferPreview || demandTransferPreview.branch !== branch)) return setError('شغّل «تحليل ذكي قبل الشراء» على الملف الحالي قبل إنشاء الطلبية.');
-    if (preview.length > 0 && !['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7','smart_purchase_demand_transfer_preview_v8','smart_purchase_demand_transfer_preview_v9'].includes(demandTransferPreview?.method?.engine)) return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
+    if (preview.length > 0 && !['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7','smart_purchase_demand_transfer_preview_v8','smart_purchase_demand_transfer_preview_v9','smart_purchase_demand_transfer_preview_v10'].includes(demandTransferPreview?.method?.engine)) return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف وصلت لنقطة إعادة الطلب وتحتاج شراء الآن.');
     if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
     if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
@@ -1011,11 +1014,19 @@ export default function SmartPurchaseUnifiedCenter() {
       </div>
       {demandTransferPreview?.plan?.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div><h3 className="font-bold">نتيجة ذكاء الطلبية قبل الشراء</h3><p className="text-xs text-slate-500 mt-1">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `V9 ديناميكي • متوسط هدف ${number(demandTransferPreview.summary?.avg_dynamic_target_days).toFixed(1)} يوم • نقطة إعادة طلب ${number(demandTransferPreview.summary?.avg_reorder_point_days).toFixed(1)} يوم` : (demandTransferPreview.financial_mode === 'essential' ? 'الضروريات فقط • 7 أيام • أولوية مشددة' : `تغطية ${demandTransferPreview.target_coverage_days} يوم`)} • التحويل الداخلي يُخصم قبل الشراء.</p></div>
-          <div className="text-sm font-bold">شراء مقترح: {number(demandTransferPreview.summary?.suggested_buy_units)} وحدة • {money(demandTransferPreview.summary?.suggested_buy_value)} ج</div>
+          <div><h3 className="font-bold">نتيجة ذكاء الطلبية قبل الشراء</h3><p className="text-xs text-slate-500 mt-1">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10' ? `V10 • احتياج الفترة ${money(demandTransferPreview.summary?.period_need_value)} ج • ميزانية التنفيذ اليوم ${money(demandTransferPreview.summary?.recommended_daily_budget)} ج` : demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `V9 ديناميكي • متوسط هدف ${number(demandTransferPreview.summary?.avg_dynamic_target_days).toFixed(1)} يوم • نقطة إعادة طلب ${number(demandTransferPreview.summary?.avg_reorder_point_days).toFixed(1)} يوم` : (demandTransferPreview.financial_mode === 'essential' ? 'الضروريات فقط • 7 أيام • أولوية مشددة' : `تغطية ${demandTransferPreview.target_coverage_days} يوم`)} • التحويل الداخلي يُخصم قبل الشراء.</p></div>
+          <div className="text-sm font-bold">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10' ? 'طلبية اليوم' : 'شراء مقترح'}: {number(demandTransferPreview.summary?.suggested_buy_units)} وحدة • {money(demandTransferPreview.summary?.suggested_buy_value)} ج</div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
-          {(demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9'
+          {(demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10'
+            ? [
+                ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
+                ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
+                ['شراء اليوم', demandTransferPreview.summary?.buy_now_items || 0],
+                ['مؤجل للدفعة القادمة', demandTransferPreview.summary?.deferred_budget_items || 0],
+                ['ميزانية اليوم', `${money(demandTransferPreview.summary?.recommended_daily_budget)} ج`],
+              ]
+            : demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9'
             ? [
                 ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
                 ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
@@ -1031,18 +1042,18 @@ export default function SmartPurchaseUnifiedCenter() {
                 ['موقوف بسبب الركود', demandTransferPreview.summary?.blocked_deadstock_items || 0],
               ]).map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
         </div>
-        <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1200px] w-full text-sm"><thead className="bg-slate-50"><tr>{(demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? ['الصنف','الرصيد','توقع/يوم','التغطية','نقطة إعادة الطلب','هدف الصنف','الاحتياج الذكي','تحويل','شراء','القرار'] : ['الصنف','الرصيد','متوسط/يوم','التغطية','المستهدف','الاحتياج','تحويل من فرع آخر','شراء','التصنيف','القرار']).map((head)=><th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>
+        <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1200px] w-full text-sm"><thead className="bg-slate-50"><tr>{(['smart_purchase_demand_transfer_preview_v9','smart_purchase_demand_transfer_preview_v10'].includes(demandTransferPreview?.method?.engine) ? ['الصنف','الرصيد','توقع/يوم','التغطية','نقطة إعادة الطلب','هدف الصنف','احتياج الفترة','تحويل','شراء اليوم','القرار'] : ['الصنف','الرصيد','متوسط/يوم','التغطية','المستهدف','الاحتياج','تحويل من فرع آخر','شراء','التصنيف','القرار']).map((head)=><th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>
           {demandTransferPreview.plan.slice(0, 100).map((row) => <tr key={row.product_code || row.product_name} className="border-t">
             <td className="p-2 font-semibold">{row.product_name}<div className="text-[11px] text-slate-400">{row.product_code || ''}</div></td>
             <td className="p-2">{number(row.current_stock)}</td>
             <td className="p-2">{number(row.forecast_daily ?? row.usage_per_day).toFixed(2)}</td>
             <td className="p-2">{row.coverage_days == null ? '—' : `${number(row.coverage_days).toFixed(1)} يوم`}</td>
-            <td className="p-2">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `${number(row.reorder_point_days).toFixed(1)} يوم` : number(row.target_stock)}</td>
-            <td className="p-2">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `${number(row.dynamic_target_days).toFixed(0)} يوم / ${number(row.target_stock)} وحدة` : number(row.gross_need)}</td>
-            <td className="p-2 font-bold">{number(row.need_after_history_cap ?? row.gross_need)}</td>
+            <td className="p-2">{['smart_purchase_demand_transfer_preview_v9','smart_purchase_demand_transfer_preview_v10'].includes(demandTransferPreview?.method?.engine) ? `${number(row.reorder_point_days).toFixed(1)} يوم` : number(row.target_stock)}</td>
+            <td className="p-2">{['smart_purchase_demand_transfer_preview_v9','smart_purchase_demand_transfer_preview_v10'].includes(demandTransferPreview?.method?.engine) ? `${number(row.dynamic_target_days).toFixed(0)} يوم / ${number(row.target_stock)} وحدة` : number(row.gross_need)}</td>
+            <td className="p-2 font-bold">{number(row.period_buy_quantity ?? row.need_after_history_cap ?? row.gross_need)}</td>
             <td className="p-2">{number(row.suggested_transfer_qty) > 0 ? `${number(row.suggested_transfer_qty)} من ${row.transfer_from_branch || 'الفرع الآخر'}` : '—'}</td>
             <td className="p-2 font-bold">{number(row.buy_quantity)}</td>
-            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy' ? 'شراء الآن' : row.decision === 'monitor' ? 'مراقبة' : row.decision === 'do_not_buy' ? 'لا شراء الآن' : 'الرصيد كافٍ'}{row.reason ? <div className="text-[11px] text-slate-500 mt-1">{row.reason}</div> : null}</td>
+            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy_now' ? 'شراء اليوم' : row.decision === 'buy_partial_budget' ? 'شراء جزئي اليوم' : row.decision === 'defer_budget' ? 'مؤجل للدفعة القادمة' : row.decision === 'review_price' ? 'مراجعة سعر' : row.decision === 'buy' ? 'شراء الآن' : row.decision === 'monitor' ? 'مراقبة' : row.decision === 'do_not_buy' ? 'لا شراء الآن' : 'الرصيد كافٍ'}{row.reason ? <div className="text-[11px] text-slate-500 mt-1">{row.reason}</div> : null}</td>
           </tr>)}
         </tbody></table></div>
       </section>}
