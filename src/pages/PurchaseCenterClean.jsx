@@ -410,17 +410,29 @@ export default function PurchaseCenterClean() {
                 </div>
                 {plan.creation_guard?.can_create_dual === false && (
                   <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    <div className="font-black">إنشاء المسودتين متوقف بسبب طلبية مفتوحة:</div>
-                    <div className="mt-2 space-y-1">
-                      {[...(plan.creation_guard?.shokry_open_orders || []), ...(plan.creation_guard?.shamy_open_orders || [])].map((order) => (
-                        <div key={order.id} className="rounded border border-red-100 bg-white/70 px-2 py-1">
-                          <span className="font-mono">{order.order_number}</span>
-                          {' • '}{order.status}
-                          {' • '}{new Date(order.created_at).toLocaleDateString('ar-EG')}
-                          {order.title ? ` • ${order.title}` : ''}
+                    <div className="font-black">إنشاء المسودتين متوقف مؤقتًا.</div>
+                    {(!plan.creation_guard?.shokry_data_ready || !plan.creation_guard?.shamy_data_ready) && (
+                      <div className="mt-2 rounded border border-red-100 bg-white/70 px-2 py-1">
+                        بيانات التشغيل تحتاج تحديث:
+                        {!plan.creation_guard?.shokry_data_ready ? ' شكري غير جاهز.' : ''}
+                        {!plan.creation_guard?.shamy_data_ready ? ' الشامي غير جاهز.' : ''}
+                      </div>
+                    )}
+                    {(plan.creation_guard?.shokry_open_order || plan.creation_guard?.shamy_open_order) && (
+                      <>
+                        <div className="mt-2 font-bold">طلبيات مفتوحة تمنع إنشاء مسودة جديدة:</div>
+                        <div className="mt-1 space-y-1">
+                          {[...(plan.creation_guard?.shokry_open_orders || []), ...(plan.creation_guard?.shamy_open_orders || [])].map((order) => (
+                            <div key={order.id} className="rounded border border-red-100 bg-white/70 px-2 py-1">
+                              <span className="font-mono">{order.order_number}</span>
+                              {' • '}{order.status}
+                              {' • '}{new Date(order.created_at).toLocaleDateString('ar-EG')}
+                              {order.title ? ` • ${order.title}` : ''}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </>
+                    )}
                   </div>
                 )}
                 {draftResult && (
