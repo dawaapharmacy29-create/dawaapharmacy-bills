@@ -116,20 +116,25 @@ export const smartPurchaseUnifiedApi = {
   saveDualBranchStockMaster: async ({ shamy = [], shokry = [], chunkSize = 1000 }) => {
     const syncId = `stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const saveBranch = async (branch, rows) => {
-      let saved = 0;
+      let staged = 0;
       for (let offset = 0; offset < rows.length; offset += chunkSize) {
-        const chunk = rows.slice(offset, offset + chunkSize).map((row) => ({ ...row, stock_sync_id: syncId }));
-        const result = await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
+        const chunk = rows.slice(offset, offset + chunkSize);
+        const result = await standaloneRpc('smart_purchase_stage_stock_snapshot_v1', {
           p_branch: branch,
+          p_stock_sync_id: syncId,
           p_rows: chunk,
         });
-        saved += Number(result?.saved_rows || chunk.length);
+        staged += Number(result?.staged_rows || chunk.length);
       }
       const finalized = await standaloneRpc('smart_purchase_finalize_stock_sync_v1', {
         p_branch: branch,
         p_stock_sync_id: syncId,
       });
-      return { saved, stale_rows_disabled: Number(finalized?.stale_rows_disabled || 0) };
+      return {
+        saved: Number(finalized?.applied_rows || staged),
+        stale_rows_disabled: Number(finalized?.stale_rows_disabled || 0),
+        atomic_finalize: finalized?.atomic_finalize === true,
+      };
     };
     const shamyResult = await saveBranch('دواء الشامي', shamy);
     const shokryResult = await saveBranch('دواء شكري', shokry);
