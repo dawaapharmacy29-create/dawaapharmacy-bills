@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main, experiment/purchase-architecture-v2]
+    branches: [main, experiment/purchase-architecture-v2, refactor/purchase-center-clean-v1]
   pull_request:
 
 jobs:
