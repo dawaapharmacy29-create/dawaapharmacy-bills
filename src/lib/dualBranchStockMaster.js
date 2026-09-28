@@ -109,3 +109,47 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     quality,
   };
 }
+
+
+export async function runBoundedChunkPool(
+  chunks = [],
+  worker,
+  { concurrency = 2, onComplete = null } = {}
+) {
+  if (!Array.isArray(chunks) || chunks.length === 0) return [];
+  if (typeof worker !== 'function') throw new Error('Chunk worker is required.');
+
+  const limit = Math.max(1, Math.min(chunks.length, Math.floor(Number(concurrency) || 1)));
+  const results = new Array(chunks.length);
+  let nextIndex = 0;
+  let completed = 0;
+  let stopped = false;
+
+  async function runner() {
+    while (!stopped) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= chunks.length) return;
+
+      try {
+        const result = await worker(chunks[index], index);
+        results[index] = result;
+        completed += 1;
+        if (typeof onComplete === 'function') {
+          onComplete({
+            completed,
+            total: chunks.length,
+            index,
+            result,
+          });
+        }
+      } catch (error) {
+        stopped = true;
+        throw error;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => runner()));
+  return results;
+}
