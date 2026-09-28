@@ -131,10 +131,8 @@ export const smartPurchaseUnifiedApi = {
       });
       return { saved, stale_rows_disabled: Number(finalized?.stale_rows_disabled || 0) };
     };
-    const [shamyResult, shokryResult] = await Promise.all([
-      saveBranch('دواء الشامي', shamy),
-      saveBranch('دواء شكري', shokry),
-    ]);
+    const shamyResult = await saveBranch('دواء الشامي', shamy);
+    const shokryResult = await saveBranch('دواء شكري', shokry);
     return {
       shamy_saved: shamyResult.saved,
       shokry_saved: shokryResult.saved,
