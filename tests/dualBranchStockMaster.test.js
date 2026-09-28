@@ -69,3 +69,32 @@ test('rejects a file missing one branch balance column', () => {
     /ملف الرصيد لازم يحتوي/
   );
 });
+
+
+test('tracks negative stock as a quality signal while clamping it to zero for planning', () => {
+  const result = normalizeDualBranchStockRows([{
+    'الكود': '2002',
+    'إسم الصنف': 'Negative Stock Item',
+    'الفرعية الشامي': '-2',
+    'الادارة فرع شكري': '-0.5',
+  }], 'stock.xlsx');
+
+  assert.equal(result.quality.negative_shamy, 1);
+  assert.equal(result.quality.negative_shokry, 1);
+  assert.equal(result.rows[0].shamy_stock, 0);
+  assert.equal(result.rows[0].shokry_stock, 0);
+});
+
+test('counts fractional stock without rounding it away', () => {
+  const result = normalizeDualBranchStockRows([{
+    'الكود': '3003',
+    'إسم الصنف': 'Fractional Stock Item',
+    'الفرعية الشامي': '1.25',
+    'الادارة فرع شكري': '2.5',
+  }], 'stock.xlsx');
+
+  assert.equal(result.quality.fractional_shamy, 1);
+  assert.equal(result.quality.fractional_shokry, 1);
+  assert.equal(result.rows[0].shamy_stock, 1.25);
+  assert.equal(result.rows[0].shokry_stock, 2.5);
+});
