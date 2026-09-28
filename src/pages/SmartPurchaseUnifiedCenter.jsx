@@ -503,10 +503,7 @@ export default function SmartPurchaseUnifiedCenter() {
           setBranchPolicy(policy || null);
           setCreationMinimum(Number(policy?.minimum_order_value || 0) > 0 ? String(policy.minimum_order_value) : '');
           setCreationBudget(Number(policy?.maximum_order_value || 0) > 0 ? String(policy.maximum_order_value) : '');
-          const savedDays = Math.max(1, Number(policy?.default_coverage_days || 14));
-          if (savedDays === 7) { setFinancialMode('critical'); setCoverageDays(7); }
-          else if (savedDays === 30) { setFinancialMode('comfortable'); setCoverageDays(30); }
-          else { setFinancialMode('medium'); setCoverageDays(14); }
+          setCoverageDays(Math.max(1, Number(policy?.default_coverage_days || 14)));
         }
       } catch (err) {
         if (!cancelled) setError((current) => current || `تعذر تحميل سياسة طلبية ${branch}: ${err.message}`);
@@ -698,8 +695,6 @@ export default function SmartPurchaseUnifiedCenter() {
       if (dualStockMaster && !dualStockMasterSaved) await persistDualStockMaster(true);
       const result = await unified.demandTransferPreview(branch, financialMode, previewWithPolicies, creationBudget);
       setDemandTransferPreview(result || null);
-      const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
-      setCoverageDays(days);
       const engine = result?.method?.engine || '';
       const smartReady = engine === 'smart_purchase_demand_transfer_preview_v10';
       setMessage(smartReady
@@ -722,7 +717,7 @@ export default function SmartPurchaseUnifiedCenter() {
         defaultCoverageDays: coverageDays,
       });
       setBranchPolicy(saved);
-      setMessage(`تم حفظ إعدادات طلبية ${branch} كافتراضي: تغطية ${coverageDays} يوم${number(creationMinimum) > 0 ? ` • حد أدنى ${money(creationMinimum)} ج` : ''}${number(creationBudget) > 0 ? ` • حد أقصى ${money(creationBudget)} ج` : ''}.`);
+      setMessage(`تم حفظ إعدادات طلبية ${branch} كافتراضي${number(creationMinimum) > 0 ? ` • حد أدنى ${money(creationMinimum)} ج` : ''}${number(creationBudget) > 0 ? ` • حد أقصى ${money(creationBudget)} ج` : ''}.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1086,8 +1081,7 @@ export default function SmartPurchaseUnifiedCenter() {
       <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <label className="text-sm">اسم الطلبية<input type="text" maxLength="120" value={creationTitle} onChange={(event) => setCreationTitle(event.target.value)} placeholder="مثال: طلبية أول أغسطس — فرع الشامي" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">اسم واضح للمراجعة والبحث، والكود المرجعي سيظهر تحته.</span></label>
         <label className="text-sm">الفرع<select value={branch} onChange={(event) => { const nextBranch = event.target.value; setBranch(nextBranch); setDemandTransferPreview(null); if (rawRows.length) buildPreview(rawRows, mapping, nextBranch, dualStockMaster); }} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { const mode = event.target.value; setFinancialMode(mode); setCoverageDays(mode === 'comfortable' ? 30 : mode === 'medium' ? 14 : 7); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="essential">الضروريات فقط — 7 أيام + أولوية مشددة</option><option value="critical">حرج — 7 أيام</option><option value="medium">متوسط — 14 يوم</option><option value="comfortable">مريح — 30 يوم</option></select><span className="text-[11px] text-slate-500">يحدد التغطية المستهدفة قبل توزيع الميزانية.</span></label>
-        <label className="text-sm">التغطية الناتجة بالأيام<input type="number" value={coverageDays} readOnly className="mt-1 w-full rounded-lg border bg-slate-50 p-2" /><span className="text-[11px] text-slate-500">7 ضروري/حرج • 14 متوسط • 30 مريح.</span></label>
+        <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { setFinancialMode(event.target.value); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="essential">الضروريات فقط — حماية السيولة</option><option value="critical">حرج — الوصول للحد الآمن أولًا</option><option value="medium">متوازن — أولوية للنواقص ونقطة إعادة الطلب</option><option value="comfortable">مريح — يسمح بتعزيز المخزون حسب الأولوية</option></select><span className="text-[11px] text-slate-500">الوضع المالي يحدد شدة التنفيذ والميزانية، وليس عدد أيام ثابت لكل الأصناف. كل صنف له Min / Reorder / Max خاص به.</span></label>
         <label className="text-sm">الحد الأدنى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationMinimum} onChange={(event) => setCreationMinimum(event.target.value)} placeholder="مثال: 10000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمنع إنشاء طلبية أصغر من الحد التشغيلي.</span></label>
         <label className="text-sm">الحد الأقصى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يوزع الكميات داخل السقف المالي.</span></label>
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
