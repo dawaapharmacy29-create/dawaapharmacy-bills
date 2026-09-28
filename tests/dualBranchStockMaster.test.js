@@ -26,6 +26,9 @@ test('normalizes one stock row into both branches without losing fractional stoc
 
   assert.equal(result.rows_count, 1);
   assert.equal(result.inventory_rows, 1);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].shamy_stock, 1.5);
+  assert.equal(result.rows[0].shokry_stock, 2.25);
   assert.equal(result.shamy[0].current_stock, 1.5);
   assert.equal(result.shokry[0].current_stock, 2.25);
   assert.equal(result.shamy[0].product_code, '1001');
