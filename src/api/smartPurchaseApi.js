@@ -8,6 +8,21 @@ function token() {
   catch { return ''; }
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('انتهت مهلة الاتصال بالخادم. لم يتم تكرار العملية تلقائيًا لحماية البيانات؛ راجع حالة الصفحة ثم أعد المحاولة.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function errorMessage(data, status) {
   if (typeof data === 'string' && data.trim()) return data;
   if (data && typeof data === 'object') {
@@ -27,7 +42,7 @@ function errorMessage(data, status) {
 async function directRpc(functionName, body = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
+  const response = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/${functionName}`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, ...body }),
@@ -59,7 +74,7 @@ async function directRpc(functionName, body = {}) {
 async function rpc(action, payload = {}) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_center_guarded_v3`, {
+  const response = await fetchWithTimeout(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_center_guarded_v3`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_action: action, p_payload: payload }),
@@ -83,6 +98,34 @@ function preparePurchaseCandidates(payload = {}) {
   const coverageDays = Math.max(1, Number(payload.coverage_days || 7));
   const safetyDays = Math.max(0, Number(payload.safety_days || 0));
   const sourceRows = Array.isArray(payload.rows) ? payload.rows : [];
+
+  if (payload.preserve_plan === true) {
+    const candidates = sourceRows.map((row) => {
+      const quantity = Math.max(0, Number(row.approved_quantity ?? row.requested_quantity ?? row.suggested_quantity ?? row.budget_quantity ?? 0));
+      return {
+        ...row,
+        suggested_quantity: quantity,
+        requested_quantity: quantity,
+        approved_quantity: quantity,
+      };
+    }).filter((row) => row.product_name && row.approved_quantity > 0);
+
+    if (!candidates.length) {
+      throw new Error('خطة V10 لا تحتوي على أصناف صالحة للإنشاء.');
+    }
+
+    return {
+      ...payload,
+      coverage_days: coverageDays,
+      safety_days: safetyDays,
+      preserve_plan: true,
+      calculation_method: 'v10_preserved_plan',
+      source_rows_count: sourceRows.length,
+      filtered_rows_count: candidates.length,
+      rows: candidates,
+    };
+  }
+
   let candidates = buildPurchaseCandidates(sourceRows, { coverage_days: coverageDays });
 
   if (payload.enforce_budget) {
