@@ -49,6 +49,10 @@ async function standaloneRpc(functionName, body) {
       analysis_integrity_guard_failed: 'تم إيقاف التحليل لأن بيانات Min / Reorder / Max أو الأسعار الحالية غير متسقة. راجع سلامة بيانات المشتريات قبل إنشاء أي طلبية.',
       stage_count_mismatch: 'تم إيقاف حفظ الرصيد لأن عدد الصفوف المستلمة لا يطابق الملف الأصلي. الرصيد السابق لم يتغير.',
       stock_sync_mismatch: 'تم إيقاف التحليل لأن الفرعين ليسا على نفس نسخة ملف الرصيد. أعد رفع ملف الرصيد الموحد للفرعين.',
+      plan_hash_mismatch: 'تم إيقاف إنشاء المسودتين لأن الخطة تغيرت بعد المراجعة. أعد التحليل ثم راجع الخطة الجديدة.',
+      invalid_dual_plan_identity: 'بيانات تعريف الخطة غير مكتملة؛ أعد التحليل قبل إنشاء المسودتين.',
+      dual_create_failed: 'تعذر إنشاء المسودتين معًا؛ لم يتم اعتماد إنشاء جزئي.',
+
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
@@ -159,6 +163,10 @@ export const smartPurchaseUnifiedApi = {
   dualBranchInstantPlan: ({ shokryBudget = null, shamyBudget = null } = {}) => standaloneRpc('smart_purchase_dual_branch_instant_plan_v1', {
     p_shokry_budget: Number(shokryBudget) > 0 ? Number(shokryBudget) : null,
     p_shamy_budget: Number(shamyBudget) > 0 ? Number(shamyBudget) : null,
+  }),
+  createDualDrafts: ({ stockSyncId, planHash }) => standaloneRpc('smart_purchase_create_dual_drafts_v1', {
+    p_stock_sync_id: stockSyncId,
+    p_plan_hash: planHash,
   }),
   demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
     if (Array.isArray(rows) && rows.length > 0) {
