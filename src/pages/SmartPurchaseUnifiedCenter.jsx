@@ -405,6 +405,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [loading, setLoading] = useState(false);
   const [dashboardLoading, setDashboardLoading] = useState(false);
   const dashboardRunningRef = useRef(false);
+  const dashboardRefreshPendingRef = useRef(null);
   const analysisRunningRef = useRef(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -450,7 +451,10 @@ export default function SmartPurchaseUnifiedCenter() {
   const [dashboardWarning, setDashboardWarning] = useState('');
 
   async function refresh(openId) {
-    if (dashboardRunningRef.current) return;
+    if (dashboardRunningRef.current) {
+      dashboardRefreshPendingRef.current = openId || dashboardRefreshPendingRef.current || true;
+      return;
+    }
     dashboardRunningRef.current = true;
     setDashboardLoading(true);
     setDashboardWarning('');
@@ -478,6 +482,9 @@ export default function SmartPurchaseUnifiedCenter() {
     } finally {
       dashboardRunningRef.current = false;
       setDashboardLoading(false);
+      const pending = dashboardRefreshPendingRef.current;
+      dashboardRefreshPendingRef.current = null;
+      if (pending) void refresh(pending === true ? undefined : pending);
     }
   }
   useEffect(() => { refresh(); }, []);
