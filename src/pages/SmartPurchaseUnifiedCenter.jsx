@@ -734,8 +734,8 @@ export default function SmartPurchaseUnifiedCenter() {
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (preview.length > 0 && (!demandTransferPreview || demandTransferPreview.branch !== branch)) return setError('شغّل «تحليل ذكي قبل الشراء» على الملف الحالي قبل إنشاء الطلبية.');
-    if (preview.length > 0 && !['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7'].includes(demandTransferPreview?.method?.engine)) return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
-    if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
+    if (preview.length > 0 && !['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7','smart_purchase_demand_transfer_preview_v8','smart_purchase_demand_transfer_preview_v9'].includes(demandTransferPreview?.method?.engine)) return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
+    if (!plannedCandidates.length) return setError('لا توجد أصناف وصلت لنقطة إعادة الطلب وتحتاج شراء الآن.');
     if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
     if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
     if (creationBudget && rowsForCreation.length === 0) return setError('الحد الأقصى لا يكفي لإضافة أي صنف بسعره الحالي.');
