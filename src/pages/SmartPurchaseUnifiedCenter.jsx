@@ -599,7 +599,10 @@ export default function SmartPurchaseUnifiedCenter() {
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
       setCoverageDays(days);
-      setMessage(`تم تحليل الاحتياج على تغطية ${days} يوم مع فحص فائض الفرع الآخر قبل الشراء.`);
+      const v5Ready = result?.method?.engine === 'smart_purchase_demand_transfer_preview_v5';
+      setMessage(v5Ready
+        ? `تم تحليل الاحتياج بمحرك V5 على تغطية ${days} يوم: التاريخ لا ينشئ طلبًا جديدًا وحده، ومطابقة الفرع الآخر تعمل بالكود أو الاسم.`
+        : `تم عرض نتيجة مؤقتة بالمحرك السابق على تغطية ${days} يوم. محرك V5 لم يُفعّل على قاعدة البيانات بعد، لذلك إنشاء الطلبية مقفول حتى تفعيل الإصلاح.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -712,6 +715,7 @@ export default function SmartPurchaseUnifiedCenter() {
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (preview.length > 0 && (!demandTransferPreview || demandTransferPreview.branch !== branch)) return setError('شغّل «تحليل ذكي قبل الشراء» على الملف الحالي قبل إنشاء الطلبية.');
+    if (preview.length > 0 && demandTransferPreview?.method?.engine !== 'smart_purchase_demand_transfer_preview_v5') return setError('محرك V5 المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
     if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
     if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
