@@ -87,6 +87,7 @@ function BranchPlanCard({ branchKey, data, mode }) {
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="p-2 text-right">الصنف</th>
+                <th className="p-2 text-right">الوحدة</th>
                 <th className="p-2 text-right">الرصيد</th>
                 <th className="p-2 text-right">Min</th>
                 <th className="p-2 text-right">Reorder</th>
@@ -104,6 +105,7 @@ function BranchPlanCard({ branchKey, data, mode }) {
                     <div className="font-semibold text-slate-800">{row.product_name}</div>
                     <div className="text-xs text-slate-400">{row.product_code || 'بدون كود'}</div>
                   </td>
+                  <td className="p-2">{row.stock_unit || '—'}</td>
                   <td className="p-2">{qty(row.current_stock)}</td>
                   <td className="p-2">{qty(row.min_stock)}</td>
                   <td className="p-2">{qty(row.reorder_stock)}</td>
@@ -115,7 +117,7 @@ function BranchPlanCard({ branchKey, data, mode }) {
                 </tr>
               ))}
               {!buyRows.length && (
-                <tr><td colSpan="9" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
+                <tr><td colSpan="10" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
               )}
             </tbody>
           </table>
@@ -158,6 +160,8 @@ export default function PurchaseCenterClean() {
           key: `${branchKey}-${item.product_key || item.product_code || item.product_name}`,
           product_code: item.product_code,
           product_name: item.product_name,
+          stock_unit: item.stock_unit,
+          company_name: item.company_name,
           from: item.transfer_from_branch,
           to: toBranch,
           quantity: transferQuantity,
@@ -516,6 +520,7 @@ export default function PurchaseCenterClean() {
                 <thead className="bg-slate-50">
                   <tr>
                     <th className="p-2 text-right">الصنف</th>
+                    <th className="p-2 text-right">الوحدة</th>
                     <th className="p-2 text-right">من</th>
                     <th className="p-2 text-right">إلى</th>
                     <th className="p-2 text-right">التحويل</th>
@@ -529,6 +534,7 @@ export default function PurchaseCenterClean() {
                         <div className="font-semibold">{row.product_name}</div>
                         <div className="text-xs text-slate-400">{row.product_code || 'بدون كود'}</div>
                       </td>
+                      <td className="p-2">{row.stock_unit || '—'}</td>
                       <td className="p-2">{row.from || '—'}</td>
                       <td className="p-2">{row.to}</td>
                       <td className="p-2 font-bold text-indigo-700">{qty(row.quantity)}</td>
@@ -536,7 +542,7 @@ export default function PurchaseCenterClean() {
                     </tr>
                   ))}
                   {!transfers.length && (
-                    <tr><td colSpan="5" className="p-8 text-center text-slate-400">لا توجد تحويلات مطلوبة بين الفرعين.</td></tr>
+                    <tr><td colSpan="6" className="p-8 text-center text-slate-400">لا توجد تحويلات مطلوبة بين الفرعين.</td></tr>
                   )}
                 </tbody>
               </table>
