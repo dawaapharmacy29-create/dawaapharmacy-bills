@@ -203,11 +203,11 @@ export default function PurchaseCenterClean() {
     try {
       setPhase('saving');
       const saveStartedAt = performance.now();
-      const saved = await purchaseApi.saveDualBranchStockMaster(stockMaster);
+      const saved = await purchaseApi.saveDualBranchStockMasterClean({ rows: stockMaster.rows });
       const saveMs = Math.round(performance.now() - saveStartedAt);
       setTimings((current) => ({ ...current, saveMs }));
-      if (!saved?.shamy_atomic_finalize || !saved?.shokry_atomic_finalize) {
-        throw new Error('تم إيقاف التحليل لأن حفظ الرصيد لم يكتمل بطريقة Atomic للفرعين.');
+      if (!saved?.dual_atomic_finalize || !saved?.row_count_verified) {
+        throw new Error('تم إيقاف التحليل لأن حفظ الرصيد الموحد لم يكتمل Transactionally للفرعين.');
       }
       setSaveResult(saved);
       await runPlannerOnly(saved.stock_sync_id);
