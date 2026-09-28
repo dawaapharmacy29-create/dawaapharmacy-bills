@@ -159,11 +159,14 @@ export default function PurchaseCenterClean() {
     return normalizeDualBranchStockRows(rows, file.name);
   }
 
-  async function runPlannerOnly() {
+  async function runPlannerOnly(expectedSyncId = saveResult?.stock_sync_id) {
     setPhase('planning');
     const result = await purchaseApi.dualBranchInstantPlan();
     if (result?.planner !== 'dual_branch_instant_plan_v1') {
       throw new Error('لم يتم تشغيل مخطط الفرعين المعتمد.');
+    }
+    if (expectedSyncId && result?.stock_sync_id !== expectedSyncId) {
+      throw new Error('تم إيقاف الخطة لأن التحليل لا يطابق نفس نسخة ملف الرصيد المحفوظ.');
     }
     setPlan(result);
     setPhase('ready');
@@ -184,7 +187,7 @@ export default function PurchaseCenterClean() {
         throw new Error('تم إيقاف التحليل لأن حفظ الرصيد لم يكتمل بطريقة Atomic للفرعين.');
       }
       setSaveResult(saved);
-      await runPlannerOnly();
+      await runPlannerOnly(saved.stock_sync_id);
     } catch (err) {
       setError(err?.message || 'تعذر تجهيز خطة المشتريات.');
       setPhase('error');
@@ -308,6 +311,7 @@ export default function PurchaseCenterClean() {
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
+            <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
           </section>
 
           <div className="grid gap-5 xl:grid-cols-2">
