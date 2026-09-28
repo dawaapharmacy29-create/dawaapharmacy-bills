@@ -196,6 +196,7 @@ export default function PurchaseCenterClean() {
       }
       setSaveResult(saved);
       await runPlannerOnly(saved.stock_sync_id);
+      setTimings((current) => ({ ...current, totalMs: Math.round(performance.now() - flowStartedAt) }));
     } catch (err) {
       setError(err?.message || 'تعذر تجهيز خطة المشتريات.');
       setPhase('error');
