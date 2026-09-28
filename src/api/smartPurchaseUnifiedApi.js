@@ -45,6 +45,9 @@ async function standaloneRpc(functionName, body) {
       order_execution_started: 'لا يمكن إلغاء الطلبية بعد بدء الإرسال أو الاستلام.',
       supplier_not_in_order: 'المورد غير موجود ضمن البنود المعتمدة في الطلبية.',
       supplier_items_not_send_ready: 'بنود المورد غير جاهزة للإرسال: راجع الأسعار والتحقق منها أولًا.',
+      no_active_purchase_policy: 'لا توجد سياسة مخزون ذكية مفعلة لهذا الفرع؛ التحليل متوقف للحماية.',
+      analysis_integrity_guard_failed: 'تم إيقاف التحليل لأن بيانات Min / Reorder / Max أو الأسعار الحالية غير متسقة. راجع سلامة بيانات المشتريات قبل إنشاء أي طلبية.',
+      stage_count_mismatch: 'تم إيقاف حفظ الرصيد لأن عدد الصفوف المستلمة لا يطابق الملف الأصلي. الرصيد السابق لم يتغير.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
