@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   detectDualBranchStockColumns,
   normalizeDualBranchStockRows,
+  runBoundedChunkPool,
 } from '../src/lib/dualBranchStockMaster.js';
 
 test('detects the canonical B-Connect dual-branch stock headers', () => {
@@ -99,4 +100,52 @@ test('counts fractional stock without rounding it away', () => {
   assert.equal(result.quality.fractional_shokry, 1);
   assert.equal(result.rows[0].shamy_stock, 1.25);
   assert.equal(result.rows[0].shokry_stock, 2.5);
+});
+
+
+test('runs stock staging chunks with bounded concurrency and preserves result order', async () => {
+  let active = 0;
+  let maxActive = 0;
+  const completed = [];
+
+  const result = await runBoundedChunkPool(
+    [[1], [2], [3], [4], [5], [6]],
+    async (chunk, index) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, index % 2 === 0 ? 8 : 4));
+      active -= 1;
+      return chunk[0] * 10;
+    },
+    {
+      concurrency: 2,
+      onComplete: ({ completed: done }) => completed.push(done),
+    }
+  );
+
+  assert.ok(maxActive <= 2);
+  assert.equal(maxActive, 2);
+  assert.deepEqual(result, [10, 20, 30, 40, 50, 60]);
+  assert.equal(completed.at(-1), 6);
+});
+
+test('stops scheduling new stock chunks after a staging failure', async () => {
+  const started = [];
+
+  await assert.rejects(
+    runBoundedChunkPool(
+      [[1], [2], [3], [4]],
+      async (chunk) => {
+        started.push(chunk[0]);
+        if (chunk[0] === 1) throw new Error('stage failed');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return chunk[0];
+      },
+      { concurrency: 2 }
+    ),
+    /stage failed/
+  );
+
+  assert.ok(started.length <= 2);
+  assert.ok(started.includes(1));
 });
