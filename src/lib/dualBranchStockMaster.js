@@ -38,6 +38,7 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     throw new Error('ملف الرصيد لازم يحتوي على الكود، اسم الصنف، رصيد الشامي، ورصيد شكري.');
   }
 
+  const rowsOut = [];
   const shamy = [];
   const shokry = [];
   const seen = new Set();
@@ -64,8 +65,11 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
       stock_source: fileName || 'dual-branch-stock-master',
     };
 
-    shamy.push({ ...common, current_stock: Math.max(0, toNumber(row[map.shamy])) });
-    shokry.push({ ...common, current_stock: Math.max(0, toNumber(row[map.shokry])) });
+    const shamyStock = Math.max(0, toNumber(row[map.shamy]));
+    const shokryStock = Math.max(0, toNumber(row[map.shokry]));
+    rowsOut.push({ ...common, shamy_stock: shamyStock, shokry_stock: shokryStock });
+    shamy.push({ ...common, current_stock: shamyStock });
+    shokry.push({ ...common, current_stock: shokryStock });
   });
 
   if (!shamy.length || !shokry.length) {
@@ -75,9 +79,10 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
   return {
     file_name: fileName,
     map,
+    rows: rowsOut,
     shamy,
     shokry,
-    rows_count: shamy.length,
+    rows_count: rowsOut.length,
     inventory_rows: shamy.filter((row) => row.inventory_eligible).length,
   };
 }
