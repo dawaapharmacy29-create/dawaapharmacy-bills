@@ -141,6 +141,7 @@ export default function PurchaseCenterClean() {
   const [plan, setPlan] = useState(null);
   const [draftResult, setDraftResult] = useState(null);
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
+  const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
   const runRef = useRef(false);
@@ -203,7 +204,11 @@ export default function PurchaseCenterClean() {
     try {
       setPhase('saving');
       const saveStartedAt = performance.now();
-      const saved = await purchaseApi.saveDualBranchStockMasterClean({ rows: stockMaster.rows });
+      setSaveProgress({ staged: 0, total: stockMaster.rows.length, percent: 0, chunk: 0, totalChunks: 0 });
+      const saved = await purchaseApi.saveDualBranchStockMasterClean({
+        rows: stockMaster.rows,
+        onProgress: setSaveProgress,
+      });
       const saveMs = Math.round(performance.now() - saveStartedAt);
       setTimings((current) => ({ ...current, saveMs }));
       if (!saved?.dual_atomic_finalize || !saved?.row_count_verified) {
@@ -242,6 +247,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setError('');
+    setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
     const flowStartedAt = performance.now();
 
@@ -330,9 +336,22 @@ export default function PurchaseCenterClean() {
         )}
 
         {busy && (
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-800">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="font-bold">{statusText}</span>
+          <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-800">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="font-bold">{statusText}</span>
+            </div>
+            {phase === 'saving' && saveProgress.total > 0 && (
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between text-xs font-semibold">
+                  <span>{saveProgress.staged} / {saveProgress.total} صنف</span>
+                  <span>{saveProgress.percent}% • دفعة {saveProgress.chunk}/{saveProgress.totalChunks || '—'}</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-teal-100">
+                  <div className="h-full rounded-full bg-teal-600 transition-all" style={{ width: `${saveProgress.percent}%` }} />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
