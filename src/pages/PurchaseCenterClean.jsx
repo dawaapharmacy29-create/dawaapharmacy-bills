@@ -328,11 +328,29 @@ export default function PurchaseCenterClean() {
         </label>
 
         {parsed && (
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <Metric label="صفوف الملف" value={parsed.rows_count} />
-            <Metric label="أصناف مخزنية" value={parsed.inventory_rows} />
-            <Metric label="الفرعين" value="شكري + الشامي" />
-          </div>
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <Metric label="صفوف الملف" value={parsed.rows_count} />
+              <Metric label="أصناف مخزنية" value={parsed.inventory_rows} />
+              <Metric label="الفرعين" value="شكري + الشامي" />
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-xs">
+              <div className="rounded-lg border bg-slate-50 p-2">كسور شكري: <strong>{parsed.quality?.fractional_shokry || 0}</strong></div>
+              <div className="rounded-lg border bg-slate-50 p-2">كسور الشامي: <strong>{parsed.quality?.fractional_shamy || 0}</strong></div>
+              <div className={`rounded-lg border p-2 ${parsed.quality?.negative_shokry ? 'border-amber-300 bg-amber-50 text-amber-800' : 'bg-slate-50'}`}>
+                رصيد سالب شكري: <strong>{parsed.quality?.negative_shokry || 0}</strong>
+              </div>
+              <div className={`rounded-lg border p-2 ${parsed.quality?.negative_shamy ? 'border-amber-300 bg-amber-50 text-amber-800' : 'bg-slate-50'}`}>
+                رصيد سالب الشامي: <strong>{parsed.quality?.negative_shamy || 0}</strong>
+              </div>
+            </div>
+            {(parsed.quality?.negative_shokry > 0 || parsed.quality?.negative_shamy > 0) && (
+              <div className="mt-3 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                <span>تمت معاملة الأرصدة السالبة كصفر للحساب الآمن، لكنها تحتاج مراجعة في B-Connect لأن وجودها قد يدل على حركة أو تسوية مخزون غير مكتملة.</span>
+              </div>
+            )}
+          </>
         )}
 
         {busy && (
