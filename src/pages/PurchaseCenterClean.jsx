@@ -203,6 +203,18 @@ export default function PurchaseCenterClean() {
     shamy: Number(plan?.review_watchlist?.shamy?.total_active_review_stockouts || 0),
   };
 
+  const movementOnlyWatchlistRows = useMemo(() => {
+    if (!plan) return [];
+    return Array.isArray(plan.movement_only_watchlist?.items)
+      ? plan.movement_only_watchlist.items
+      : [];
+  }, [plan]);
+
+  const movementOnlyWatchlistCounts = {
+    shokry: Number(plan?.movement_only_watchlist?.shokry_total || 0),
+    shamy: Number(plan?.movement_only_watchlist?.shamy_total || 0),
+  };
+
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -428,12 +440,13 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
             <Metric label="إجمالي قيمة الشراء" value={`${money(plan.totals?.buy_value)} ج`} />
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
             <Metric label="مراجعة سريعة" value={quickReviewRows.length} />
-            <Metric label="Review Watchlist" value={reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy} />
+            <Metric label="Review بالعملاء" value={reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy} />
+            <Metric label="Review بالحركة فقط" value={movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
             <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
           </section>
@@ -444,6 +457,59 @@ export default function PurchaseCenterClean() {
             <Metric label="بناء الخطة" value={`${timings.planMs} ms`} />
             <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
           </section>
+
+          {(movementOnlyWatchlistCounts.shokry > 0 || movementOnlyWatchlistCounts.shamy > 0) && (
+            <section className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 shadow-sm">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-black text-sky-900">Movement-only Watchlist — حركة 3 شهور بدون دليل عملاء كافٍ</h2>
+                  <p className="mt-1 text-sm leading-6 text-sky-700">
+                    الأصناف دي رصيدها صفر ولها حركة متكررة في B-Connect، لكن لسه مش عندنا Customer Intelligence كافي يسمح بشراء آلي. تظهر للمراجعة فقط ولا تدخل كميات المسودتين.
+                  </p>
+                </div>
+                <div className="flex gap-2 text-xs font-bold">
+                  <span className="rounded-full border border-sky-200 bg-white px-3 py-1">شكري: {movementOnlyWatchlistCounts.shokry}</span>
+                  <span className="rounded-full border border-sky-200 bg-white px-3 py-1">الشامي: {movementOnlyWatchlistCounts.shamy}</span>
+                </div>
+              </div>
+              <div className="overflow-auto rounded-xl border border-sky-100 bg-white">
+                <table className="min-w-[980px] w-full text-sm">
+                  <thead className="bg-sky-50/70">
+                    <tr>
+                      <th className="p-2 text-right">الفرع</th>
+                      <th className="p-2 text-right">الصنف</th>
+                      <th className="p-2 text-right">الوحدة</th>
+                      <th className="p-2 text-right">Smart Monthly</th>
+                      <th className="p-2 text-right">الثبات</th>
+                      <th className="p-2 text-right">الثقة</th>
+                      <th className="p-2 text-right">آخر تكلفة</th>
+                      <th className="p-2 text-right">النمط</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {movementOnlyWatchlistRows.map((row) => (
+                      <tr key={`${row.branch}-${row.product_key}`} className="border-t">
+                        <td className="p-2 font-semibold">{row.branch}</td>
+                        <td className="p-2">
+                          <div className="font-semibold">{row.product_name}</div>
+                          <div className="text-xs text-slate-400">{row.product_code || 'بدون كود'}{row.company_name ? ` • ${row.company_name}` : ''}</div>
+                        </td>
+                        <td className="p-2">{row.stock_unit || '—'}</td>
+                        <td className="p-2">{qty(row.smart_monthly_consumption)}</td>
+                        <td className="p-2">{qty(row.demand_stability_score)}%</td>
+                        <td className="p-2">{qty(row.confidence_score)}%</td>
+                        <td className="p-2">{money(row.unit_cost)} ج</td>
+                        <td className="p-2 text-xs">
+                          {row.behavior_class === 'movement_only_recurring_stable' ? 'متكرر ومستقر' : 'متكرر'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-2 text-xs text-sky-700">يتم عرض أعلى 15 صنف فقط من كل فرع؛ العدد الكلي ظاهر أعلى الكارت.</div>
+            </section>
+          )}
 
           {(reviewWatchlistCounts.shokry > 0 || reviewWatchlistCounts.shamy > 0) && (
             <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 shadow-sm">
