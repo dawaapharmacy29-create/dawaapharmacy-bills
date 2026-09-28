@@ -95,25 +95,12 @@ export const smartPurchaseUnifiedApi = {
   decisionDailyChange: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
   demandTransferPreview: async (branch, financialMode = 'medium', rows = []) => {
-    const body = {
-      p_branch: branch,
+    const common = { p_branch: branch, p_rows: rows };
+    await standaloneRpc('smart_purchase_save_current_snapshot_v1', common);
+    return standaloneRpc('smart_purchase_demand_transfer_preview_v6', {
+      ...common,
       p_financial_mode: financialMode,
-      p_rows: rows,
-    };
-    try {
-      return await standaloneRpc('smart_purchase_demand_transfer_preview_v5', body);
-    } catch (error) {
-      if (!/Could not find the function|schema cache|404/i.test(String(error?.message || ''))) throw error;
-      const fallback = await standaloneRpc('smart_purchase_demand_transfer_preview_v4', body);
-      return {
-        ...fallback,
-        method: {
-          ...(fallback?.method || {}),
-          engine: 'smart_purchase_demand_transfer_preview_v4_fallback',
-          v5_pending: true,
-        },
-      };
-    }
+    });
   },
   historyStatus: (branch) => standaloneRpc('smart_purchase_history_status_v1', { p_branch: branch }),
   importHistory: ({ branch, kind, fileName, rows, reset = false }) => standaloneRpc('smart_purchase_history_import_v1', {
