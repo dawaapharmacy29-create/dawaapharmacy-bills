@@ -220,15 +220,31 @@ export default function PurchaseCenterClean() {
 
   const movementOnlyWatchlistRows = useMemo(() => {
     if (!plan) return [];
-    return Array.isArray(plan.movement_only_watchlist?.items)
-      ? plan.movement_only_watchlist.items
-      : [];
+    if (Array.isArray(plan.movement_only_watchlist?.items)) {
+      return plan.movement_only_watchlist.items;
+    }
+    return [
+      ...(plan.movement_only_watchlist?.shokry?.items || []).map((row) => ({ ...row, branch: 'دواء شكري' })),
+      ...(plan.movement_only_watchlist?.shamy?.items || []).map((row) => ({ ...row, branch: 'دواء الشامي' })),
+    ].sort((a, b) => Number(b.smart_monthly_consumption || 0) - Number(a.smart_monthly_consumption || 0));
   }, [plan]);
 
   const movementOnlyWatchlistCounts = {
-    shokry: Number(plan?.movement_only_watchlist?.shokry_total || 0),
-    shamy: Number(plan?.movement_only_watchlist?.shamy_total || 0),
+    shokry: Number(
+      plan?.movement_only_watchlist?.shokry_total
+      ?? plan?.movement_only_watchlist?.shokry?.total
+      ?? 0
+    ),
+    shamy: Number(
+      plan?.movement_only_watchlist?.shamy_total
+      ?? plan?.movement_only_watchlist?.shamy?.total
+      ?? 0
+    ),
   };
+
+  const executionPendingUnits =
+    Number(plan?.execution_pending?.shokry?.units || 0)
+    + Number(plan?.execution_pending?.shamy?.units || 0);
 
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
@@ -455,13 +471,14 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-8">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-9">
             <Metric label="إجمالي قيمة الشراء" value={`${money(plan.totals?.buy_value)} ج`} />
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
             <Metric label="مراجعة سريعة" value={quickReviewRows.length} />
             <Metric label="Review بالعملاء" value={reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy} />
             <Metric label="Review بالحركة فقط" value={movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy} />
+            <Metric label="في الطريق" value={`${qty(executionPendingUnits)} وحدة`} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
             <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
           </section>
@@ -472,6 +489,25 @@ export default function PurchaseCenterClean() {
             <Metric label="بناء الخطة" value={`${timings.planMs} ms`} />
             <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
           </section>
+
+          {(Number(plan.execution_pending?.shokry?.items || 0) > 0 || Number(plan.execution_pending?.shamy?.items || 0) > 0) && (
+            <section className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-black text-cyan-900">كميات مرسلة للمورد وما زالت في الطريق</h2>
+                  <p className="mt-1 text-sm text-cyan-700">تم خصمها تلقائيًا من الاحتياج والـMin / Reorder / Max حتى لا نكرر شراء نفس الصنف.</p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs font-bold">
+                  <span className="rounded-full border border-cyan-200 bg-white px-3 py-1">
+                    شكري: {plan.execution_pending?.shokry?.items || 0} صنف • {qty(plan.execution_pending?.shokry?.units)} وحدة
+                  </span>
+                  <span className="rounded-full border border-cyan-200 bg-white px-3 py-1">
+                    الشامي: {plan.execution_pending?.shamy?.items || 0} صنف • {qty(plan.execution_pending?.shamy?.units)} وحدة
+                  </span>
+                </div>
+              </div>
+            </section>
+          )}
 
           {(movementOnlyWatchlistCounts.shokry > 0 || movementOnlyWatchlistCounts.shamy > 0) && (
             <section className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 shadow-sm">
