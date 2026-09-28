@@ -72,6 +72,9 @@ function BranchPlanCard({ branchKey, data, mode }) {
         <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.financial_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
           الوضع المالي {data?.method?.data_quality?.financial_snapshot_fresh ? 'حديث' : 'قديم'}
         </span>
+        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.profile_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+          Min / Reorder / Max {data?.method?.data_quality?.profile_snapshot_fresh ? 'حديثة' : 'قديمة'}
+        </span>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
           الهدف المالي: {summary.financial_target === 'min' ? 'Min' : summary.financial_target === 'max' ? 'Max' : 'Reorder'}
         </span>
