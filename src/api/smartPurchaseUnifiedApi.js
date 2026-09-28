@@ -99,23 +99,34 @@ export const smartPurchaseUnifiedApi = {
     p_rows: rows,
   }),
   saveDualBranchStockMaster: async ({ shamy = [], shokry = [], chunkSize = 1000 }) => {
+    const syncId = `stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const saveBranch = async (branch, rows) => {
       let saved = 0;
       for (let offset = 0; offset < rows.length; offset += chunkSize) {
-        const chunk = rows.slice(offset, offset + chunkSize);
+        const chunk = rows.slice(offset, offset + chunkSize).map((row) => ({ ...row, stock_sync_id: syncId }));
         const result = await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
           p_branch: branch,
           p_rows: chunk,
         });
         saved += Number(result?.saved_rows || chunk.length);
       }
-      return saved;
+      const finalized = await standaloneRpc('smart_purchase_finalize_stock_sync_v1', {
+        p_branch: branch,
+        p_stock_sync_id: syncId,
+      });
+      return { saved, stale_rows_disabled: Number(finalized?.stale_rows_disabled || 0) };
     };
-    const [shamySaved, shokrySaved] = await Promise.all([
+    const [shamyResult, shokryResult] = await Promise.all([
       saveBranch('دواء الشامي', shamy),
       saveBranch('دواء شكري', shokry),
     ]);
-    return { shamy_saved: shamySaved, shokry_saved: shokrySaved, total_saved: shamySaved + shokrySaved };
+    return {
+      shamy_saved: shamyResult.saved,
+      shokry_saved: shokryResult.saved,
+      shamy_stale_disabled: shamyResult.stale_rows_disabled,
+      shokry_stale_disabled: shokryResult.stale_rows_disabled,
+      total_saved: shamyResult.saved + shokryResult.saved,
+    };
   },
   demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
     await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
