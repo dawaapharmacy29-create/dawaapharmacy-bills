@@ -99,7 +99,7 @@ export const smartPurchaseUnifiedApi = {
       p_branch: branch,
       p_rows: rows,
     });
-    return standaloneRpc('smart_purchase_demand_transfer_preview_v7', {
+    return standaloneRpc('smart_purchase_demand_transfer_preview_v8', {
       p_branch: branch,
       p_financial_mode: financialMode,
     });
