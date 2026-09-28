@@ -46,6 +46,7 @@ const navGroups = [
         { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks },
       ]},
       { label: "الأداة الموحدة (ابدأ من هنا)", items: [
+        { path: "/purchase-center-clean", label: "مركز المشتريات الجديد — تجريبي", icon: BrainCircuit },
         { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap },
       ]},
       { label: "تنفيذ ومتابعة الطلبية", items: [
