@@ -48,6 +48,7 @@ async function standaloneRpc(functionName, body) {
       no_active_purchase_policy: 'لا توجد سياسة مخزون ذكية مفعلة لهذا الفرع؛ التحليل متوقف للحماية.',
       analysis_integrity_guard_failed: 'تم إيقاف التحليل لأن بيانات Min / Reorder / Max أو الأسعار الحالية غير متسقة. راجع سلامة بيانات المشتريات قبل إنشاء أي طلبية.',
       stage_count_mismatch: 'تم إيقاف حفظ الرصيد لأن عدد الصفوف المستلمة لا يطابق الملف الأصلي. الرصيد السابق لم يتغير.',
+      stock_sync_mismatch: 'تم إيقاف التحليل لأن الفرعين ليسا على نفس نسخة ملف الرصيد. أعد رفع ملف الرصيد الموحد للفرعين.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
@@ -140,8 +141,10 @@ export const smartPurchaseUnifiedApi = {
         atomic_finalize: finalized?.atomic_finalize === true,
       };
     };
-    const shamyResult = await saveBranch('دواء الشامي', shamy);
-    const shokryResult = await saveBranch('دواء شكري', shokry);
+    const [shamyResult, shokryResult] = await Promise.all([
+      saveBranch('دواء الشامي', shamy),
+      saveBranch('دواء شكري', shokry),
+    ]);
     return {
       stock_sync_id: syncId,
       shamy_saved: shamyResult.saved,
