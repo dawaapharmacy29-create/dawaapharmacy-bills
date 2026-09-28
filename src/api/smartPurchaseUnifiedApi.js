@@ -53,6 +53,9 @@ async function standaloneRpc(functionName, body) {
       invalid_dual_plan_identity: 'بيانات تعريف الخطة غير مكتملة؛ أعد التحليل قبل إنشاء المسودتين.',
       dual_create_failed: 'تعذر إنشاء المسودتين معًا؛ لم يتم اعتماد إنشاء جزئي.',
       stale_plan_data: 'تم إيقاف إنشاء المسودتين لأن بيانات الرصيد أو الحركة أو الوضع المالي ليست حديثة بما يكفي. حدّث البيانات ثم أعد التحليل.',
+      order_content_mismatch_shokry: 'تم إلغاء إنشاء المسودتين لأن محتوى طلبية شكري لم يطابق خطة التحليل حسابيًا.',
+      order_content_mismatch_shamy: 'تم إلغاء إنشاء المسودتين لأن محتوى طلبية الشامي لم يطابق خطة التحليل حسابيًا.',
+
 
     };
     const code = data?.error || data?.message;
