@@ -103,6 +103,77 @@ function normalizeDateValue(value) {
   if (dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`;
   return '';
 }
+
+const HISTORY_KINDS = {
+  movement_6m: { label: 'حركة الأصناف — 6 شهور' },
+  customer_history: { label: 'مبيعات العملاء — انتشار الصنف' },
+  purchase_history: { label: 'مشتريات الموردين — التاريخ السابق' },
+};
+function findHistoryHeader(headers, aliases) {
+  return headers.find((header) => aliases.some((alias) => norm(header) === norm(alias)))
+    || headers.find((header) => aliases.some((alias) => norm(header).includes(norm(alias)) || norm(alias).includes(norm(header))))
+    || '';
+}
+function normalizeHistoryRows(kind, rows) {
+  const headers = Object.keys(rows[0] || {});
+  const codeCol = findHistoryHeader(headers, ['كود الصنف','الكود','كود','product code','item code','code']);
+  const nameCol = findHistoryHeader(headers, ['اسم الصنف','الصنف','الاسم','الإسم','product name','item name','description']);
+  if (!nameCol) throw new Error('لم أتعرف على عمود اسم الصنف في الملف.');
+
+  if (kind === 'movement_6m') {
+    const qtyCol = findHistoryHeader(headers, ['كمية البيع','مبيعات 6 شهور','اجمالي الكمية','إجمالي الكمية','الكمية','كمية','sales qty','quantity','qty']);
+    if (!qtyCol) throw new Error('لم أتعرف على عمود كمية المبيعات في ملف الست شهور.');
+    const grouped = new Map();
+    for (const row of rows) {
+      const code = String(row[codeCol] ?? '').trim();
+      const name = String(row[nameCol] ?? '').trim();
+      if (!name) continue;
+      const key = code || norm(name);
+      const current = grouped.get(key) || { product_code: code, product_name: name, sales_6m: 0 };
+      current.sales_6m += Math.max(0, number(row[qtyCol]));
+      grouped.set(key, current);
+    }
+    return [...grouped.values()];
+  }
+
+  if (kind === 'customer_history') {
+    const customerCol = findHistoryHeader(headers, ['كود العميل','رقم العميل','اسم العميل','العميل','رقم الموبايل','الموبايل','customer code','customer name','customer','mobile','phone']);
+    if (!customerCol) throw new Error('لم أتعرف على عمود العميل في ملف مبيعات العملاء.');
+    const grouped = new Map();
+    rows.forEach((row, index) => {
+      const code = String(row[codeCol] ?? '').trim();
+      const name = String(row[nameCol] ?? '').trim();
+      if (!name) return;
+      const key = code || norm(name);
+      const customer = String(row[customerCol] ?? '').trim() || `row-${index + 2}`;
+      const current = grouped.get(key) || { product_code: code, product_name: name, customers: new Set() };
+      current.customers.add(customer);
+      grouped.set(key, current);
+    });
+    return [...grouped.values()].map((row) => ({
+      product_code: row.product_code,
+      product_name: row.product_name,
+      distinct_customers: row.customers.size,
+    }));
+  }
+
+  const supplierCol = findHistoryHeader(headers, ['اسم المورد','المورد','supplier name','supplier']);
+  const qtyCol = findHistoryHeader(headers, ['كمية الشراء','الكمية','كمية','purchase qty','quantity','qty']);
+  const bonusCol = findHistoryHeader(headers, ['البونص','بونص','bonus','bonus qty']);
+  const costCol = findHistoryHeader(headers, ['سعر الشراء','سعر شراء','purchase price','unit cost','cost']);
+  const dateCol = findHistoryHeader(headers, ['تاريخ الشراء','تاريخ الفاتورة','التاريخ','purchase date','invoice date','date']);
+  if (!supplierCol || !qtyCol || !costCol) throw new Error('ملف المشتريات يحتاج المورد + الكمية + سعر الشراء.');
+  return rows.map((row) => ({
+    product_code: String(row[codeCol] ?? '').trim(),
+    product_name: String(row[nameCol] ?? '').trim(),
+    supplier_name: String(row[supplierCol] ?? '').trim(),
+    purchase_qty: Math.max(0, number(row[qtyCol])),
+    bonus_qty: bonusCol ? Math.max(0, number(row[bonusCol])) : 0,
+    unit_cost: Math.max(0, number(row[costCol])),
+    purchase_date: dateCol ? normalizeDateValue(row[dateCol]) : '',
+  })).filter((row) => row.product_name && row.supplier_name && row.purchase_qty > 0 && row.unit_cost > 0);
+}
+
 function itemPrice(item) { return referenceUnitPrice(item); }
 function itemDiscount(item) { return explicitDiscountPercent(item); }
 function netUnitPrice(item) { return purchaseUnitCost(item); }
@@ -268,6 +339,9 @@ export default function SmartPurchaseUnifiedCenter() {
   const [opsBranch, setOpsBranch] = useState('all');
   const [opsStatus, setOpsStatus] = useState('all');
   const [opsSearch, setOpsSearch] = useState('');
+  const [historyKind, setHistoryKind] = useState('movement_6m');
+  const [historyStatus, setHistoryStatus] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   async function refresh(openId) {
     setLoading(true); setError('');
@@ -335,6 +409,54 @@ export default function SmartPurchaseUnifiedCenter() {
     loadBranchPolicy();
     return () => { cancelled = true; };
   }, [branch]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHistoryStatus() {
+      try {
+        const status = await unified.historyStatus(branch);
+        if (!cancelled) setHistoryStatus(status || null);
+      } catch {
+        if (!cancelled) setHistoryStatus(null);
+      }
+    }
+    loadHistoryStatus();
+    return () => { cancelled = true; };
+  }, [branch]);
+
+  async function importHistoryFile(file) {
+    setHistoryLoading(true); setError(''); setMessage('');
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '', raw: true });
+      if (!rows.length) throw new Error('الملف فارغ.');
+      const normalizedRows = normalizeHistoryRows(historyKind, rows);
+      if (!normalizedRows.length) throw new Error('لم أجد صفوفًا صالحة للحفظ بعد قراءة الملف.');
+      const chunkSize = 500;
+      let processed = 0;
+      let skipped = 0;
+      for (let start = 0; start < normalizedRows.length; start += chunkSize) {
+        const result = await unified.importHistory({
+          branch,
+          kind: historyKind,
+          fileName: file.name,
+          rows: normalizedRows.slice(start, start + chunkSize),
+          reset: start === 0,
+        });
+        processed += number(result?.processed);
+        skipped += number(result?.skipped);
+      }
+      const status = await unified.historyStatus(branch);
+      setHistoryStatus(status || null);
+      setDemandTransferPreview(null);
+      setMessage(`تم تحديث ذاكرة ${HISTORY_KINDS[historyKind]?.label || 'الشراء'} لفرع ${branch}: ${processed} سجل صالح${skipped ? ` • ${skipped} متروك` : ''}. لن تحتاج لرفع هذا التاريخ مع كل طلبية.`);
+    } catch (err) {
+      setError(`تعذر استيراد الذاكرة التاريخية: ${err.message}`);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   async function openOrder(id) {
     setLoading(true); setError(''); setSupplierDecision(null); setMessage(''); setBudgetPreviewVisible(false); setShowCancelOrder(false); setCancelOrderReason('');
@@ -751,6 +873,37 @@ export default function SmartPurchaseUnifiedCenter() {
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</div>}
     {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
 
+
+    <section className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-bold text-violet-900">ذاكرة الشراء التاريخية — {branch}</h2>
+          <p className="mt-1 text-xs text-violet-700">ترفع الملفات التاريخية مرة واحدة أو عند تحديثها. الطلبية اليومية بعدها تحتاج الرصيد والمبيعات الحديثة فقط.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="rounded-lg border bg-white p-2"><div className="text-slate-500">حركة 6 شهور</div><div className="font-bold text-base">{number(historyStatus?.movement_products)}</div></div>
+          <div className="rounded-lg border bg-white p-2"><div className="text-slate-500">انتشار العملاء</div><div className="font-bold text-base">{number(historyStatus?.customer_products)}</div></div>
+          <div className="rounded-lg border bg-white p-2"><div className="text-slate-500">سجل مورد/صنف</div><div className="font-bold text-base">{number(historyStatus?.supplier_product_pairs)}</div></div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm min-w-[240px]">نوع التاريخ
+          <select value={historyKind} onChange={(event) => setHistoryKind(event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2">
+            {Object.entries(HISTORY_KINDS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
+          </select>
+        </label>
+        <label className="text-sm min-w-[280px]">ملف التاريخ
+          <input type="file" accept=".xlsx,.xls,.csv" disabled={historyLoading} onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) importHistoryFile(file);
+            event.target.value = '';
+          }} className="mt-1 block w-full text-sm disabled:opacity-50" />
+        </label>
+        <div className="text-xs text-slate-500 pb-2">{historyLoading ? 'جاري التجميع والحفظ…' : 'يتم التجميع بالكود، وحفظ الملخص بدل الاحتفاظ بآلاف صفوف التفاصيل داخل عقل الطلبية.'}</div>
+      </div>
+    </section>
+
+
     {showImport && <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm space-y-4">
       <h2 className="font-bold flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-teal-600" />إنشاء طلبية من B-Connect أو Excel</h2>
       <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
@@ -764,7 +917,7 @@ export default function SmartPurchaseUnifiedCenter() {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={loading} onClick={runDemandTransferPreview} className="rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 font-bold text-indigo-800 disabled:opacity-50">تحليل ذكي قبل الشراء</button>
-        <span className="text-xs text-slate-500">يقارن حركة ورصيد الفرعين ويخصم التحويل الداخلي الآمن قبل اقتراح الشراء.</span>
+        <span className="text-xs text-slate-500">يستخدم الحركة الحديثة + ذاكرة 6 شهور + انتشار العملاء، ثم يفحص التحويل الداخلي قبل اقتراح الشراء.</span>
       </div>
       {demandTransferPreview?.plan?.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
