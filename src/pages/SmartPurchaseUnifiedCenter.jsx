@@ -600,7 +600,7 @@ export default function SmartPurchaseUnifiedCenter() {
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
       setCoverageDays(days);
-      const v5Ready = ['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7','smart_purchase_demand_transfer_preview_v8'].includes(result?.method?.engine);
+      const v5Ready = ['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7','smart_purchase_demand_transfer_preview_v8','smart_purchase_demand_transfer_preview_v9'].includes(result?.method?.engine);
       setMessage(v5Ready
         ? `تم تحليل الاحتياج بمحرك V5 على تغطية ${days} يوم: التاريخ لا ينشئ طلبًا جديدًا وحده، ومطابقة الفرع الآخر تعمل بالكود أو الاسم.`
         : `تم عرض نتيجة مؤقتة بالمحرك السابق على تغطية ${days} يوم. محرك V5 لم يُفعّل على قاعدة البيانات بعد، لذلك إنشاء الطلبية مقفول حتى تفعيل الإصلاح.`);
@@ -997,30 +997,38 @@ export default function SmartPurchaseUnifiedCenter() {
       </div>
       {demandTransferPreview?.plan?.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div><h3 className="font-bold">نتيجة ذكاء الطلبية قبل الشراء</h3><p className="text-xs text-slate-500 mt-1">{demandTransferPreview.financial_mode === 'essential' ? 'الضروريات فقط • 7 أيام • أولوية مشددة' : `تغطية ${demandTransferPreview.target_coverage_days} يوم`} • التحويل الداخلي يُخصم قبل الشراء.</p></div>
+          <div><h3 className="font-bold">نتيجة ذكاء الطلبية قبل الشراء</h3><p className="text-xs text-slate-500 mt-1">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `V9 ديناميكي • متوسط هدف ${number(demandTransferPreview.summary?.avg_dynamic_target_days).toFixed(1)} يوم • نقطة إعادة طلب ${number(demandTransferPreview.summary?.avg_reorder_point_days).toFixed(1)} يوم` : (demandTransferPreview.financial_mode === 'essential' ? 'الضروريات فقط • 7 أيام • أولوية مشددة' : `تغطية ${demandTransferPreview.target_coverage_days} يوم`)} • التحويل الداخلي يُخصم قبل الشراء.</p></div>
           <div className="text-sm font-bold">شراء مقترح: {number(demandTransferPreview.summary?.suggested_buy_units)} وحدة • {money(demandTransferPreview.summary?.suggested_buy_value)} ج</div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
-          {[
-            ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
-            ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
-            ['شراء مباشر', demandTransferPreview.summary?.buy_items || 0],
-            ['مؤجل — أقل أولوية', demandTransferPreview.summary?.deferred_low_priority_items || 0],
-            ['موقوف بسبب الركود', demandTransferPreview.summary?.blocked_deadstock_items || 0],
-          ].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
+          {(demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9'
+            ? [
+                ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
+                ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
+                ['شراء الآن', demandTransferPreview.summary?.buy_items || 0],
+                ['مراقبة — لم يصل إعادة الطلب', demandTransferPreview.summary?.monitor_items || 0],
+                ['متوقف مؤقتًا', demandTransferPreview.summary?.paused_items || 0],
+              ]
+            : [
+                ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
+                ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
+                ['شراء مباشر', demandTransferPreview.summary?.buy_items || 0],
+                ['مؤجل — أقل أولوية', demandTransferPreview.summary?.deferred_low_priority_items || 0],
+                ['موقوف بسبب الركود', demandTransferPreview.summary?.blocked_deadstock_items || 0],
+              ]).map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
         </div>
-        <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1050px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف','الرصيد','متوسط/يوم','التغطية','المستهدف','الاحتياج','تحويل من فرع آخر','شراء','التصنيف','القرار'].map((head)=><th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>
-          {demandTransferPreview.plan.filter((row) => number(row.gross_need) > 0 || ['do_not_buy','slow_mover','deadstock'].includes(String(row.movement_class))).slice(0, 80).map((row) => <tr key={row.product_code || row.product_name} className="border-t">
+        <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1200px] w-full text-sm"><thead className="bg-slate-50"><tr>{(demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? ['الصنف','الرصيد','توقع/يوم','التغطية','نقطة إعادة الطلب','هدف الصنف','الاحتياج الذكي','تحويل','شراء','القرار'] : ['الصنف','الرصيد','متوسط/يوم','التغطية','المستهدف','الاحتياج','تحويل من فرع آخر','شراء','التصنيف','القرار']).map((head)=><th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>
+          {demandTransferPreview.plan.slice(0, 100).map((row) => <tr key={row.product_code || row.product_name} className="border-t">
             <td className="p-2 font-semibold">{row.product_name}<div className="text-[11px] text-slate-400">{row.product_code || ''}</div></td>
             <td className="p-2">{number(row.current_stock)}</td>
-            <td className="p-2">{number(row.usage_per_day).toFixed(2)}</td>
+            <td className="p-2">{number(row.forecast_daily ?? row.usage_per_day).toFixed(2)}</td>
             <td className="p-2">{row.coverage_days == null ? '—' : `${number(row.coverage_days).toFixed(1)} يوم`}</td>
-            <td className="p-2">{number(row.target_stock)}</td>
-            <td className="p-2 font-bold">{number(row.gross_need)}</td>
+            <td className="p-2">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `${number(row.reorder_point_days).toFixed(1)} يوم` : number(row.target_stock)}</td>
+            <td className="p-2">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `${number(row.dynamic_target_days).toFixed(0)} يوم / ${number(row.target_stock)} وحدة` : number(row.gross_need)}</td>
+            <td className="p-2 font-bold">{number(row.need_after_history_cap ?? row.gross_need)}</td>
             <td className="p-2">{number(row.suggested_transfer_qty) > 0 ? `${number(row.suggested_transfer_qty)} من ${row.transfer_from_branch || 'الفرع الآخر'}` : '—'}</td>
             <td className="p-2 font-bold">{number(row.buy_quantity)}</td>
-            <td className="p-2">{row.movement_class}</td>
-            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy' ? 'شراء' : row.decision === 'do_not_buy' ? 'لا شراء — راكد' : row.decision === 'defer_low_priority' ? 'مؤجل — أقل أولوية' : 'الرصيد كافٍ'}</td>
+            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy' ? 'شراء الآن' : row.decision === 'monitor' ? 'مراقبة' : row.decision === 'do_not_buy' ? 'لا شراء الآن' : 'الرصيد كافٍ'}{row.reason ? <div className="text-[11px] text-slate-500 mt-1">{row.reason}</div> : null}</td>
           </tr>)}
         </tbody></table></div>
       </section>}
