@@ -516,6 +516,9 @@ export default function PurchaseCenterClean() {
                 {draftResult && (
                   <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">
                     {draftResult.already_created ? 'المسودتان كانتا منشأتين بالفعل من نفس الخطة.' : 'تم إنشاء المسودتين بنجاح من نفس الخطة.'}
+                    {draftResult.content_verified && (
+                      <div className="mt-1 font-bold">✓ تم التحقق حسابيًا أن محتوى المسودتين يطابق خطة V10 بدون أي اختلاف.</div>
+                    )}
                     <div className="mt-1 font-mono text-[11px]">
                       شكري: {draftResult.shokry_order_id || '—'} • الشامي: {draftResult.shamy_order_id || '—'}
                     </div>
