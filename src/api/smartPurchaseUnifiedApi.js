@@ -86,7 +86,7 @@ async function rpc(action, payload = {}) {
 }
 
 export const smartPurchaseUnifiedApi = {
-  dashboard: () => unifiedV2Rpc('dashboard'),
+  dashboard: () => standaloneRpc('smart_purchase_dashboard_fast_v1', {}),
   getOrder: (id) => unifiedV2Rpc('get_order', { id }),
   updateItem: (payload) => rpc('update_item', payload),
   updateItems: (orderId, items) => rpc('update_items', { order_id: orderId, items }),
