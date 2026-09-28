@@ -852,8 +852,13 @@ export default function SmartPurchaseUnifiedCenter() {
     if (creationOrderGuard.below_minimum) return setError(`قيمة الطلبية ${money(creationTotal)} ج أقل من الحد الأدنى ${money(creationMinimum)} ج.`);
     await run(async () => {
       const imported = await smartPurchaseApi.importRows({
-        file_name: fileName, branch, coverage_days: coverageDays, safety_days: 0,
-        enforce_budget: Boolean(creationBudgetPlan), budget_limit: number(creationBudget),
+        file_name: fileName,
+        branch,
+        coverage_days: coverageDays,
+        safety_days: 0,
+        preserve_plan: demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10',
+        enforce_budget: false,
+        budget_limit: number(creationBudget),
         rows: rowsForCreation.map((item) => ({
           ...item,
           old_discount: itemDiscount(item),
@@ -896,7 +901,7 @@ export default function SmartPurchaseUnifiedCenter() {
       setCoverageDays(Math.max(1, number(branchPolicy?.default_coverage_days) || 7));
       setCreationTitle('');
       return created;
-    }, 'تم إنشاء الطلبية وفق التغطية والميزانية المحددة.');
+    }, 'تم إنشاء الطلبية بنفس كميات خطة V10 المعتمدة والحد المالي المحدد.');
   }
 
   const items = selected?.items || [];
