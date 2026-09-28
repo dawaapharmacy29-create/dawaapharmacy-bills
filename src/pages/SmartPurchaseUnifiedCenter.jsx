@@ -68,6 +68,59 @@ const ALIASES = {
   maximum_order_quantity: ['الحد الأقصى للصنف', 'حد أقصى', 'اكبر كمية', 'أكبر كمية', 'maximum order quantity', 'max qty'],
   package_multiple: ['مضاعف العبوة', 'عبوة', 'باك', 'كرتونة', 'pack multiple', 'package multiple', 'order multiple'],
 };
+const STOCK_MASTER_ALIASES = {
+  code: ['الكود','كود الصنف'],
+  name: ['إسم الصنف','اسم الصنف'],
+  unit: ['الوحدة'],
+  company: ['الشركة'],
+  shamy: ['الفرعية الشامي'],
+  shokry: ['الادارة فرع شكري','الإدارة فرع شكري'],
+};
+function exactStockHeader(headers, aliases) {
+  return headers.find((header) => aliases.some((alias) => norm(header) === norm(alias))) || '';
+}
+function dualStockMasterMapping(headers) {
+  const resolved = Object.fromEntries(Object.entries(STOCK_MASTER_ALIASES).map(([key, aliases]) => [key, exactStockHeader(headers, aliases)]));
+  return resolved.code && resolved.name && resolved.shamy && resolved.shokry ? resolved : null;
+}
+function inventoryEligibleName(name) {
+  const value = norm(name);
+  return value && !['توصيل','delivery','رسوم','service'].some((token) => value.includes(token));
+}
+function normalizeDualStockMaster(rows, fileName = '') {
+  const headers = Object.keys(rows[0] || {});
+  const map = dualStockMasterMapping(headers);
+  if (!map) return null;
+  const shamy = [];
+  const shokry = [];
+  rows.forEach((row, index) => {
+    const productCode = String(row[map.code] ?? '').trim().replace(/\.0+$/,'');
+    const productName = String(row[map.name] ?? '').trim();
+    if (!productCode || !productName) return;
+    const common = {
+      row_number: index + 2,
+      product_code: productCode,
+      product_name: productName,
+      stock_unit: map.unit ? String(row[map.unit] ?? '').trim() : '',
+      company_name: map.company ? String(row[map.company] ?? '').trim() : '',
+      inventory_eligible: inventoryEligibleName(productName),
+      snapshot_mode: 'stock_only',
+      stock_source: fileName || 'bconnect-dual-branch-stock',
+      pending_incoming: 0,
+      sales_30: 0,
+      sales_60: 0,
+      sales_90: 0,
+      avg_daily_usage: 0,
+      last_purchase_price: 0,
+      minimum_order_quantity: 0,
+      maximum_order_quantity: 0,
+      package_multiple: 0,
+    };
+    shamy.push({ ...common, current_stock: Math.max(0, number(row[map.shamy])) });
+    shokry.push({ ...common, current_stock: Math.max(0, number(row[map.shokry])) });
+  });
+  return { shamy, shokry, map, file_name: fileName };
+}
 const monthKey = (header) => {
   const match = String(header || '').trim().match(/^(20\d{2})[\/-](0?[1-9]|1[0-2])$/);
   return match ? Number(`${match[1]}${String(match[2]).padStart(2, '0')}`) : 0;
@@ -363,6 +416,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [creationBudget, setCreationBudget] = useState('');
   const [fileName, setFileName] = useState('');
   const [rawRows, setRawRows] = useState([]);
+  const [dualStockMaster, setDualStockMaster] = useState(null);
+  const [dualStockMasterSaved, setDualStockMasterSaved] = useState(false);
   const [headers, setHeaders] = useState([]);
   const [mapping, setMapping] = useState({});
   const [mappingSource, setMappingSource] = useState('');
@@ -543,7 +598,18 @@ export default function SmartPurchaseUnifiedCenter() {
     finally { setLoading(false); }
   }
 
-  function buildPreview(rows, nextMapping) {
+  function buildPreview(rows, nextMapping, branchOverride = branch, stockMasterOverride = dualStockMaster) {
+    const stockMaster = stockMasterOverride || normalizeDualStockMaster(rows, fileName);
+    if (stockMaster) {
+      const selectedRows = branchOverride === 'دواء شكري' ? stockMaster.shokry : stockMaster.shamy;
+      const errors = selectedRows
+        .filter((row) => !isValidProductName(row.product_name))
+        .map((row) => `صف ${row.row_number}: اسم الصنف غير صالح`);
+      setPreview(mergePurchaseRows(selectedRows));
+      setPreviewErrors(errors);
+      return;
+    }
+
     const months = monthlyHeaders(Object.keys(rows[0] || {}));
     const parsed = rows.map((row, index) => {
       const monthly = months.map((header) => number(row[header]));
@@ -570,19 +636,47 @@ export default function SmartPurchaseUnifiedCenter() {
   }
 
   async function readFile(file) {
-    setError(''); setMessage(''); setFileName(file.name); setDemandTransferPreview(null);
+    setError(''); setMessage(''); setFileName(file.name); setDemandTransferPreview(null); setDualStockMasterSaved(false);
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
       const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '', raw: true });
       const cols = Object.keys(rows[0] || {});
       if (!rows.length || !cols.length) throw new Error('الملف فارغ أو لا يحتوي على عناوين أعمدة.');
+
+      const stockMaster = normalizeDualStockMaster(rows, file.name);
+      if (stockMaster) {
+        setRawRows(rows); setHeaders(cols); setMapping({}); setDualStockMaster(stockMaster);
+        setMappingSource('تم التعرف على ملف رصيد الفرعين من B-Connect');
+        buildPreview(rows, {}, branch, stockMaster);
+        const excluded = [...stockMaster.shamy].filter((row) => !row.inventory_eligible).length;
+        setMessage(`تم التعرف على ملف رصيد الفرعين: ${stockMaster.shamy.length} صنف فعلي • سيتم حفظ شكري والشامي معًا مع الحفاظ على تاريخ المبيعات${excluded ? ` • ${excluded} خدمة/صف غير مخزني مستبعد من قرار الشراء` : ''}.`);
+        return;
+      }
+
+      setDualStockMaster(null);
       const saved = loadMappings()[signature(cols)];
       const nextMapping = saved || autoMapping(cols);
       setRawRows(rows); setHeaders(cols); setMapping(nextMapping);
       setMappingSource(saved ? 'تم تطبيق قالب محفوظ تلقائيًا' : monthlyHeaders(cols).length ? 'تم التعرف على ملف B-Connect وأعمدة الشهور' : 'تم التعرف على الأعمدة تلقائيًا');
-      buildPreview(rows, nextMapping);
+      buildPreview(rows, nextMapping, branch, null);
       setMessage(`تمت قراءة ${rows.length} صف وتجميع التكرارات حسب الكود أو اسم الصنف.`);
     } catch (err) { setError(`تعذر قراءة الملف: ${err.message}`); }
+  }
+
+  async function persistDualStockMaster(silent = false) {
+    if (!dualStockMaster) return null;
+    if (!silent) { setLoading(true); setError(''); setMessage(''); }
+    try {
+      const result = await unified.saveDualBranchStockMaster(dualStockMaster);
+      setDualStockMasterSaved(true);
+      if (!silent) setMessage(`تم حفظ رصيد الفرعين بنجاح: الشامي ${result?.shamy_saved || 0} صف • شكري ${result?.shokry_saved || 0} صف. تاريخ المبيعات والأسعار القديمة لم يتم مسحه.`);
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }
   function changeMapping(field, value) {
     const next = { ...mapping, [field]: value };
@@ -601,6 +695,7 @@ export default function SmartPurchaseUnifiedCenter() {
   async function runDemandTransferPreview() {
     setLoading(true); setError(''); setMessage('');
     try {
+      if (dualStockMaster && !dualStockMasterSaved) await persistDualStockMaster(true);
       const result = await unified.demandTransferPreview(branch, financialMode, previewWithPolicies, creationBudget);
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
@@ -990,7 +1085,7 @@ export default function SmartPurchaseUnifiedCenter() {
       <h2 className="font-bold flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-teal-600" />إنشاء طلبية من B-Connect أو Excel</h2>
       <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <label className="text-sm">اسم الطلبية<input type="text" maxLength="120" value={creationTitle} onChange={(event) => setCreationTitle(event.target.value)} placeholder="مثال: طلبية أول أغسطس — فرع الشامي" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">اسم واضح للمراجعة والبحث، والكود المرجعي سيظهر تحته.</span></label>
-        <label className="text-sm">الفرع<select value={branch} onChange={(event) => { setBranch(event.target.value); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label className="text-sm">الفرع<select value={branch} onChange={(event) => { const nextBranch = event.target.value; setBranch(nextBranch); setDemandTransferPreview(null); if (rawRows.length) buildPreview(rawRows, mapping, nextBranch, dualStockMaster); }} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { const mode = event.target.value; setFinancialMode(mode); setCoverageDays(mode === 'comfortable' ? 30 : mode === 'medium' ? 14 : 7); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="essential">الضروريات فقط — 7 أيام + أولوية مشددة</option><option value="critical">حرج — 7 أيام</option><option value="medium">متوسط — 14 يوم</option><option value="comfortable">مريح — 30 يوم</option></select><span className="text-[11px] text-slate-500">يحدد التغطية المستهدفة قبل توزيع الميزانية.</span></label>
         <label className="text-sm">التغطية الناتجة بالأيام<input type="number" value={coverageDays} readOnly className="mt-1 w-full rounded-lg border bg-slate-50 p-2" /><span className="text-[11px] text-slate-500">7 ضروري/حرج • 14 متوسط • 30 مريح.</span></label>
         <label className="text-sm">الحد الأدنى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationMinimum} onChange={(event) => setCreationMinimum(event.target.value)} placeholder="مثال: 10000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمنع إنشاء طلبية أصغر من الحد التشغيلي.</span></label>
@@ -998,8 +1093,9 @@ export default function SmartPurchaseUnifiedCenter() {
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {dualStockMaster && <button type="button" disabled={loading || dualStockMasterSaved} onClick={() => persistDualStockMaster(false)} className="rounded-lg border border-teal-300 bg-teal-50 px-4 py-2 font-bold text-teal-800 disabled:opacity-50">{dualStockMasterSaved ? 'تم حفظ رصيد الفرعين' : 'حفظ رصيد الفرعين'}</button>}
         <button type="button" disabled={loading} onClick={runDemandTransferPreview} className="rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 font-bold text-indigo-800 disabled:opacity-50">تحليل ذكي قبل الشراء</button>
-        <span className="text-xs text-slate-500">يستخدم الحركة الحديثة + ذاكرة 6 شهور + انتشار العملاء، ثم يفحص التحويل الداخلي قبل اقتراح الشراء.</span>
+        <span className="text-xs text-slate-500">{dualStockMaster ? 'ملف الرصيد سيُحفظ للفرعين تلقائيًا قبل التحليل، مع الحفاظ على تاريخ المبيعات والأسعار.' : 'يستخدم الحركة الحديثة + ذاكرة 6 شهور + انتشار العملاء، ثم يفحص التحويل الداخلي قبل اقتراح الشراء.'}</span>
       </div>
       {demandTransferPreview?.plan?.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
