@@ -1,3 +1,5 @@
+import { runBoundedChunkPool } from '../lib/dualBranchStockMaster.js';
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 
@@ -130,7 +132,7 @@ export const smartPurchaseUnifiedApi = {
     p_branch: branch,
     p_rows: rows,
   }),
-  saveDualBranchStockMasterClean: async ({ rows = [], chunkSize = 2500, onProgress = null }) => {
+  saveDualBranchStockMasterClean: async ({ rows = [], chunkSize = 2500, stageConcurrency = 2, onProgress = null }) => {
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد صفوف رصيد صالحة للحفظ.');
     const syncId = `dual-stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const compactRows = rows.map((row) => ({
@@ -145,24 +147,36 @@ export const smartPurchaseUnifiedApi = {
       shokry_stock_negative: row.shokry_stock_negative === true,
     }));
     let staged = 0;
-    const totalChunks = Math.ceil(compactRows.length / chunkSize);
-    for (let offset = 0, chunkIndex = 0; offset < compactRows.length; offset += chunkSize, chunkIndex += 1) {
-      const chunk = compactRows.slice(offset, offset + chunkSize);
-      const result = await standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
-        p_stock_sync_id: syncId,
-        p_rows: chunk,
-      });
-      staged += Number(result?.staged_rows || chunk.length);
-      if (typeof onProgress === 'function') {
-        onProgress({
-          staged,
-          total: compactRows.length,
-          chunk: chunkIndex + 1,
-          totalChunks,
-          percent: Math.round((staged / compactRows.length) * 100),
-        });
-      }
+    const chunks = [];
+    for (let offset = 0; offset < compactRows.length; offset += chunkSize) {
+      chunks.push(compactRows.slice(offset, offset + chunkSize));
     }
+    const totalChunks = chunks.length;
+    await runBoundedChunkPool(
+      chunks,
+      async (chunk) => {
+        const result = await standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
+          p_stock_sync_id: syncId,
+          p_rows: chunk,
+        });
+        return Number(result?.staged_rows || chunk.length);
+      },
+      {
+        concurrency: stageConcurrency,
+        onComplete: ({ completed, result }) => {
+          staged += Number(result || 0);
+          if (typeof onProgress === 'function') {
+            onProgress({
+              staged,
+              total: compactRows.length,
+              chunk: completed,
+              totalChunks,
+              percent: Math.min(100, Math.round((staged / compactRows.length) * 100)),
+            });
+          }
+        },
+      }
+    );
     const finalized = await standaloneRpc('smart_purchase_finalize_dual_stock_master_v1', {
       p_stock_sync_id: syncId,
       p_expected_rows: rows.length,
