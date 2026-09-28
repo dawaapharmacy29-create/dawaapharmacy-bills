@@ -122,17 +122,36 @@ export const smartPurchaseUnifiedApi = {
     p_branch: branch,
     p_rows: rows,
   }),
-  saveDualBranchStockMasterClean: async ({ rows = [], chunkSize = 1800 }) => {
+  saveDualBranchStockMasterClean: async ({ rows = [], chunkSize = 2500, onProgress = null }) => {
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد صفوف رصيد صالحة للحفظ.');
     const syncId = `dual-stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const compactRows = rows.map((row) => ({
+      product_code: row.product_code,
+      product_name: row.product_name,
+      stock_unit: row.stock_unit || '',
+      company_name: row.company_name || '',
+      inventory_eligible: row.inventory_eligible !== false,
+      shamy_stock: Number(row.shamy_stock || 0),
+      shokry_stock: Number(row.shokry_stock || 0),
+    }));
     let staged = 0;
-    for (let offset = 0; offset < rows.length; offset += chunkSize) {
-      const chunk = rows.slice(offset, offset + chunkSize);
+    const totalChunks = Math.ceil(compactRows.length / chunkSize);
+    for (let offset = 0, chunkIndex = 0; offset < compactRows.length; offset += chunkSize, chunkIndex += 1) {
+      const chunk = compactRows.slice(offset, offset + chunkSize);
       const result = await standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
         p_stock_sync_id: syncId,
         p_rows: chunk,
       });
       staged += Number(result?.staged_rows || chunk.length);
+      if (typeof onProgress === 'function') {
+        onProgress({
+          staged,
+          total: compactRows.length,
+          chunk: chunkIndex + 1,
+          totalChunks,
+          percent: Math.round((staged / compactRows.length) * 100),
+        });
+      }
     }
     const finalized = await standaloneRpc('smart_purchase_finalize_dual_stock_master_v1', {
       p_stock_sync_id: syncId,
