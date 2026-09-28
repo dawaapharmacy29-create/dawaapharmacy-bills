@@ -42,6 +42,14 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
   const shamy = [];
   const shokry = [];
   const seen = new Set();
+  const quality = {
+    negative_shamy: 0,
+    negative_shokry: 0,
+    fractional_shamy: 0,
+    fractional_shokry: 0,
+    zero_shamy: 0,
+    zero_shokry: 0,
+  };
 
   rows.forEach((row, index) => {
     const productCode = String(row[map.code] ?? '').trim().replace(/\.0+$/, '');
@@ -65,8 +73,16 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
       stock_source: fileName || 'dual-branch-stock-master',
     };
 
-    const shamyStock = Math.max(0, toNumber(row[map.shamy]));
-    const shokryStock = Math.max(0, toNumber(row[map.shokry]));
+    const rawShamyStock = toNumber(row[map.shamy]);
+    const rawShokryStock = toNumber(row[map.shokry]);
+    if (rawShamyStock < 0) quality.negative_shamy += 1;
+    if (rawShokryStock < 0) quality.negative_shokry += 1;
+    if (rawShamyStock > 0 && !Number.isInteger(rawShamyStock)) quality.fractional_shamy += 1;
+    if (rawShokryStock > 0 && !Number.isInteger(rawShokryStock)) quality.fractional_shokry += 1;
+    if (rawShamyStock === 0) quality.zero_shamy += 1;
+    if (rawShokryStock === 0) quality.zero_shokry += 1;
+    const shamyStock = Math.max(0, rawShamyStock);
+    const shokryStock = Math.max(0, rawShokryStock);
     rowsOut.push({ ...common, shamy_stock: shamyStock, shokry_stock: shokryStock });
     shamy.push({ ...common, current_stock: shamyStock });
     shokry.push({ ...common, current_stock: shokryStock });
@@ -84,5 +100,6 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     shokry,
     rows_count: rowsOut.length,
     inventory_rows: shamy.filter((row) => row.inventory_eligible).length,
+    quality,
   };
 }
