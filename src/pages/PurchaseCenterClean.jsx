@@ -192,15 +192,30 @@ export default function PurchaseCenterClean() {
 
   const reviewWatchlistRows = useMemo(() => {
     if (!plan) return [];
+    if (Array.isArray(plan.review_watchlist?.items)) {
+      return [...plan.review_watchlist.items].sort((a, b) =>
+        Number(b.customers_30d || 0) - Number(a.customers_30d || 0)
+        || Number(b.invoices_30d || 0) - Number(a.invoices_30d || 0)
+        || Number(b.smart_monthly_consumption || 0) - Number(a.smart_monthly_consumption || 0)
+      );
+    }
     return [
       ...(plan.review_watchlist?.shokry?.items || []).map((row) => ({ ...row, branch: 'دواء شكري' })),
       ...(plan.review_watchlist?.shamy?.items || []).map((row) => ({ ...row, branch: 'دواء الشامي' })),
-    ].sort((a, b) => Number(b.review_priority || 0) - Number(a.review_priority || 0));
+    ];
   }, [plan]);
 
   const reviewWatchlistCounts = {
-    shokry: Number(plan?.review_watchlist?.shokry?.total_active_review_stockouts || 0),
-    shamy: Number(plan?.review_watchlist?.shamy?.total_active_review_stockouts || 0),
+    shokry: Number(
+      plan?.review_watchlist?.shokry_total
+      ?? plan?.review_watchlist?.shokry?.total_active_review_stockouts
+      ?? 0
+    ),
+    shamy: Number(
+      plan?.review_watchlist?.shamy_total
+      ?? plan?.review_watchlist?.shamy?.total_active_review_stockouts
+      ?? 0
+    ),
   };
 
   const movementOnlyWatchlistRows = useMemo(() => {
