@@ -143,13 +143,20 @@ export const smartPurchaseUnifiedApi = {
     const shamyResult = await saveBranch('دواء الشامي', shamy);
     const shokryResult = await saveBranch('دواء شكري', shokry);
     return {
+      stock_sync_id: syncId,
       shamy_saved: shamyResult.saved,
       shokry_saved: shokryResult.saved,
       shamy_stale_disabled: shamyResult.stale_rows_disabled,
       shokry_stale_disabled: shokryResult.stale_rows_disabled,
+      shamy_atomic_finalize: shamyResult.atomic_finalize,
+      shokry_atomic_finalize: shokryResult.atomic_finalize,
       total_saved: shamyResult.saved + shokryResult.saved,
     };
   },
+  dualBranchInstantPlan: ({ shokryBudget = null, shamyBudget = null } = {}) => standaloneRpc('smart_purchase_dual_branch_instant_plan_v1', {
+    p_shokry_budget: Number(shokryBudget) > 0 ? Number(shokryBudget) : null,
+    p_shamy_budget: Number(shamyBudget) > 0 ? Number(shamyBudget) : null,
+  }),
   demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
     if (Array.isArray(rows) && rows.length > 0) {
       await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
