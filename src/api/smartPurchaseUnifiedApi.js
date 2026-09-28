@@ -94,14 +94,15 @@ export const smartPurchaseUnifiedApi = {
   cycleBudgetGuard: (branch = 'all') => standaloneRpc('smart_purchase_cycle_budget_guard', { p_branch: branch }),
   decisionDailyChange: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   inventoryCommandCenter: (branch = 'all') => standaloneRpc('smart_purchase_inventory_command_center_v3', { p_branch: branch }),
-  demandTransferPreview: async (branch, financialMode = 'medium', rows = []) => {
+  demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
     await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
       p_branch: branch,
       p_rows: rows,
     });
-    return standaloneRpc('smart_purchase_demand_transfer_preview_v9', {
+    return standaloneRpc('smart_purchase_demand_transfer_preview_v10', {
       p_branch: branch,
       p_financial_mode: financialMode,
+      p_budget: Number(budget) > 0 ? Number(budget) : null,
     });
   },
   historyStatus: (branch) => standaloneRpc('smart_purchase_history_status_v1', { p_branch: branch }),
