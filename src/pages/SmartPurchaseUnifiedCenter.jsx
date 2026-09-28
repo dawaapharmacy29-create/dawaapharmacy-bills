@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { smartPurchaseUnifiedApi as unified } from '@/api/smartPurchaseUnifiedApi';
 import { smartPurchaseOrderManagementApi as management } from '@/api/smartPurchaseOrderManagementApi';
@@ -403,6 +403,8 @@ export default function SmartPurchaseUnifiedCenter() {
   const [data, setData] = useState({ orders: [], pending_actions: {} });
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const analysisRunningRef = useRef(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [showImport, setShowImport] = useState(false);
@@ -447,7 +449,7 @@ export default function SmartPurchaseUnifiedCenter() {
   const [dashboardWarning, setDashboardWarning] = useState('');
 
   async function refresh(openId) {
-    setLoading(true);
+    setDashboardLoading(true);
     setDashboardWarning('');
     try {
       const next = await unified.dashboard();
@@ -470,8 +472,9 @@ export default function SmartPurchaseUnifiedCenter() {
       setDashboardWarning(err?.message === 'canceling statement due to statement timeout'
         ? 'تعذر تحديث لوحة الطلبات العامة مؤقتًا بسبب بطء الاستعلام. تحليل الطلبية الذكي يعمل بشكل مستقل.'
         : `تعذر تحديث لوحة الطلبات العامة: ${err.message}`);
+    } finally {
+      setDashboardLoading(false);
     }
-    finally { setLoading(false); }
   }
   useEffect(() => { refresh(); }, []);
   useEffect(() => {
@@ -484,7 +487,7 @@ export default function SmartPurchaseUnifiedCenter() {
       } catch (err) {
         if (!cancelled) {
           setProductPolicies([]);
-          setError((current) => current || `تعذر تحميل سياسات أصناف ${branch}: ${err.message}`);
+          setDashboardWarning((current) => current || `تعذر تحميل سياسات أصناف ${branch}: ${err.message}`);
         }
       } finally {
         if (!cancelled) setPoliciesLoading(false);
@@ -506,7 +509,7 @@ export default function SmartPurchaseUnifiedCenter() {
           setCoverageDays(Math.max(1, Number(policy?.default_coverage_days || 14)));
         }
       } catch (err) {
-        if (!cancelled) setError((current) => current || `تعذر تحميل سياسة طلبية ${branch}: ${err.message}`);
+        if (!cancelled) setDashboardWarning((current) => current || `تعذر تحميل سياسة طلبية ${branch}: ${err.message}`);
       } finally {
         if (!cancelled) setBranchPolicyLoading(false);
       }
@@ -690,6 +693,8 @@ export default function SmartPurchaseUnifiedCenter() {
     localStorage.setItem(MAPPING_KEY, JSON.stringify(all)); setMappingSource('تم حفظ القالب على هذا الجهاز');
   }
   async function runDemandTransferPreview() {
+    if (analysisRunningRef.current) return;
+    analysisRunningRef.current = true;
     setLoading(true); setError(''); setMessage('');
     try {
       if (dualStockMaster && !dualStockMasterSaved) await persistDualStockMaster(true);
@@ -704,6 +709,7 @@ export default function SmartPurchaseUnifiedCenter() {
     } catch (err) {
       setError(err.message);
     } finally {
+      analysisRunningRef.current = false;
       setLoading(false);
     }
   }
