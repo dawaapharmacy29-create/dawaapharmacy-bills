@@ -718,8 +718,17 @@ export default function SmartPurchaseUnifiedCenter() {
       setDemandTransferPreview(result || null);
       const engine = result?.method?.engine || '';
       const smartReady = engine === 'smart_purchase_demand_transfer_preview_v10';
+      const quality = result?.method?.data_quality || {};
+      if (smartReady && quality.analysis_ready_for_order === false) {
+        const reasons = [
+          quality.stock_snapshot_fresh === false ? 'الرصيد الحالي قديم' : '',
+          quality.movement_snapshot_fresh === false ? 'حركة المبيعات قديمة' : '',
+          (!creationBudget && quality.financial_snapshot_fresh === false) ? 'الوضع المالي يحتاج تحديث' : '',
+        ].filter(Boolean);
+        setDashboardWarning(`التحليل متاح للمراجعة فقط حاليًا: ${reasons.join(' • ') || 'بيانات التشغيل تحتاج تحديث'}؛ إنشاء الطلبية سيظل مقفولًا حتى تحديث البيانات.`);
+      }
       setMessage(smartReady
-        ? 'تم التحليل بمحرك V10 المعتمد: تم فصل احتياج الفترة عن طلبية اليوم، وتوزيع ميزانية التنفيذ حسب الأولوية وتاريخ الشراء.'
+        ? 'تم التحليل بمحرك V10 المعتمد: الكميات الظاهرة هي خطة التنفيذ نفسها، ولن يعاد حسابها بمنطق التغطية القديم عند إنشاء الطلبية.'
         : 'تم عرض نتيجة بمحرك غير معتمد حاليًا؛ إنشاء الطلبية سيظل مقفولًا للحماية.');
     } catch (err) {
       setError(err.message);
@@ -854,6 +863,7 @@ export default function SmartPurchaseUnifiedCenter() {
     if (!dualStockMaster && !mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (preview.length > 0 && (!demandTransferPreview || demandTransferPreview.branch !== branch)) return setError('شغّل «تحليل ذكي قبل الشراء» على الملف الحالي قبل إنشاء الطلبية.');
     if (preview.length > 0 && demandTransferPreview?.method?.engine !== 'smart_purchase_demand_transfer_preview_v10') return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
+    if (demandTransferPreview?.method?.data_quality?.analysis_ready_for_order === false) return setError('بيانات الرصيد/الحركة/الوضع المالي ليست حديثة بما يكفي لإنشاء طلبية آمنة. حدّث البيانات ثم أعد التحليل.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف وصلت لنقطة إعادة الطلب وتحتاج شراء الآن.');
     if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
     if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
