@@ -94,7 +94,7 @@ async function rpc(action, payload = {}) {
   return data.data;
 }
 
-function preparePurchaseCandidates(payload = {}) {
+export function preparePurchaseCandidates(payload = {}) {
   const coverageDays = Math.max(1, Number(payload.coverage_days || 7));
   const safetyDays = Math.max(0, Number(payload.safety_days || 0));
   const sourceRows = Array.isArray(payload.rows) ? payload.rows : [];
