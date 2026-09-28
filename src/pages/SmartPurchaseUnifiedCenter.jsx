@@ -600,7 +600,7 @@ export default function SmartPurchaseUnifiedCenter() {
       setDemandTransferPreview(result || null);
       const days = Number(result?.target_coverage_days || (financialMode === 'critical' ? 7 : financialMode === 'comfortable' ? 30 : 14));
       setCoverageDays(days);
-      const v5Ready = ['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6'].includes(result?.method?.engine);
+      const v5Ready = ['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7'].includes(result?.method?.engine);
       setMessage(v5Ready
         ? `تم تحليل الاحتياج بمحرك V5 على تغطية ${days} يوم: التاريخ لا ينشئ طلبًا جديدًا وحده، ومطابقة الفرع الآخر تعمل بالكود أو الاسم.`
         : `تم عرض نتيجة مؤقتة بالمحرك السابق على تغطية ${days} يوم. محرك V5 لم يُفعّل على قاعدة البيانات بعد، لذلك إنشاء الطلبية مقفول حتى تفعيل الإصلاح.`);
@@ -677,27 +677,45 @@ export default function SmartPurchaseUnifiedCenter() {
     (demandTransferPreview?.plan || []).map((row) => [normalizeProductKey(row), row])
   ), [demandTransferPreview]);
 
-  const plannedCandidates = useMemo(() => buildPurchaseCandidates(previewWithPolicies, { coverage_days: coverageDays }).map((item) => {
-    const intelligence = demandTransferByKey.get(normalizeProductKey(item));
-    const rawSmartBuyQuantity = intelligence ? Math.max(0, number(intelligence.buy_quantity)) : item.suggested_quantity;
-    const smartLimit = intelligence ? applyItemPurchaseLimits(rawSmartBuyQuantity, item) : null;
-    const smartBuyQuantity = smartLimit?.blocked ? rawSmartBuyQuantity : (smartLimit?.quantity ?? rawSmartBuyQuantity);
-    return {
-      ...item,
-      suggested_quantity: smartBuyQuantity,
-      requested_quantity: smartBuyQuantity,
-      approved_quantity: smartBuyQuantity,
-      expected_unit_cost: purchaseUnitCost({ ...item, expected_unit_cost: 0 }),
-      supplier_name: '',
-      transfer_from_branch: intelligence?.transfer_from_branch || '',
-      suggested_transfer_quantity: Math.max(0, number(intelligence?.suggested_transfer_qty)),
-      gross_need_before_transfer: intelligence ? Math.max(0, number(intelligence.gross_need)) : item.suggested_quantity,
-      movement_class: intelligence?.movement_class || '',
-      smart_purchase_decision: intelligence?.decision || 'buy',
-      smart_purchase_limit_status: smartLimit?.status || item.purchase_limit_status,
-      smart_purchase_limit_reasons: smartLimit?.reasons || item.purchase_limit_reasons,
-    };
-  }).filter((item) => number(item.suggested_quantity) > 0), [previewWithPolicies, coverageDays, demandTransferByKey]);
+  const basePreviewByKey = useMemo(() => new Map(
+    previewWithPolicies.map((row) => [normalizeProductKey(row), row])
+  ), [previewWithPolicies]);
+
+  const plannedCandidates = useMemo(() => {
+    if (demandTransferPreview?.plan?.length) {
+      return demandTransferPreview.plan
+        .filter((intelligence) => Math.max(0, number(intelligence.buy_quantity)) > 0)
+        .map((intelligence) => {
+          const base = basePreviewByKey.get(normalizeProductKey(intelligence)) || {};
+          const merged = { ...base, ...intelligence };
+          const rawSmartBuyQuantity = Math.max(0, number(intelligence.buy_quantity));
+          const smartLimit = applyItemPurchaseLimits(rawSmartBuyQuantity, merged);
+          const smartBuyQuantity = smartLimit?.blocked
+            ? rawSmartBuyQuantity
+            : (smartLimit?.quantity ?? rawSmartBuyQuantity);
+          return {
+            ...merged,
+            suggested_quantity: smartBuyQuantity,
+            requested_quantity: smartBuyQuantity,
+            approved_quantity: smartBuyQuantity,
+            expected_unit_cost: purchaseUnitCost({ ...merged, expected_unit_cost: 0 }),
+            supplier_name: '',
+            transfer_from_branch: intelligence?.transfer_from_branch || '',
+            suggested_transfer_quantity: Math.max(0, number(intelligence?.suggested_transfer_qty)),
+            gross_need_before_transfer: Math.max(0, number(intelligence?.gross_need)),
+            movement_class: intelligence?.movement_class || '',
+            smart_purchase_decision: intelligence?.decision || 'buy',
+            smart_purchase_limit_status: smartLimit?.status || merged.purchase_limit_status,
+            smart_purchase_limit_reasons: smartLimit?.reasons || merged.purchase_limit_reasons,
+          };
+        })
+        .filter((item) => number(item.suggested_quantity) > 0);
+    }
+
+    return buildPurchaseCandidates(previewWithPolicies, { coverage_days: coverageDays })
+      .filter((item) => number(item.suggested_quantity) > 0);
+  }, [demandTransferPreview, basePreviewByKey, previewWithPolicies, coverageDays]);
+
   const invalidItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_blocked), [plannedCandidates]);
   const adjustedItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_adjusted), [plannedCandidates]);
   const creationBudgetPlan = useMemo(() => {
@@ -716,7 +734,7 @@ export default function SmartPurchaseUnifiedCenter() {
   async function importAndCreate() {
     if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
     if (preview.length > 0 && (!demandTransferPreview || demandTransferPreview.branch !== branch)) return setError('شغّل «تحليل ذكي قبل الشراء» على الملف الحالي قبل إنشاء الطلبية.');
-    if (preview.length > 0 && !['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6'].includes(demandTransferPreview?.method?.engine)) return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
+    if (preview.length > 0 && !['smart_purchase_demand_transfer_preview_v5','smart_purchase_demand_transfer_preview_v6','smart_purchase_demand_transfer_preview_v7'].includes(demandTransferPreview?.method?.engine)) return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
     if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
     if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
     if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
