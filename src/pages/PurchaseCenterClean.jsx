@@ -376,6 +376,32 @@ export default function PurchaseCenterClean() {
             <BranchPlanCard branchKey="shamy" data={plan.shamy} mode={plan.modes?.['دواء الشامي']} />
           </div>
 
+          {(plan.creation_guard?.legacy_stale_orders || []).length > 0 && (
+            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
+                <div className="min-w-0 flex-1">
+                  <h2 className="font-black text-slate-800">طلبيات قديمة غير منفذة — للمراجعة فقط</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    أقدم من 30 يومًا ولا يوجد لها إرسال مورد أو استلام مسجل، لذلك لا تمنع إنشاء الخطة الجديدة.
+                  </p>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                    {(plan.creation_guard?.legacy_stale_orders || []).map((order) => (
+                      <div key={order.id} className="rounded-xl border bg-white p-3 text-sm">
+                        <div className="font-mono font-bold text-slate-700">{order.order_number}</div>
+                        <div className="mt-1 text-slate-600">{order.branch} • {order.status}</div>
+                        <div className="mt-1 text-xs text-slate-400">
+                          {new Date(order.created_at).toLocaleDateString('ar-EG')}
+                          {order.title ? ` • ${order.title}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           <section className="rounded-2xl border bg-white p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
