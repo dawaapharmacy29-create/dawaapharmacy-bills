@@ -142,10 +142,12 @@ export const smartPurchaseUnifiedApi = {
     };
   },
   demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
-    await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
-      p_branch: branch,
-      p_rows: rows,
-    });
+    if (Array.isArray(rows) && rows.length > 0) {
+      await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
+        p_branch: branch,
+        p_rows: rows,
+      });
+    }
     return standaloneRpc('smart_purchase_demand_transfer_preview_v10', {
       p_branch: branch,
       p_financial_mode: financialMode,
