@@ -445,3 +445,73 @@ test('does not price the financial plan from an MOQ-changing current offer', () 
   assert.equal(rows[0].unit_cost, 55);
   assert.equal(rows[0].cash_cost, 275);
 });
+
+
+test('non-supplier historical labels are never exposed as a supplier choice', () => {
+  const decision = {
+    items: [{
+      item_id: 'albumin',
+      product_code: '68517',
+      product_name: 'HUMAN ALBUMIN 20% 250 ML',
+      needed_qty: 6,
+      recommended: null,
+      alternatives: [],
+    }],
+  };
+  const history = [{
+    product_code: '68517',
+    product_name: 'HUMAN ALBUMIN 20% 250 ML',
+    historical_supplier: 'شحن خارجي',
+    historical_effective_unit_cost: 1250,
+  }];
+
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows: history,
+    orderItems: [{ product_code: '68517', expected_unit_cost: 1450 }],
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].supplier_name, '');
+  assert.equal(rows[0].historical_supplier, '');
+  assert.equal(rows[0].unit_cost, 1250);
+  assert.equal(rows[0].cash_cost, 7500);
+
+  const scenarios = buildSingleSupplierScenarios({
+    decision,
+    historyRows: history,
+    branch: 'دواء شكري',
+  });
+  assert.equal(scenarios.some((row) => row.supplier_name === 'شحن خارجي'), false);
+});
+
+test('current offer candidates with internal or non-supplier labels are ignored', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      needed_qty: 2,
+      recommended: {
+        offer_id: 'bad',
+        supplier_name: 'دواء شكري',
+        purchase_qty: 2,
+        quantity_fully_available: true,
+        net_unit_cost: 10,
+        effective_unit_cost: 10,
+      },
+      alternatives: [{
+        offer_id: 'good',
+        supplier_name: 'فارما',
+        purchase_qty: 2,
+        quantity_fully_available: true,
+        net_unit_cost: 12,
+        effective_unit_cost: 12,
+      }],
+    }],
+  };
+
+  const rows = buildSupplierFinancialRows({ decision, historyRows: [], branch: 'دواء شكري' });
+  assert.equal(rows[0].supplier_name, 'فارما');
+  assert.equal(rows[0].unit_cost, 12);
+});
