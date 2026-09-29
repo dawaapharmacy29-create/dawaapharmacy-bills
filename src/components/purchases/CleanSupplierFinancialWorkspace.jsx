@@ -118,7 +118,6 @@ export default function CleanSupplierFinancialWorkspace({
   draftTotals = {},
   onRefresh = null,
 }) {
-  const [mode, setMode] = useState('split');
   const [supplierChoice, setSupplierChoice] = useState('');
   const [branchFilter, setBranchFilter] = useState('all');
 
@@ -272,22 +271,6 @@ export default function CleanSupplierFinancialWorkspace({
             <RefreshCw className="h-4 w-4" />
             إعادة تحليل تاريخ المشتريات
           </button>
-          <div className="flex rounded-xl border bg-white p-1 text-sm font-bold">
-          <button
-            type="button"
-            onClick={() => setMode('split')}
-            className={`rounded-lg px-3 py-2 ${mode === 'split' ? 'bg-indigo-700 text-white' : 'text-slate-600'}`}
-          >
-            أفضل مورد تاريخي لكل صنف
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('single')}
-            className={`rounded-lg px-3 py-2 ${mode === 'single' ? 'bg-indigo-700 text-white' : 'text-slate-600'}`}
-          >
-            محاكاة مخزن واحد تاريخيًا
-          </button>
-          </div>
         </div>
       </div>
 
@@ -320,8 +303,7 @@ export default function CleanSupplierFinancialWorkspace({
         </div>
       )}
 
-      {mode === 'split' && (
-        <>
+      <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm font-black text-slate-800">
@@ -474,11 +456,13 @@ export default function CleanSupplierFinancialWorkspace({
           {splitRows.length > 100 && (
             <div className="text-xs text-indigo-700">المعاينة تعرض أول 100 صنف فقط؛ ملف Excel يحتوي كل الأصناف.</div>
           )}
-        </>
-      )}
+      </>
 
-      {mode === 'single' && (
-        <>
+      <details className="rounded-2xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-black text-slate-700">
+          مقارنة مخزن واحد — اختيارية
+        </summary>
+        <div className="space-y-4 border-t p-4">
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
             هذه محاكاة تاريخية: ماذا لو جُمعت أصناف الفرعين على مورد واحد اعتمادًا على سجل الشراء السابق فقط. لا تغيّر المسودتين تلقائيًا.
           </div>
@@ -596,8 +580,8 @@ export default function CleanSupplierFinancialWorkspace({
               </div>
             </details>
           )}
-        </>
-      )}
+        </div>
+      </details>
     </section>
   );
 }
