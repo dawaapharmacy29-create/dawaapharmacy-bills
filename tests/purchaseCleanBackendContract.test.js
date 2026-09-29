@@ -58,3 +58,9 @@ test('clean page does not fall back to legacy purchase creation paths', () => {
   assert.match(cleanPageSource, /dualBranchInstantPlan\s*\(/);
   assert.match(cleanPageSource, /createDualDrafts\s*\(/);
 });
+
+
+test('clean page freezes replan after dual drafts are created', () => {
+  assert.match(cleanPageSource, /if \(runRef\.current \|\| !saveResult \|\| draftResult\) return/);
+  assert.match(cleanPageSource, /disabled=\{busy \|\| !saveResult \|\| Boolean\(draftResult\)\}/);
+});
