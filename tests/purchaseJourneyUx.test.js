@@ -12,7 +12,7 @@ test('clean purchase journey keeps the five guided steps and one fixed action ba
     'رفع الرصيد',
     'مراجعة الخطة',
     'إنشاء المسودتين',
-    'الموردون والأسعار',
+    'تحليل تاريخ المشتريات',
     'المراجعة النهائية',
   ]) {
     assert.ok(source.includes(label), `missing journey step: ${label}`);
