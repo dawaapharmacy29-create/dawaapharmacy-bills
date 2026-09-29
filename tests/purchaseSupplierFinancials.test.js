@@ -263,6 +263,8 @@ test('does not reapply an offer already stored as supplier_offer', () => {
 
   assert.equal(plan.safe_items, 0);
   assert.equal(plan.skipped_items, 1);
+  assert.equal(plan.already_applied_items, 1);
+  assert.equal(plan.review_items, 0);
   assert.equal(plan.skipped[0].reason, 'already_applied');
 });
 
