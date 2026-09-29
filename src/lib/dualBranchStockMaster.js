@@ -1,10 +1,21 @@
 const normalizeText = (value) =>
   String(value ?? '').trim().toLowerCase().replace(/[\s_\-]+/g, ' ');
 
-const toNumber = (value) => {
-  const parsed = Number(String(value ?? '').replace(/[,٪%جنيه]/g, '').trim());
-  return Number.isFinite(parsed) ? parsed : 0;
-};
+const normalizeDigits = (value) =>
+  String(value ?? '')
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
+
+function parseStockNumber(value) {
+  if (typeof value === 'number') {
+    return { value: Number.isFinite(value) ? value : 0, invalid: !Number.isFinite(value) };
+  }
+  const text = normalizeDigits(value).trim();
+  if (!text || text === '-' || text === '—') return { value: 0, invalid: false };
+  const normalized = text.replace(/[٬,]/g, '').replace(/٫/g, '.').replace(/\s+/g, '');
+  const parsed = Number(normalized);
+  return { value: Number.isFinite(parsed) ? parsed : 0, invalid: !Number.isFinite(parsed) };
+}
 
 const ALIASES = {
   code: ['الكود', 'كود الصنف'],
@@ -49,12 +60,29 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     fractional_shokry: 0,
     zero_shamy: 0,
     zero_shokry: 0,
+    invalid_shamy: 0,
+    invalid_shokry: 0,
+    invalid_identity_rows: 0,
+    ignored_blank_rows: 0,
   };
+  const invalidRows = [];
 
   rows.forEach((row, index) => {
     const productCode = String(row[map.code] ?? '').trim().replace(/\.0+$/, '');
     const productName = String(row[map.name] ?? '').trim();
-    if (!productCode || !productName) return;
+    const meaningful = [map.code, map.name, map.unit, map.company, map.shamy, map.shokry]
+      .filter(Boolean)
+      .some((header) => String(row[header] ?? '').trim() !== '');
+
+    if (!meaningful) {
+      quality.ignored_blank_rows += 1;
+      return;
+    }
+    if (!productCode || !productName) {
+      quality.invalid_identity_rows += 1;
+      invalidRows.push(`صف ${index + 2}: كود أو اسم الصنف ناقص`);
+      return;
+    }
 
     const dedupeKey = productCode;
     if (seen.has(dedupeKey)) {
@@ -73,8 +101,20 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
       stock_source: fileName || 'dual-branch-stock-master',
     };
 
-    const rawShamyStock = toNumber(row[map.shamy]);
-    const rawShokryStock = toNumber(row[map.shokry]);
+    const shamyParsed = parseStockNumber(row[map.shamy]);
+    const shokryParsed = parseStockNumber(row[map.shokry]);
+    if (shamyParsed.invalid) {
+      quality.invalid_shamy += 1;
+      invalidRows.push(`صف ${index + 2}: رصيد الشامي غير رقمي`);
+    }
+    if (shokryParsed.invalid) {
+      quality.invalid_shokry += 1;
+      invalidRows.push(`صف ${index + 2}: رصيد شكري غير رقمي`);
+    }
+    if (shamyParsed.invalid || shokryParsed.invalid) return;
+
+    const rawShamyStock = shamyParsed.value;
+    const rawShokryStock = shokryParsed.value;
     if (rawShamyStock < 0) quality.negative_shamy += 1;
     if (rawShokryStock < 0) quality.negative_shokry += 1;
     if (rawShamyStock > 0 && !Number.isInteger(rawShamyStock)) quality.fractional_shamy += 1;
@@ -94,12 +134,19 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     shokry.push({ ...common, current_stock: shokryStock });
   });
 
+  if (invalidRows.length > 0) {
+    const sample = invalidRows.slice(0, 5).join(' • ');
+    const more = invalidRows.length > 5 ? ` • +${invalidRows.length - 5} حالات أخرى` : '';
+    throw new Error(`تم إيقاف الملف لأن به صفوفًا غير صالحة: ${sample}${more}`);
+  }
+
   if (!shamy.length || !shokry.length) {
     throw new Error('ملف الرصيد لم يحتوِ على أصناف صالحة للتحليل.');
   }
 
   return {
     file_name: fileName,
+    source_rows_count: rows.length,
     map,
     rows: rowsOut,
     shamy,
