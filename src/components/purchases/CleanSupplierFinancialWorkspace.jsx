@@ -154,6 +154,15 @@ export default function CleanSupplierFinancialWorkspace({
     };
   }, [rows]);
 
+  const singleSupplierComparison = useMemo(() => {
+    if (!selectedScenario || selectedScenario.missing_items > 0 || summary.total <= 0) return null;
+    const difference = Number(selectedScenario.estimated_total || 0) - summary.total;
+    return {
+      difference,
+      percent: summary.total > 0 ? (difference / summary.total) * 100 : 0,
+    };
+  }, [selectedScenario, summary.total]);
+
   function exportSplitWorkbook() {
     const workbook = XLSX.utils.book_new();
     const used = new Set();
@@ -462,6 +471,27 @@ export default function CleanSupplierFinancialWorkspace({
               </div>
             )}
           </div>
+
+          {selectedScenario && singleSupplierComparison && (
+            <div className={`rounded-xl border p-3 text-sm ${
+              singleSupplierComparison.difference <= 0
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-amber-200 bg-amber-50 text-amber-900'
+            }`}>
+              مقارنة بالتقسيم على أفضل مورد لكل صنف:
+              <strong className="mx-1">
+                {singleSupplierComparison.difference >= 0 ? '+' : ''}
+                {money(singleSupplierComparison.difference)} ج
+              </strong>
+              ({singleSupplierComparison.percent >= 0 ? '+' : ''}{qty(singleSupplierComparison.percent)}%).
+            </div>
+          )}
+
+          {selectedScenario && selectedScenario.missing_items > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+              لا يتم حساب فرق تكلفة “مخزن واحد” مقابل التقسيم لأن هناك أصنافًا بلا سعر موثوق لهذا المخزن؛ أي مقارنة رقمية الآن ستكون ناقصة.
+            </div>
+          )}
 
           {selectedScenario && selectedScenario.missing_items > 0 && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
