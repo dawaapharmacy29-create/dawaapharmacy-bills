@@ -47,7 +47,8 @@ test('clean page only creates drafts from returned stock_sync_id and plan_hash',
 test('clean planner route is permission-guarded and hidden from unrelated roles', () => {
   assert.match(appSource, /purchase-center-clean"[\s\S]*RoleRouteGuard permission="canPlanPurchases"/);
   assert.match(layoutSource, /purchase-center-clean"[\s\S]*permission: "canPlanPurchases"/);
-  assert.match(roleSource, /canPlanPurchases\s*=\s*isAdmin\s*\|\|\s*isBranchManager\s*\|\|[\s\S]*purchasing/);
+  assert.match(roleSource, /canPlanPurchases\\s*=\\s*isAdmin\\s*\\|\\|[\\s\\S]*purchasing/);
+  assert.doesNotMatch(roleSource, /canPlanPurchases\\s*=.*isBranchManager/);
 });
 
 test('clean page does not fall back to legacy purchase creation paths', () => {
