@@ -1033,6 +1033,7 @@ export default function PurchaseCenterClean() {
               currentOfferPlans={supplierWorkspace.currentOfferPlans}
               draftTotals={supplierWorkspace.draftTotals}
               onApplyCurrentOffers={applyCurrentOffersForBranch}
+              onRefresh={() => loadSupplierWorkspace(draftResult)}
             />
           )}
         </>
