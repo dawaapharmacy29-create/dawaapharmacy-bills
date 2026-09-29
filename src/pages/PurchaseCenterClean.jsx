@@ -1109,7 +1109,7 @@ export default function PurchaseCenterClean() {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={busy || !saveResult}
+                    disabled={busy || !saveResult || Boolean(draftResult)}
                     onClick={replan}
                     className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
                   >
@@ -1118,7 +1118,7 @@ export default function PurchaseCenterClean() {
                   </button>
                   <button
                     type="button"
-                    disabled={busy || !plan.creation_guard?.can_create_dual}
+                    disabled={busy || !plan.creation_guard?.can_create_dual || Boolean(draftResult)}
                     onClick={createDrafts}
                     className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40"
                   >
