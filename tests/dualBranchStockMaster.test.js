@@ -249,3 +249,31 @@ test('allows a non-inventory service row to have an empty unit', () => {
 
   assert.equal(result.rows[0].inventory_eligible, false);
 });
+
+
+test('accepts common Arabic header spelling variants safely', () => {
+  const result = normalizeDualBranchStockRows([{
+    'الكود': '1010',
+    'اسم الصنف': 'Header Variant Item',
+    'الوحده': 'علبة',
+    'الفرعيه الشامي': 1,
+    'الاداره فرع شكري': 2,
+  }], 'stock.xlsx');
+
+  assert.equal(result.rows[0].stock_unit, 'علبة');
+  assert.equal(result.rows[0].shamy_stock, 1);
+  assert.equal(result.rows[0].shokry_stock, 2);
+});
+
+test('parses decimal comma stock values without multiplying them by ten', () => {
+  const result = normalizeDualBranchStockRows([{
+    'الكود': '1111',
+    'إسم الصنف': 'Decimal Comma Item',
+    'الوحدة': 'علبة',
+    'الفرعية الشامي': '1,5',
+    'الادارة فرع شكري': '2,25',
+  }], 'stock.xlsx');
+
+  assert.equal(result.rows[0].shamy_stock, 1.5);
+  assert.equal(result.rows[0].shokry_stock, 2.25);
+});
