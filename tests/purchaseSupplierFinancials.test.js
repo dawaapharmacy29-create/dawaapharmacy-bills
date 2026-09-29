@@ -45,7 +45,10 @@ test('current supplier offer takes precedence over historical average', () => {
       product_name: 'A',
       needed_qty: 3,
       recommended: {
+        offer_id: 'offer-current',
         supplier_name: 'فارما',
+        purchase_qty: 3,
+        quantity_fully_available: true,
         effective_unit_cost: 70,
         net_unit_cost: 72,
         cash_cost: 216,
@@ -100,8 +103,24 @@ test('single supplier scenarios show missing items instead of pretending full co
         product_code: '1',
         product_name: 'A',
         needed_qty: 2,
-        recommended: { supplier_name: 'مخزن سونيستا', effective_unit_cost: 75, cash_cost: 150 },
-        alternatives: [{ supplier_name: 'فارما', effective_unit_cost: 78, cash_cost: 156 }],
+        recommended: {
+          offer_id: 'sonista-offer',
+          supplier_name: 'مخزن سونيستا',
+          purchase_qty: 2,
+          quantity_fully_available: true,
+          net_unit_cost: 75,
+          effective_unit_cost: 75,
+          cash_cost: 150,
+        },
+        alternatives: [{
+          offer_id: 'pharma-offer',
+          supplier_name: 'فارما',
+          purchase_qty: 2,
+          quantity_fully_available: true,
+          net_unit_cost: 78,
+          effective_unit_cost: 78,
+          cash_cost: 156,
+        }],
       },
       {
         product_code: '2',
@@ -200,8 +219,11 @@ test('only applies current offers that preserve the V10 quantity', () => {
         needed_qty: 5,
         recommended: {
           offer_id: 'offer-safe',
+          supplier_name: 'فارما',
           purchase_qty: 5,
           quantity_fully_available: true,
+          net_unit_cost: 10,
+          effective_unit_cost: 10,
         },
       },
       {
@@ -210,8 +232,11 @@ test('only applies current offers that preserve the V10 quantity', () => {
         needed_qty: 5,
         recommended: {
           offer_id: 'offer-moq',
+          supplier_name: 'فارما',
           purchase_qty: 10,
           quantity_fully_available: true,
+          net_unit_cost: 9,
+          effective_unit_cost: 9,
         },
       },
       {
@@ -220,8 +245,11 @@ test('only applies current offers that preserve the V10 quantity', () => {
         needed_qty: 5,
         recommended: {
           offer_id: 'offer-short',
+          supplier_name: 'فارما',
           purchase_qty: 5,
           quantity_fully_available: false,
+          net_unit_cost: 8,
+          effective_unit_cost: 8,
         },
       },
       {
@@ -250,8 +278,11 @@ test('does not reapply an offer already stored as supplier_offer', () => {
       needed_qty: 5,
       recommended: {
         offer_id: 'offer-safe',
+        supplier_name: 'فارما',
         purchase_qty: 5,
         quantity_fully_available: true,
+        net_unit_cost: 10,
+        effective_unit_cost: 10,
       },
     }],
   };
