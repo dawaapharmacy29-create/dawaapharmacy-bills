@@ -43,10 +43,33 @@ export function mergePlanWithHistory(planRows = [], historyRows = []) {
   });
 }
 
+function currentOfferCandidates(item) {
+  return [item?.recommended, ...(item?.alternatives || [])]
+    .filter(Boolean)
+    .filter((candidate) =>
+      Boolean(candidate.offer_id)
+      && Boolean(candidate.supplier_name)
+      && number(candidate.effective_unit_cost || candidate.net_unit_cost) > 0
+    );
+}
+
+function bestFinancialCurrentOffer(item, { preserveQuantity = false } = {}) {
+  const neededQty = number(item?.needed_qty);
+  const candidates = currentOfferCandidates(item)
+    .filter((candidate) => candidate.quantity_fully_available !== false)
+    .filter((candidate) => !preserveQuantity || Math.abs(number(candidate.purchase_qty || neededQty) - neededQty) <= 0.0001)
+    .sort((a, b) =>
+      number(a.effective_unit_cost || a.net_unit_cost) - number(b.effective_unit_cost || b.net_unit_cost)
+      || number(a.cash_cost) - number(b.cash_cost)
+      || String(a.supplier_name || '').localeCompare(String(b.supplier_name || ''), 'ar')
+    );
+  return candidates[0] || null;
+}
+
 function currentCandidateForSupplier(item, supplierName) {
   const target = String(supplierName || '').trim().toLowerCase();
   if (!target) return null;
-  const candidates = [item?.recommended, ...(item?.alternatives || [])].filter(Boolean);
+  const candidates = currentOfferCandidates(item);
   return candidates.find((candidate) => String(candidate.supplier_name || '').trim().toLowerCase() === target) || null;
 }
 
@@ -59,21 +82,22 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
     const hist = history.get(purchaseProductKey(item)) || {};
     const orderItem = orderItemMap.get(purchaseProductKey(item)) || {};
     const recommended = item?.recommended || {};
+    const financialOffer = bestFinancialCurrentOffer(item) || recommended;
     const quantity = number(item.needed_qty);
-    const currentCashUnitCost = number(recommended.net_unit_cost || recommended.effective_unit_cost);
-    const currentEffectiveCost = number(recommended.effective_unit_cost || recommended.net_unit_cost);
+    const currentCashUnitCost = number(financialOffer.net_unit_cost || financialOffer.effective_unit_cost);
+    const currentEffectiveCost = number(financialOffer.effective_unit_cost || financialOffer.net_unit_cost);
     const historicalCost = number(hist.historical_effective_unit_cost);
     const historicalLastCost = number(hist.historical_last_unit_cost || hist.last_purchase_price);
     const draftCost = number(orderItem.expected_unit_cost);
     const fallbackCost = draftCost > 0 ? draftCost : number(hist.planning_reference_unit_cost || hist.unit_cost);
-    const hasCurrentOffer = Boolean(recommended.supplier_name) && currentCashUnitCost > 0;
+    const hasCurrentOffer = Boolean(financialOffer.supplier_name) && currentCashUnitCost > 0;
     const currentOfferApplied =
       hasCurrentOffer
-      && String(orderItem.supplier_offer_id || '') === String(recommended.offer_id || '')
+      && String(orderItem.supplier_offer_id || '') === String(financialOffer.offer_id || '')
       && orderItem.cost_source === 'supplier_offer';
 
     const supplierName = hasCurrentOffer
-      ? recommended.supplier_name
+      ? financialOffer.supplier_name
       : hist.historical_supplier || '';
 
     const unitCost = hasCurrentOffer
@@ -85,7 +109,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
           : fallbackCost;
 
     const cashCost = hasCurrentOffer
-      ? number(recommended.cash_cost) || quantity * currentCashUnitCost
+      ? number(financialOffer.cash_cost) || quantity * currentCashUnitCost
       : quantity * unitCost;
 
     const source = hasCurrentOffer
@@ -101,7 +125,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
               : 'missing';
 
     const listPrice = number(
-      recommended.list_price
+      financialOffer.list_price
       || orderItem.public_price
       || orderItem.reference_unit_price
       || orderItem.list_price
@@ -128,14 +152,14 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       effective_unit_cost: hasCurrentOffer ? currentEffectiveCost : historicalCost > 0 ? historicalCost : unitCost,
       cash_cost: cashCost,
       list_price: listPrice,
-      discount_percent: recommended.discount_percent != null
-        ? number(recommended.discount_percent)
+      discount_percent: financialOffer.discount_percent != null
+        ? number(financialOffer.discount_percent)
         : orderItem.expected_discount != null
           ? number(orderItem.expected_discount)
           : null,
-      extra_discount_percent: recommended.extra_discount_percent != null ? number(recommended.extra_discount_percent) : null,
-      bonus_units: number(recommended.earned_bonus_units),
-      received_units: number(recommended.received_units) || quantity,
+      extra_discount_percent: financialOffer.extra_discount_percent != null ? number(financialOffer.extra_discount_percent) : null,
+      bonus_units: number(financialOffer.earned_bonus_units),
+      received_units: number(financialOffer.received_units) || quantity,
       effective_saving_percent: effectiveSavingPercent,
       historical_supplier: hist.historical_supplier || '',
       historical_effective_unit_cost: historicalCost,
@@ -144,6 +168,9 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       current_offer_applied: currentOfferApplied,
       alternatives: item.alternatives || [],
       recommended,
+      best_financial_offer: financialOffer,
+      operational_recommended_supplier: recommended.supplier_name || '',
+      operational_recommendation_reason: recommended.reason || '',
     };
   });
 }
@@ -307,8 +334,8 @@ export function buildSafeCurrentOfferPlan(decision = null, orderItems = []) {
   const skipped = [];
 
   for (const item of items) {
-    const offer = item?.recommended || {};
     const neededQty = number(item?.needed_qty);
+    const offer = bestFinancialCurrentOffer(item, { preserveQuantity: true }) || {};
     const purchaseQty = number(offer?.purchase_qty || neededQty);
     const fullyAvailable = offer?.quantity_fully_available !== false;
     const quantityPreserved = Math.abs(purchaseQty - neededQty) <= 0.0001;
