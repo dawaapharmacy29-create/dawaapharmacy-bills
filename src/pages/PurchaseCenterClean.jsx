@@ -453,6 +453,7 @@ export default function PurchaseCenterClean() {
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
+  const [cancellingOrderId, setCancellingOrderId] = useState('');
   const [activeStep, setActiveStep] = useState(1);
   const runRef = useRef(false);
   const resumeAttemptedRef = useRef(false);
@@ -677,6 +678,29 @@ export default function PurchaseCenterClean() {
     setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
     return result;
+  }
+
+  async function cancelBlockingDraft(order) {
+    if (!order?.id || cancellingOrderId) return;
+    const status = String(order.status || '').trim();
+    if (!['draft', 'مسودة'].includes(status)) {
+      setError('الإلغاء السريع متاح للمسودات فقط. الطلبية المعتمدة لن يتم لمسها من هنا.');
+      return;
+    }
+
+    setCancellingOrderId(order.id);
+    setError('');
+    try {
+      await purchaseApi.cancelOrder(
+        order.id,
+        'إلغاء مسودة قديمة تمنع إنشاء الطلبية الجديدة من مركز المشتريات'
+      );
+      await runPlannerOnly(saveResult?.stock_sync_id);
+    } catch (err) {
+      setError(err?.message || 'تعذر إلغاء المسودة. لم يتم تنفيذ أي خطوة أخرى.');
+    } finally {
+      setCancellingOrderId('');
+    }
   }
 
   async function saveAndPlan(stockMaster, flowStartedAt = performance.now()) {
@@ -1615,14 +1639,29 @@ export default function PurchaseCenterClean() {
                       <>
                         <div className="mt-2 font-bold">طلبيات مفتوحة تمنع إنشاء مسودة جديدة:</div>
                         <div className="mt-1 space-y-1">
-                          {[...(plan.creation_guard?.shokry_open_orders || []), ...(plan.creation_guard?.shamy_open_orders || [])].map((order) => (
-                            <div key={order.id} className="rounded border border-red-100 bg-white/70 px-2 py-1">
-                              <span className="font-mono">{order.order_number}</span>
-                              {' • '}{order.status}
-                              {' • '}{new Date(order.created_at).toLocaleDateString('ar-EG')}
-                              {order.title ? ` • ${order.title}` : ''}
-                            </div>
-                          ))}
+                          {[...(plan.creation_guard?.shokry_open_orders || []), ...(plan.creation_guard?.shamy_open_orders || [])].map((order) => {
+                            const draftCancelable = ['draft', 'مسودة'].includes(String(order?.status || '').trim());
+                            return (
+                              <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-red-100 bg-white/70 px-2 py-2">
+                                <div className="min-w-0">
+                                  <span className="font-mono">{order.order_number}</span>
+                                  {' • '}{order.status}
+                                  {' • '}{new Date(order.created_at).toLocaleDateString('ar-EG')}
+                                  {order.title ? ` • ${order.title}` : ''}
+                                </div>
+                                {draftCancelable && (
+                                  <button
+                                    type="button"
+                                    disabled={Boolean(cancellingOrderId)}
+                                    onClick={() => cancelBlockingDraft(order)}
+                                    className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-black text-red-700 hover:bg-red-50 disabled:opacity-40"
+                                  >
+                                    {cancellingOrderId === order.id ? 'جاري الإلغاء...' : 'إلغاء المسودة'}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </>
                     )}
