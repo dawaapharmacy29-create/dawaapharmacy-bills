@@ -81,7 +81,10 @@ function splitExportRow(row) {
     'سبب اختيار المورد المالي': row.financial_supplier_reason || '',
     'المورد الموصى به تشغيليًا': row.operational_recommended_supplier || '',
     'سبب التوصية التشغيلية': row.operational_recommendation_reason || '',
-    'بدائل حالية': (row.alternatives || []).map((alt) => `${alt.supplier_name || '—'} (${Number(alt.effective_unit_cost || 0).toFixed(2)})`).join(' | '),
+    'بدائل حالية': (row.alternatives || [])
+      .filter((alt) => String(alt.supplier_name || '').trim() !== String(row.supplier_name || '').trim())
+      .map((alt) => `${alt.supplier_name || '—'} (${Number(alt.effective_unit_cost || 0).toFixed(2)})`)
+      .join(' | '),
     'يوجد عرض حالي': row.current_offer ? 'نعم' : 'لا',
     'مثبت في المسودة': row.current_offer_applied ? 'نعم' : 'لا',
   };
@@ -463,9 +466,11 @@ export default function CleanSupplierFinancialWorkspace({
                       {row.financial_supplier_reason || '—'}
                     </td>
                     <td className="p-2 max-w-[260px] text-xs text-slate-500">
-                      {(row.alternatives || []).slice(0, 2).map((alt) =>
-                        `${alt.supplier_name || '—'} • ${money(alt.effective_unit_cost || 0)} ج`
-                      ).join(' | ') || '—'}
+                      {(row.alternatives || [])
+                        .filter((alt) => String(alt.supplier_name || '').trim() !== String(row.supplier_name || '').trim())
+                        .slice(0, 2)
+                        .map((alt) => `${alt.supplier_name || '—'} • ${money(alt.effective_unit_cost || 0)} ج`)
+                        .join(' | ') || '—'}
                     </td>
                     <td className="p-2 text-xs text-slate-500">{row.historical_supplier || '—'}</td>
                   </tr>
