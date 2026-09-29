@@ -221,6 +221,24 @@ function PurchaseJourneyTabs({ activeStep, onStepChange, plan, draftResult, supp
   );
 }
 
+function CurrentStepGuide({ step }) {
+  const guides = {
+    1: ['ارفع ملف الرصيد', 'ملف واحد يحتوي رصيد شكري والشامي؛ الحفظ والتحليل يبدأان تلقائيًا.'],
+    2: ['راجع الخطة', 'راجع الإجمالي وشكري والشامي فقط. افتح التفاصيل أو التنبيهات عند الحاجة ثم اضغط التالي.'],
+    3: ['أنشئ المسودتين', 'ضغطة واحدة تنشئ مسودتي الفرعين من نفس الخطة بدون اعتماد أو إرسال.'],
+    4: ['راجع الموردين والأسعار', 'راجع التوزيع المرجعي أو حدّث العروض الحالية، ثم انتقل للمراجعة النهائية.'],
+    5: ['راجع القرار النهائي', 'راجع القيمة والموردين والنواقص في شاشة واحدة قبل أي اعتماد أو إرسال لاحقًا.'],
+  };
+  const [title, description] = guides[step] || guides[1];
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm">
+      <span className="font-black text-slate-900">المطلوب منك الآن: {title}</span>
+      <span className="text-slate-600">{description}</span>
+    </div>
+  );
+}
+
 export default function PurchaseCenterClean() {
   const [fileName, setFileName] = useState('');
   const [fileModifiedAt, setFileModifiedAt] = useState(null);
@@ -760,6 +778,8 @@ export default function PurchaseCenterClean() {
         supplierReady={supplierReady}
       />
 
+      <CurrentStepGuide step={activeStep} />
+
       <section className={`rounded-2xl border bg-white p-5 shadow-sm ${activeStep === 1 ? '' : 'hidden'}`}>
         {!plan ? (
           <label className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition ${busy ? 'pointer-events-none opacity-60' : 'hover:border-teal-400 hover:bg-teal-50/30'}`}>
@@ -883,7 +903,7 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className={`rounded-2xl border border-teal-200 bg-white p-4 shadow-sm ${activeStep === 2 || activeStep === 5 ? '' : 'hidden'}`}>
+          <section className={`rounded-2xl border border-teal-200 bg-white p-4 shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-black text-slate-900">ملخص الطلبية الآن</h2>
