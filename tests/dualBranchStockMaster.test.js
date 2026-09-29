@@ -302,3 +302,58 @@ test('does not guess ambiguous short branch headers', () => {
     /ملف الرصيد لازم يحتوي/
   );
 });
+
+
+test('ignores a recognized trailing footer after the last complete product', () => {
+  const result = normalizeDualBranchStockRows([
+    {
+      'الكود': '13001',
+      'إسم الصنف': 'Last Real Product',
+      'الوحدة': 'علبة',
+      'الفرعية الشامي': 2,
+      'الادارة فرع شكري': 3,
+    },
+    {
+      'الكود': '',
+      'إسم الصنف': 'الإجمالي',
+      'الوحدة': '',
+      'الفرعية الشامي': 200,
+      'الادارة فرع شكري': 300,
+    },
+  ], 'stock.xlsx');
+
+  assert.equal(result.rows_count, 1);
+  assert.equal(result.quality.ignored_blank_rows, 1);
+  assert.equal(result.rows[0].product_code, '13001');
+});
+
+test('still rejects a partial identity row inside the product body', () => {
+  const rows = [
+    {
+      'الكود': '13001',
+      'إسم الصنف': 'First Product',
+      'الوحدة': 'علبة',
+      'الفرعية الشامي': 1,
+      'الادارة فرع شكري': 2,
+    },
+    {
+      'الكود': '',
+      'إسم الصنف': 'Broken Product',
+      'الوحدة': 'علبة',
+      'الفرعية الشامي': 3,
+      'الادارة فرع شكري': 4,
+    },
+    {
+      'الكود': '13003',
+      'إسم الصنف': 'Later Product',
+      'الوحدة': 'علبة',
+      'الفرعية الشامي': 5,
+      'الادارة فرع شكري': 6,
+    },
+  ];
+
+  assert.throws(
+    () => normalizeDualBranchStockRows(rows, 'stock.xlsx'),
+    /كود أو اسم الصنف ناقص/
+  );
+});
