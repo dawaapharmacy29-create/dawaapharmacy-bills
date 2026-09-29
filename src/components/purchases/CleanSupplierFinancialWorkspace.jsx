@@ -316,7 +316,7 @@ export default function CleanSupplierFinancialWorkspace({
             onClick={() => setMode('single')}
             className={`rounded-lg px-3 py-2 ${mode === 'single' ? 'bg-indigo-700 text-white' : 'text-slate-600'}`}
           >
-            {summary.current > 0 ? '{summary.current > 0 ? 'مخزن واحد للطلبية' : 'محاكاة مخزن واحد'}' : 'محاكاة مخزن واحد'}
+            {summary.current > 0 ? 'مخزن واحد للطلبية' : 'محاكاة مخزن واحد'}
           </button>
           </div>
         </div>
