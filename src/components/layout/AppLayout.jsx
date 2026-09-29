@@ -46,7 +46,7 @@ const navGroups = [
         { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks },
       ]},
       { label: "الأداة الموحدة (ابدأ من هنا)", items: [
-        { path: "/purchase-center-clean", label: "مركز المشتريات الجديد — تجريبي", icon: BrainCircuit },
+        { path: "/purchase-center-clean", label: "مركز المشتريات الجديد — تجريبي", icon: BrainCircuit, permission: "canPlanPurchases" },
         { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap },
       ]},
       { label: "تنفيذ ومتابعة الطلبية", items: [
@@ -138,7 +138,8 @@ export default function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const { isAdmin, isManager } = useUserRole();
+  const role = useUserRole();
+  const { isAdmin, isManager } = role;
   const canReviewShifts = isAdmin || isManager;
   const { user, logout, isLoggingOut } = useAuth();
 
@@ -146,9 +147,9 @@ export default function AppLayout() {
     ...group,
     sections: group.sections.map((section) => ({
       ...section,
-      items: section.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts)),
+      items: section.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts) && (!item.permission || Boolean(role[item.permission]))),
     })).filter((section) => section.items.length),
-  })).filter((group) => group.sections.length), [isAdmin, canReviewShifts]);
+  })).filter((group) => group.sections.length), [isAdmin, canReviewShifts, role]);
 
   const groupForPath = useMemo(() => visibleGroups.find((group) => group.sections.some((section) => section.items.some((item) => location.pathname === item.path.split("?")[0])))?.key || "home", [location.pathname, visibleGroups]);
   const [openGroup, setOpenGroup] = useState(() => localStorage.getItem(NAV_STORAGE_KEY) || groupForPath);
@@ -216,7 +217,7 @@ export default function AppLayout() {
 
   const renderNav = (closeMobile = false) => <div className="space-y-3">
     <div className="grid grid-cols-2 gap-1.5 rounded-xl border bg-gray-50 p-2">
-      {quickLinks.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts)).map((item) => renderLink(item, closeMobile, true))}
+      {quickLinks.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts) && (!item.permission || Boolean(role[item.permission]))).map((item) => renderLink(item, closeMobile, true))}
     </div>
 
     <div className="relative">
