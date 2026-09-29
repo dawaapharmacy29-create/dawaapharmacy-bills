@@ -444,16 +444,26 @@ export default function PurchaseCenterClean() {
         purchaseApi.getOrder(shamyOrderId),
       ]);
 
+      const [shokryHistory, shamyHistory] = await Promise.all([
+        purchaseApi.historyEnrichRows('دواء شكري', shokryOrder?.items || []),
+        purchaseApi.historyEnrichRows('دواء الشامي', shamyOrder?.items || []),
+      ]);
+      const freshHistory = {
+        shokry: shokryHistory?.rows || [],
+        shamy: shamyHistory?.rows || [],
+      };
+      setHistoryByBranch(freshHistory);
+
       const rows = [
         ...buildSupplierFinancialRows({
           decision: shokryDecision,
-          historyRows: historyByBranch.shokry,
+          historyRows: freshHistory.shokry,
           orderItems: shokryOrder?.items || [],
           branch: 'دواء شكري',
         }),
         ...buildSupplierFinancialRows({
           decision: shamyDecision,
-          historyRows: historyByBranch.shamy,
+          historyRows: freshHistory.shamy,
           orderItems: shamyOrder?.items || [],
           branch: 'دواء الشامي',
         }),
@@ -462,12 +472,12 @@ export default function PurchaseCenterClean() {
       const scenarios = combineSingleSupplierScenarioSets([
         buildSingleSupplierScenarios({
           decision: shokryDecision,
-          historyRows: historyByBranch.shokry,
+          historyRows: freshHistory.shokry,
           branch: 'دواء شكري',
         }),
         buildSingleSupplierScenarios({
           decision: shamyDecision,
-          historyRows: historyByBranch.shamy,
+          historyRows: freshHistory.shamy,
           branch: 'دواء الشامي',
         }),
       ]);
