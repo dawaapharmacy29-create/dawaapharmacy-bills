@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildSingleSupplierScenarios,
+  combineSingleSupplierScenarioSets,
   buildSupplierFinancialRows,
   buildSupplierGroups,
   mergePlanWithHistory,
@@ -121,4 +122,37 @@ test('single supplier scenarios show missing items instead of pretending full co
   assert.ok(sonista);
   assert.equal(sonista.current_offer_items, 1);
   assert.equal(sonista.missing_items, 1);
+});
+
+
+test('combines one-supplier coverage across both branch drafts', () => {
+  const combined = combineSingleSupplierScenarioSets([
+    [{
+      supplier_name: 'فارما',
+      items_count: 2,
+      current_offer_items: 1,
+      historical_reference_items: 1,
+      missing_items: 0,
+      estimated_total: 200,
+      rows: [{ branch: 'دواء شكري' }, { branch: 'دواء شكري' }],
+    }],
+    [{
+      supplier_name: 'فارما',
+      items_count: 3,
+      current_offer_items: 2,
+      historical_reference_items: 0,
+      missing_items: 1,
+      estimated_total: 300,
+      rows: [{ branch: 'دواء الشامي' }, { branch: 'دواء الشامي' }, { branch: 'دواء الشامي' }],
+    }],
+  ]);
+
+  assert.equal(combined[0].supplier_name, 'فارما');
+  assert.equal(combined[0].items_count, 5);
+  assert.equal(combined[0].current_offer_items, 3);
+  assert.equal(combined[0].historical_reference_items, 1);
+  assert.equal(combined[0].missing_items, 1);
+  assert.equal(combined[0].estimated_total, 500);
+  assert.equal(Math.round(combined[0].current_coverage_percent), 60);
+  assert.equal(Math.round(combined[0].reference_coverage_percent), 80);
 });
