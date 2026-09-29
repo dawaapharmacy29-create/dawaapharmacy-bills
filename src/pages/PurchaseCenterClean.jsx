@@ -756,7 +756,7 @@ export default function PurchaseCenterClean() {
 
           <details className="rounded-2xl border border-amber-200 bg-white shadow-sm">
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
-              المراجعات والتنبيهات • ${reviewAlertsTotal} حالة للمراجعة
+              المراجعات والتنبيهات • {reviewAlertsTotal} حالة للمراجعة
             </summary>
             <div className="space-y-4 border-t p-4">
           {(Number(plan.execution_pending?.shokry?.items || 0) > 0 || Number(plan.execution_pending?.shamy?.items || 0) > 0) && (
