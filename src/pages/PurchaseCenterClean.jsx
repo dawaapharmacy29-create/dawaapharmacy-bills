@@ -1030,6 +1030,36 @@ export default function PurchaseCenterClean() {
     };
   }, [supplierWorkspace.groups, supplierWorkspace.rows]);
 
+  const supplierBranchDecision = useMemo(() => {
+    const rows = supplierWorkspace.rows || [];
+    return ['دواء شكري', 'دواء الشامي'].map((branchName) => {
+      const branchRows = rows.filter((row) => row.branch === branchName);
+      const suppliers = new Set(
+        branchRows
+          .map((row) => String(row.supplier_name || '').trim())
+          .filter(Boolean)
+      );
+      return {
+        branch: branchName,
+        items: branchRows.length,
+        value: branchRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0),
+        current: branchRows.filter((row) => row.cost_source === 'current_offer').length,
+        historical: branchRows.filter((row) =>
+          row.cost_source === 'historical_average' || row.cost_source === 'historical_last'
+        ).length,
+        missingSupplier: branchRows.filter((row) => !String(row.supplier_name || '').trim()).length,
+        missingCost: branchRows.filter((row) => Number(row.unit_cost || 0) <= 0).length,
+        suppliers: suppliers.size,
+      };
+    });
+  }, [supplierWorkspace.rows]);
+
+  const supplierMissingRows = useMemo(() => (
+    (supplierWorkspace.rows || [])
+      .filter((row) => !String(row.supplier_name || '').trim() || Number(row.unit_cost || 0) <= 0)
+      .slice(0, 12)
+  ), [supplierWorkspace.rows]);
+
   return (
     <div dir="rtl" className="mx-auto max-w-[1600px] space-y-5 p-3 pb-28 md:p-5 md:pb-28">
       <header className={`rounded-3xl border bg-gradient-to-l from-white to-teal-50/70 shadow-sm ${plan ? 'p-3' : 'p-5'}`}>
@@ -1649,6 +1679,24 @@ export default function PurchaseCenterClean() {
                   <Metric label="مرجع تاريخي" value={supplierDecision.historicalItems} />
                 </div>
 
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {supplierBranchDecision.map((branch) => (
+                    <div key={branch.branch} className="rounded-xl border bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-black text-slate-900">{branch.branch}</div>
+                        <div className="text-lg font-black text-teal-800">{money(branch.value)} ج</div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+                        <div><span className="text-slate-400">أصناف</span><div className="font-black">{branch.items}</div></div>
+                        <div><span className="text-slate-400">موردون</span><div className="font-black">{branch.suppliers}</div></div>
+                        <div><span className="text-slate-400">حالي</span><div className="font-black text-emerald-700">{branch.current}</div></div>
+                        <div><span className="text-slate-400">تاريخي</span><div className="font-black text-amber-700">{branch.historical}</div></div>
+                        <div><span className="text-slate-400">ناقص</span><div className={`font-black ${branch.missingSupplier || branch.missingCost ? 'text-red-700' : 'text-emerald-700'}`}>{branch.missingSupplier + branch.missingCost}</div></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <Metric label="موردون مقترحون" value={supplierWorkspace.groups.filter((group) => group.supplier_name !== 'غير محدد').length} />
                   <Metric label="بدون مورد فعلي" value={supplierDecision.missingSupplierItems} />
@@ -1666,6 +1714,17 @@ export default function PurchaseCenterClean() {
                     )}
                     {supplierDecision.missingCostItems > 0 && (
                       <div className="mt-1 font-bold">• {supplierDecision.missingCostItems} صنف بدون تكلفة صالحة.</div>
+                    )}
+                    {supplierMissingRows.length > 0 && (
+                      <div className="mt-3 grid gap-1 md:grid-cols-2">
+                        {supplierMissingRows.map((row) => (
+                          <div key={`${row.branch}-${row.item_id || row.product_code || row.product_name}`} className="rounded-lg border border-amber-100 bg-amber-50/40 px-2 py-1.5 text-xs">
+                            <span className="font-black">{row.product_name}</span>
+                            <span className="text-slate-500"> • {row.branch}</span>
+                            {row.product_code ? <span className="text-slate-400"> • {row.product_code}</span> : null}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}
