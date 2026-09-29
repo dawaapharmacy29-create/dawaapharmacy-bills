@@ -582,6 +582,14 @@ export default function PurchaseCenterClean() {
     + movementOnlyWatchlistCounts.shokry
     + movementOnlyWatchlistCounts.shamy;
 
+  function countPlanQuickReviews(currentPlan) {
+    return ['shokry', 'shamy'].reduce((total, branchKey) => (
+      total + (currentPlan?.[branchKey]?.plan || []).filter(
+        (row) => row.requires_quick_review && Number(row.buy_quantity || 0) > 0
+      ).length
+    ), 0);
+  }
+
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -670,7 +678,9 @@ export default function PurchaseCenterClean() {
       setActiveStep(4);
       void loadSupplierWorkspace(recoveredDrafts);
     } else {
-      setActiveStep(2);
+      const quickReviewCount = countPlanQuickReviews(result);
+      const fastPathReady = result?.creation_guard?.can_create_dual === true && quickReviewCount === 0;
+      setActiveStep(fastPathReady ? 3 : 2);
     }
     setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
@@ -1210,6 +1220,11 @@ export default function PurchaseCenterClean() {
               <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
               <Metric label="أصناف الشراء" value={plan.totals?.buy_items || 0} />
             </div>
+            {plan.creation_guard?.can_create_dual === true && quickReviewRows.length === 0 && (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
+                ✓ Fast Path: لا توجد أصناف داخل الطلبية تحتاج مراجعة سريعة، والـGuards تسمح بإنشاء المسودتين مباشرة.
+              </div>
+            )}
           </section>
 
           <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm`}>
