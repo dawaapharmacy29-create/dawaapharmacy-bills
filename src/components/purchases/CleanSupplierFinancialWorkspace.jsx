@@ -9,6 +9,7 @@ import {
   Store,
   WalletCards,
 } from 'lucide-react';
+import { buildSupplierGroups } from '@/lib/purchaseSupplierFinancials';
 
 const money = (value) =>
   new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -130,6 +131,7 @@ export default function CleanSupplierFinancialWorkspace({
 }) {
   const [mode, setMode] = useState('split');
   const [supplierChoice, setSupplierChoice] = useState('');
+  const [branchFilter, setBranchFilter] = useState('all');
 
   const selectedSupplier = supplierChoice || scenarios[0]?.supplier_name || '';
   const selectedScenario = scenarios.find((scenario) => scenario.supplier_name === selectedSupplier) || null;
@@ -167,11 +169,19 @@ export default function CleanSupplierFinancialWorkspace({
     (plan?.items || []).length > 0 || Number(plan?.already_applied_items || 0) > 0
   );
 
+  const splitRows = useMemo(() => (
+    branchFilter === 'all'
+      ? rows
+      : rows.filter((row) => row.branch === branchFilter)
+  ), [branchFilter, rows]);
+
+  const splitGroups = useMemo(() => buildSupplierGroups(splitRows), [splitRows]);
+
   const topSupplierGroups = useMemo(() => (
-    (groups || [])
+    (splitGroups || [])
       .filter((group) => String(group.supplier_name || '').trim() && group.supplier_name !== 'غير محدد')
       .slice(0, 5)
-  ), [groups]);
+  ), [splitGroups]);
 
   const singleSupplierComparison = useMemo(() => {
     if (!selectedScenario || selectedScenario.missing_items > 0 || summary.total <= 0) return null;
@@ -186,7 +196,7 @@ export default function CleanSupplierFinancialWorkspace({
     const workbook = XLSX.utils.book_new();
     const used = new Set();
 
-    const summaryRows = groups.map((group) => ({
+    const summaryRows = splitGroups.map((group) => ({
       المورد: group.supplier_name,
       'عدد الأصناف': group.items_count,
       الوحدات: Number(group.units || 0),
@@ -201,7 +211,7 @@ export default function CleanSupplierFinancialWorkspace({
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'ملخص الموردين');
     used.add('ملخص الموردين');
 
-    for (const group of groups) {
+    for (const group of splitGroups) {
       const data = group.items.map(splitExportRow);
       const sheet = XLSX.utils.json_to_sheet(data);
       addAutoWidth(sheet, data);
@@ -382,15 +392,37 @@ export default function CleanSupplierFinancialWorkspace({
 
       {mode === 'split' && (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-black text-slate-800">التقسيم المقترح حسب أفضل مورد لكل صنف</div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-black text-slate-800">التقسيم المقترح حسب أفضل مورد لكل صنف</div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {[
+                  ['all', 'الكل'],
+                  ['دواء شكري', 'شكري'],
+                  ['دواء الشامي', 'الشامي'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setBranchFilter(value)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-black ${
+                      branchFilter === value
+                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <button
               type="button"
               onClick={exportSplitWorkbook}
               className="flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white"
             >
               <FileSpreadsheet className="h-4 w-4" />
-              Excel حسب كل مخزن
+              {branchFilter === 'all' ? 'Excel كامل حسب كل مخزن' : `Excel ${branchFilter.replace('دواء ', '')}`}
             </button>
           </div>
 
@@ -425,7 +457,7 @@ export default function CleanSupplierFinancialWorkspace({
 
           <details className="rounded-xl border bg-white">
             <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800">
-              جدول كل الموردين • {groups.length}
+              جدول كل الموردين • {splitGroups.length}
             </summary>
             <div className="overflow-auto border-t">
               <table className="min-w-[1100px] w-full text-sm">
@@ -442,7 +474,7 @@ export default function CleanSupplierFinancialWorkspace({
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((group) => (
+                  {splitGroups.map((group) => (
                     <tr key={group.supplier_name} className="border-t">
                       <td className="p-2 font-black text-indigo-900">{group.supplier_name}</td>
                       <td className="p-2">{group.items_count}</td>
@@ -461,7 +493,7 @@ export default function CleanSupplierFinancialWorkspace({
 
           <details className="rounded-xl border bg-white">
             <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800">
-              تفاصيل الأصناف • {rows.length} صنف
+              تفاصيل الأصناف • {splitRows.length} صنف
             </summary>
             <div className="overflow-auto border-t">
             <table className="min-w-[2100px] w-full text-sm">
@@ -473,7 +505,7 @@ export default function CleanSupplierFinancialWorkspace({
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 100).map((row) => (
+                {splitRows.slice(0, 100).map((row) => (
                   <tr key={`${row.branch}-${row.item_id || row.product_code || row.product_name}`} className="border-t">
                     <td className="p-2">{row.branch}</td>
                     <td className="p-2">
@@ -507,7 +539,7 @@ export default function CleanSupplierFinancialWorkspace({
             </table>
             </div>
           </details>
-          {rows.length > 100 && (
+          {splitRows.length > 100 && (
             <div className="text-xs text-indigo-700">المعاينة تعرض أول 100 صنف فقط؛ ملف Excel يحتوي كل الأصناف.</div>
           )}
         </>
