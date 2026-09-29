@@ -515,3 +515,31 @@ test('current offer candidates with internal or non-supplier labels are ignored'
   assert.equal(rows[0].supplier_name, 'فارما');
   assert.equal(rows[0].unit_cost, 12);
 });
+
+
+test('internal branches and generic supplier placeholders are rejected consistently', () => {
+  const invalidNames = ['دواء الشامي', 'دواء زكريا', 'شحن خارجي', 'صيدليات', 'مورد متنوع', 'مورد جرد 27/12/2025'];
+  for (const supplierName of invalidNames) {
+    const rows = buildSupplierFinancialRows({
+      decision: {
+        items: [{
+          item_id: supplierName,
+          product_code: supplierName,
+          product_name: supplierName,
+          needed_qty: 1,
+          recommended: null,
+          alternatives: [],
+        }],
+      },
+      historyRows: [{
+        product_code: supplierName,
+        product_name: supplierName,
+        historical_supplier: supplierName,
+        historical_effective_unit_cost: 100,
+      }],
+      orderItems: [{ product_code: supplierName, expected_unit_cost: 100 }],
+      branch: 'دواء شكري',
+    });
+    assert.equal(rows[0].supplier_name, '', supplierName);
+  }
+});
