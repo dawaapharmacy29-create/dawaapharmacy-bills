@@ -12,7 +12,17 @@ import {
   Upload,
 } from 'lucide-react';
 import { smartPurchaseUnifiedApi as purchaseApi } from '@/api/smartPurchaseUnifiedApi';
+import { smartPurchaseOrderManagementApi as orderManagementApi } from '@/api/smartPurchaseOrderManagementApi';
 import { normalizeDualBranchStockRows } from '@/lib/dualBranchStockMaster';
+import CleanSupplierFinancialWorkspace from '@/components/purchases/CleanSupplierFinancialWorkspace';
+import {
+  buildSingleSupplierScenarios,
+  buildSafeCurrentOfferPlan,
+  buildSupplierFinancialRows,
+  buildSupplierGroups,
+  combineSingleSupplierScenarioSets,
+  mergePlanWithHistory,
+} from '@/lib/purchaseSupplierFinancials';
 
 const money = (value) =>
   new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -37,7 +47,14 @@ function BranchPlanCard({ branchKey, data, mode }) {
   const plan = Array.isArray(data?.plan) ? data.plan : [];
   const buyRows = plan
     .filter((row) => Number(row.buy_quantity || 0) > 0)
-    .sort((a, b) => Number(b.buy_estimated_cost || 0) - Number(a.buy_estimated_cost || 0));
+    .sort((a, b) => Number(b.planning_reference_total || b.buy_estimated_cost || 0) - Number(a.planning_reference_total || a.buy_estimated_cost || 0));
+  const financialReferenceValue = buyRows.reduce(
+    (sum, row) => sum + Number(row.planning_reference_total || row.buy_estimated_cost || 0),
+    0
+  );
+  const historicalReferenceItems = buyRows.filter((row) =>
+    ['historical_average', 'historical_last'].includes(row.planning_cost_source)
+  ).length;
 
   return (
     <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
@@ -48,18 +65,20 @@ function BranchPlanCard({ branchKey, data, mode }) {
             <p className="mt-1 text-sm text-slate-500">{modeLabel(mode?.mode)}</p>
           </div>
           <div className="rounded-xl border bg-white px-4 py-2 text-left">
-            <div className="text-xs text-slate-500">شراء مقترح</div>
-            <div className="text-xl font-black text-teal-700">{money(summary.suggested_buy_value)} ج</div>
+            <div className="text-xs text-slate-500">تكلفة مرجعية محسّنة</div>
+            <div className="text-xl font-black text-teal-700">{money(financialReferenceValue)} ج</div>
+            <div className="mt-1 text-[10px] text-slate-400">V10: {money(summary.suggested_buy_value)} ج</div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-7">
         <Metric label="أصناف شراء" value={summary.buy_now_items || 0} />
         <Metric label="نواقص حرجة" value={(summary.stockout_items || 0) + (summary.below_min_items || 0)} />
         <Metric label="احتياج الفترة" value={`${money(summary.period_need_value)} ج`} />
-        <Metric label="شراء اليوم" value={`${money(summary.suggested_buy_value)} ج`} />
-        <Metric label="تحويلات" value={(summary.transfer_only_items || 0) + (summary.transfer_then_buy_items || 0)} />
+        <Metric label="قيمة V10" value={`${money(summary.suggested_buy_value)} ج`} />
+        <Metric label="تكلفة مرجعية" value={`${money(financialReferenceValue)} ج`} />
+        <Metric label="بتاريخ تكلفة" value={historicalReferenceItems} />
         <Metric label="Safe Order Today" value={`${money(mode?.safe_order_today)} ج`} />
       </div>
       <div className="mx-4 mb-4 flex flex-wrap gap-2 text-xs">
@@ -97,7 +116,9 @@ function BranchPlanCard({ branchKey, data, mode }) {
                 <th className="p-2 text-right">Max</th>
                 <th className="p-2 text-right">الشراء</th>
                 <th className="p-2 text-right">التحويل</th>
-                <th className="p-2 text-right">القيمة</th>
+                <th className="p-2 text-right">المورد المرجعي</th>
+                <th className="p-2 text-right">تكلفة الوحدة</th>
+                <th className="p-2 text-right">القيمة المرجعية</th>
                 <th className="p-2 text-right">القرار</th>
               </tr>
             </thead>
@@ -115,12 +136,21 @@ function BranchPlanCard({ branchKey, data, mode }) {
                   <td className="p-2">{qty(row.max_stock)}</td>
                   <td className="p-2 font-bold text-teal-700">{qty(row.buy_quantity)}</td>
                   <td className="p-2">{qty(row.suggested_transfer_qty)}</td>
-                  <td className="p-2 font-semibold">{money(row.buy_estimated_cost)} ج</td>
+                  <td className="p-2 text-xs font-bold text-indigo-800">{row.historical_supplier || '—'}</td>
+                  <td className="p-2">
+                    <div className="font-semibold">{money(row.planning_reference_unit_cost || row.unit_cost)} ج</div>
+                    <div className="text-[10px] text-slate-400">
+                      {row.planning_cost_source === 'historical_average' ? 'متوسط تاريخي' :
+                       row.planning_cost_source === 'historical_last' ? 'آخر شراء' :
+                       row.planning_cost_source === 'planner_reference' ? 'مرجع الخطة' : '—'}
+                    </div>
+                  </td>
+                  <td className="p-2 font-semibold">{money(row.planning_reference_total || row.buy_estimated_cost)} ج</td>
                   <td className="p-2 text-xs text-slate-500">{row.reason || row.decision}</td>
                 </tr>
               ))}
               {!buyRows.length && (
-                <tr><td colSpan="10" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
+                <tr><td colSpan="12" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
               )}
             </tbody>
           </table>
@@ -146,6 +176,18 @@ export default function PurchaseCenterClean() {
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
   const [draftResult, setDraftResult] = useState(null);
+  const [historyByBranch, setHistoryByBranch] = useState({ shokry: [], shamy: [] });
+  const [supplierWorkspace, setSupplierWorkspace] = useState({
+    loading: false,
+    applying: '',
+    message: '',
+    error: '',
+    rows: [],
+    groups: [],
+    scenarios: [],
+    currentOfferPlans: {},
+    draftTotals: {},
+  });
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
   const [phase, setPhase] = useState('idle');
@@ -225,6 +267,28 @@ export default function PurchaseCenterClean() {
     Number(plan?.execution_pending?.shokry?.units || 0)
     + Number(plan?.execution_pending?.shamy?.units || 0);
 
+  const financialReferenceTotal = useMemo(() => {
+    if (!plan) return 0;
+    return ['shokry', 'shamy'].reduce((total, branchKey) => (
+      total + (plan?.[branchKey]?.plan || []).reduce((sum, row) => (
+        sum + (Number(row.buy_quantity || 0) > 0
+          ? Number(row.planning_reference_total || row.buy_estimated_cost || 0)
+          : 0)
+      ), 0)
+    ), 0);
+  }, [plan]);
+
+  const financialHistoryCoverage = useMemo(() => {
+    if (!plan) return { history: 0, total: 0 };
+    const rows = ['shokry', 'shamy'].flatMap((branchKey) =>
+      (plan?.[branchKey]?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0)
+    );
+    return {
+      total: rows.length,
+      history: rows.filter((row) => ['historical_average', 'historical_last'].includes(row.planning_cost_source)).length,
+    };
+  }, [plan]);
+
   const hasNegativeStock =
     Number(parsed?.quality?.negative_shokry || 0) > 0
     || Number(parsed?.quality?.negative_shamy || 0) > 0;
@@ -248,7 +312,35 @@ export default function PurchaseCenterClean() {
     if (expectedSyncId && result?.stock_sync_id !== expectedSyncId) {
       throw new Error('تم إيقاف الخطة لأن التحليل لا يطابق نفس نسخة ملف الرصيد المحفوظ.');
     }
-    setPlan(result);
+
+    let history = { shokry: [], shamy: [] };
+    try {
+      const [shokryHistory, shamyHistory] = await Promise.all([
+        purchaseApi.historyEnrichRows('دواء شكري', result?.shokry?.plan || []),
+        purchaseApi.historyEnrichRows('دواء الشامي', result?.shamy?.plan || []),
+      ]);
+      history = {
+        shokry: shokryHistory?.rows || [],
+        shamy: shamyHistory?.rows || [],
+      };
+    } catch {
+      history = { shokry: [], shamy: [] };
+    }
+
+    const financialPlan = {
+      ...result,
+      shokry: {
+        ...(result.shokry || {}),
+        plan: mergePlanWithHistory(result?.shokry?.plan || [], history.shokry),
+      },
+      shamy: {
+        ...(result.shamy || {}),
+        plan: mergePlanWithHistory(result?.shamy?.plan || [], history.shamy),
+      },
+    };
+
+    setHistoryByBranch(history);
+    setPlan(financialPlan);
     setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
     return result;
@@ -261,6 +353,8 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
+    setHistoryByBranch({ shokry: [], shamy: [] });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {} });
 
     try {
       setPhase('saving');
@@ -308,6 +402,8 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
+    setHistoryByBranch({ shokry: [], shamy: [] });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {} });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -323,6 +419,130 @@ export default function PurchaseCenterClean() {
     } catch (err) {
       setError(err?.message || 'تعذر قراءة ملف الرصيد.');
       setPhase('error');
+    }
+  }
+
+  async function loadSupplierWorkspace(result) {
+    const shokryOrderId = result?.shokry_order_id;
+    const shamyOrderId = result?.shamy_order_id;
+    if (!shokryOrderId || !shamyOrderId) return;
+
+    setSupplierWorkspace((current) => ({
+      ...current,
+      loading: true,
+      applying: '',
+      message: '',
+      error: '',
+      rows: [],
+      groups: [],
+      scenarios: [],
+      currentOfferPlans: {},
+      draftTotals: {},
+    }));
+    try {
+      const [shokryDecision, shamyDecision, shokryOrder, shamyOrder] = await Promise.all([
+        purchaseApi.supplierDecision(shokryOrderId),
+        purchaseApi.supplierDecision(shamyOrderId),
+        purchaseApi.getOrder(shokryOrderId),
+        purchaseApi.getOrder(shamyOrderId),
+      ]);
+
+      const rows = [
+        ...buildSupplierFinancialRows({
+          decision: shokryDecision,
+          historyRows: historyByBranch.shokry,
+          orderItems: shokryOrder?.items || [],
+          branch: 'دواء شكري',
+        }),
+        ...buildSupplierFinancialRows({
+          decision: shamyDecision,
+          historyRows: historyByBranch.shamy,
+          orderItems: shamyOrder?.items || [],
+          branch: 'دواء الشامي',
+        }),
+      ];
+
+      const scenarios = combineSingleSupplierScenarioSets([
+        buildSingleSupplierScenarios({
+          decision: shokryDecision,
+          historyRows: historyByBranch.shokry,
+          branch: 'دواء شكري',
+        }),
+        buildSingleSupplierScenarios({
+          decision: shamyDecision,
+          historyRows: historyByBranch.shamy,
+          branch: 'دواء الشامي',
+        }),
+      ]);
+
+      const currentOfferPlans = {
+        shokry: {
+          orderId: shokryOrderId,
+          branch: 'دواء شكري',
+          ...buildSafeCurrentOfferPlan(shokryDecision, shokryOrder?.items || []),
+        },
+        shamy: {
+          orderId: shamyOrderId,
+          branch: 'دواء الشامي',
+          ...buildSafeCurrentOfferPlan(shamyDecision, shamyOrder?.items || []),
+        },
+      };
+
+      setSupplierWorkspace({
+        loading: false,
+        applying: '',
+        message: '',
+        error: '',
+        rows,
+        groups: buildSupplierGroups(rows),
+        scenarios,
+        currentOfferPlans,
+        draftTotals: {
+          shokry: Number(shokryOrder?.order?.approved_total || shokryOrder?.order?.expected_total || 0),
+          shamy: Number(shamyOrder?.order?.approved_total || shamyOrder?.order?.expected_total || 0),
+        },
+      });
+    } catch (err) {
+      setSupplierWorkspace({
+        loading: false,
+        applying: '',
+        message: '',
+        error: err?.message || 'تعذر حساب أفضل الموردين.',
+        rows: [],
+        groups: [],
+        scenarios: [],
+        currentOfferPlans: {},
+        draftTotals: {},
+      });
+    }
+  }
+
+  async function applyCurrentOffersForBranch(branchKey) {
+    if (!draftResult || supplierWorkspace.loading || supplierWorkspace.applying) return;
+    const planToApply = supplierWorkspace.currentOfferPlans?.[branchKey];
+    if (!planToApply?.orderId || !planToApply?.items?.length) return;
+
+    setSupplierWorkspace((current) => ({
+      ...current,
+      applying: branchKey,
+      message: '',
+      error: '',
+    }));
+
+    try {
+      await orderManagementApi.applySupplierPlan(planToApply.orderId, planToApply.items);
+      await loadSupplierWorkspace(draftResult);
+      setSupplierWorkspace((current) => ({
+        ...current,
+        applying: '',
+        message: `تم تثبيت أفضل العروض الحالية الآمنة لـ ${planToApply.branch} بدون تغيير كميات V10.`,
+      }));
+    } catch (err) {
+      setSupplierWorkspace((current) => ({
+        ...current,
+        applying: '',
+        error: err?.message || `تعذر تثبيت عروض ${planToApply.branch}.`,
+      }));
     }
   }
 
@@ -342,6 +562,7 @@ export default function PurchaseCenterClean() {
       });
       setDraftResult(result);
       setPhase('ready');
+      void loadSupplierWorkspace(result);
     } catch (err) {
       setError(err?.message || 'تعذر إنشاء مسودتي الفرعين.');
       setPhase('error');
@@ -464,8 +685,9 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-9">
-            <Metric label="إجمالي قيمة الشراء" value={`${money(plan.totals?.buy_value)} ج`} />
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-10">
+            <Metric label="الإجمالي المالي المرجعي" value={`${money(financialReferenceTotal)} ج`} />
+            <Metric label="قيمة V10 الأصلية" value={`${money(plan.totals?.buy_value)} ج`} />
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
             <Metric label="مراجعة سريعة" value={quickReviewRows.length} />
@@ -473,6 +695,10 @@ export default function PurchaseCenterClean() {
             <Metric label="Review بالحركة فقط" value={movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy} />
             <Metric label="في الطريق" value={`${qty(executionPendingUnits)} وحدة`} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
+            <Metric
+              label="تغطية تاريخ التكلفة"
+              value={financialHistoryCoverage.total ? `${financialHistoryCoverage.history}/${financialHistoryCoverage.total}` : '0/0'}
+            />
             <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
           </section>
 
@@ -794,6 +1020,22 @@ export default function PurchaseCenterClean() {
               </div>
             </div>
           </section>
+
+          {draftResult && (
+            <CleanSupplierFinancialWorkspace
+              rows={supplierWorkspace.rows}
+              groups={supplierWorkspace.groups}
+              scenarios={supplierWorkspace.scenarios}
+              loading={supplierWorkspace.loading}
+              error={supplierWorkspace.error}
+              message={supplierWorkspace.message}
+              applying={supplierWorkspace.applying}
+              currentOfferPlans={supplierWorkspace.currentOfferPlans}
+              draftTotals={supplierWorkspace.draftTotals}
+              onApplyCurrentOffers={applyCurrentOffersForBranch}
+              onRefresh={() => loadSupplierWorkspace(draftResult)}
+            />
+          )}
         </>
       )}
 

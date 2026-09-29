@@ -1,0 +1,447 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  buildSingleSupplierScenarios,
+  buildSafeCurrentOfferPlan,
+  combineSingleSupplierScenarioSets,
+  buildSupplierFinancialRows,
+  buildSupplierGroups,
+  mergePlanWithHistory,
+} from '../src/lib/purchaseSupplierFinancials.js';
+
+const historyRows = [
+  {
+    product_code: '1',
+    product_name: 'A',
+    historical_supplier: 'مخزن سونيستا',
+    historical_effective_unit_cost: 80,
+    historical_last_purchase_date: '2026-09-20',
+    unit_cost: 90,
+  },
+  {
+    product_code: '2',
+    product_name: 'B',
+    historical_supplier: 'فارما',
+    historical_effective_unit_cost: 50,
+    unit_cost: 55,
+  },
+];
+
+test('historical average cost becomes the planning reference when available', () => {
+  const rows = mergePlanWithHistory([
+    { product_code: '1', product_name: 'A', buy_quantity: 3, unit_cost: 95 },
+  ], historyRows);
+  assert.equal(rows[0].planning_reference_unit_cost, 80);
+  assert.equal(rows[0].planning_reference_total, 240);
+  assert.equal(rows[0].planning_cost_source, 'historical_average');
+  assert.equal(rows[0].historical_supplier, 'مخزن سونيستا');
+});
+
+test('current supplier offer takes precedence over historical average', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      needed_qty: 3,
+      recommended: {
+        offer_id: 'offer-current',
+        supplier_name: 'فارما',
+        purchase_qty: 3,
+        quantity_fully_available: true,
+        effective_unit_cost: 70,
+        net_unit_cost: 72,
+        cash_cost: 216,
+        earned_bonus_units: 1,
+      },
+      alternatives: [],
+    }],
+  };
+  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري' });
+  assert.equal(rows[0].supplier_name, 'فارما');
+  assert.equal(rows[0].cost_source, 'current_offer');
+  assert.equal(rows[0].unit_cost, 72);
+  assert.equal(rows[0].effective_unit_cost, 70);
+  assert.equal(rows[0].cash_cost, 216);
+  assert.equal(rows[0].price_verified, true);
+});
+
+test('historical supplier is used as reference when there is no current offer', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '2',
+      product_name: 'B',
+      needed_qty: 4,
+      recommended: null,
+      alternatives: [],
+    }],
+  };
+  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء الشامي' });
+  assert.equal(rows[0].supplier_name, 'فارما');
+  assert.equal(rows[0].cost_source, 'historical_average');
+  assert.equal(rows[0].unit_cost, 50);
+  assert.equal(rows[0].cash_cost, 200);
+  assert.equal(rows[0].price_verified, false);
+});
+
+test('supplier groups preserve verified versus historical-reference counts', () => {
+  const groups = buildSupplierGroups([
+    { supplier_name: 'فارما', quantity: 2, cash_cost: 100, cost_source: 'current_offer', unit_cost: 50 },
+    { supplier_name: 'فارما', quantity: 3, cash_cost: 120, cost_source: 'historical_average', unit_cost: 40 },
+  ]);
+  assert.equal(groups[0].items_count, 2);
+  assert.equal(groups[0].current_offer_items, 1);
+  assert.equal(groups[0].historical_reference_items, 1);
+  assert.equal(groups[0].estimated_cash_total, 220);
+});
+
+test('single supplier scenarios show missing items instead of pretending full coverage', () => {
+  const decision = {
+    items: [
+      {
+        product_code: '1',
+        product_name: 'A',
+        needed_qty: 2,
+        recommended: {
+          offer_id: 'sonista-offer',
+          supplier_name: 'مخزن سونيستا',
+          purchase_qty: 2,
+          quantity_fully_available: true,
+          net_unit_cost: 75,
+          effective_unit_cost: 75,
+          cash_cost: 150,
+        },
+        alternatives: [{
+          offer_id: 'pharma-offer',
+          supplier_name: 'فارما',
+          purchase_qty: 2,
+          quantity_fully_available: true,
+          net_unit_cost: 78,
+          effective_unit_cost: 78,
+          cash_cost: 156,
+        }],
+      },
+      {
+        product_code: '2',
+        product_name: 'B',
+        needed_qty: 3,
+        recommended: null,
+        alternatives: [],
+      },
+    ],
+  };
+
+  const scenarios = buildSingleSupplierScenarios({ decision, historyRows, branch: 'دواء شكري' });
+  const pharma = scenarios.find((row) => row.supplier_name === 'فارما');
+  assert.ok(pharma);
+  assert.equal(pharma.current_offer_items, 1);
+  assert.equal(pharma.historical_reference_items, 1);
+  assert.equal(pharma.missing_items, 0);
+
+  const sonista = scenarios.find((row) => row.supplier_name === 'مخزن سونيستا');
+  assert.ok(sonista);
+  assert.equal(sonista.current_offer_items, 1);
+  assert.equal(sonista.missing_items, 1);
+});
+
+
+test('combines one-supplier coverage across both branch drafts', () => {
+  const combined = combineSingleSupplierScenarioSets([
+    [{
+      supplier_name: 'فارما',
+      items_count: 2,
+      current_offer_items: 1,
+      historical_reference_items: 1,
+      missing_items: 0,
+      estimated_total: 200,
+      rows: [{ branch: 'دواء شكري' }, { branch: 'دواء شكري' }],
+    }],
+    [{
+      supplier_name: 'فارما',
+      items_count: 3,
+      current_offer_items: 2,
+      historical_reference_items: 0,
+      missing_items: 1,
+      estimated_total: 300,
+      rows: [{ branch: 'دواء الشامي' }, { branch: 'دواء الشامي' }, { branch: 'دواء الشامي' }],
+    }],
+  ]);
+
+  assert.equal(combined[0].supplier_name, 'فارما');
+  assert.equal(combined[0].items_count, 5);
+  assert.equal(combined[0].current_offer_items, 3);
+  assert.equal(combined[0].historical_reference_items, 1);
+  assert.equal(combined[0].missing_items, 1);
+  assert.equal(combined[0].estimated_total, 500);
+  assert.equal(Math.round(combined[0].current_coverage_percent), 60);
+  assert.equal(Math.round(combined[0].reference_coverage_percent), 80);
+});
+
+
+test('uses saved draft cost and discount after historical fallbacks are exhausted', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '3',
+      product_name: 'C',
+      needed_qty: 5,
+      recommended: null,
+      alternatives: [],
+    }],
+  };
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows: [{ product_code: '3', product_name: 'C', unit_cost: 0 }],
+    orderItems: [{
+      product_code: '3',
+      product_name: 'C',
+      expected_unit_cost: 42,
+      expected_discount: 18,
+      public_price: 60,
+    }],
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].cost_source, 'draft_saved_cost');
+  assert.equal(rows[0].unit_cost, 42);
+  assert.equal(rows[0].cash_cost, 210);
+  assert.equal(rows[0].discount_percent, 18);
+});
+
+
+test('only applies current offers that preserve the V10 quantity', () => {
+  const plan = buildSafeCurrentOfferPlan({
+    items: [
+      {
+        item_id: 'safe',
+        product_name: 'Safe',
+        needed_qty: 5,
+        recommended: {
+          offer_id: 'offer-safe',
+          supplier_name: 'فارما',
+          purchase_qty: 5,
+          quantity_fully_available: true,
+          net_unit_cost: 10,
+          effective_unit_cost: 10,
+        },
+      },
+      {
+        item_id: 'moq',
+        product_name: 'MOQ',
+        needed_qty: 5,
+        recommended: {
+          offer_id: 'offer-moq',
+          supplier_name: 'فارما',
+          purchase_qty: 10,
+          quantity_fully_available: true,
+          net_unit_cost: 9,
+          effective_unit_cost: 9,
+        },
+      },
+      {
+        item_id: 'availability',
+        product_name: 'Availability',
+        needed_qty: 5,
+        recommended: {
+          offer_id: 'offer-short',
+          supplier_name: 'فارما',
+          purchase_qty: 5,
+          quantity_fully_available: false,
+          net_unit_cost: 8,
+          effective_unit_cost: 8,
+        },
+      },
+      {
+        item_id: 'missing',
+        product_name: 'Missing',
+        needed_qty: 5,
+        recommended: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(plan.items, [{ item_id: 'safe', offer_id: 'offer-safe' }]);
+  assert.equal(plan.safe_items, 1);
+  assert.equal(plan.skipped_items, 3);
+  assert.equal(plan.skipped.find((row) => row.item_id === 'moq').reason, 'offer_changes_v10_quantity');
+  assert.equal(plan.skipped.find((row) => row.item_id === 'availability').reason, 'insufficient_availability');
+  assert.equal(plan.skipped.find((row) => row.item_id === 'missing').reason, 'no_current_offer');
+});
+
+
+test('does not reapply an offer already stored as supplier_offer', () => {
+  const decision = {
+    items: [{
+      item_id: 'safe',
+      product_name: 'Safe',
+      needed_qty: 5,
+      recommended: {
+        offer_id: 'offer-safe',
+        supplier_name: 'فارما',
+        purchase_qty: 5,
+        quantity_fully_available: true,
+        net_unit_cost: 10,
+        effective_unit_cost: 10,
+      },
+    }],
+  };
+  const plan = buildSafeCurrentOfferPlan(decision, [{
+    id: 'safe',
+    supplier_offer_id: 'offer-safe',
+    cost_source: 'supplier_offer',
+  }]);
+
+  assert.equal(plan.safe_items, 0);
+  assert.equal(plan.skipped_items, 1);
+  assert.equal(plan.already_applied_items, 1);
+  assert.equal(plan.review_items, 0);
+  assert.equal(plan.skipped[0].reason, 'already_applied');
+});
+
+test('marks a current offer as applied only when the draft stores that exact offer', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      needed_qty: 3,
+      recommended: {
+        offer_id: 'offer-1',
+        supplier_name: 'فارما',
+        effective_unit_cost: 70,
+        net_unit_cost: 72,
+        cash_cost: 216,
+      },
+      alternatives: [],
+    }],
+  };
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows,
+    orderItems: [{
+      id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      supplier_offer_id: 'offer-1',
+      cost_source: 'supplier_offer',
+    }],
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].current_offer, true);
+  assert.equal(rows[0].current_offer_applied, true);
+});
+
+
+test('chooses the lowest effective current cost as the financial supplier', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      needed_qty: 3,
+      recommended: {
+        offer_id: 'operational',
+        supplier_name: 'فارما',
+        purchase_qty: 3,
+        quantity_fully_available: true,
+        net_unit_cost: 82,
+        effective_unit_cost: 80,
+        cash_cost: 246,
+        reason: 'أفضل توازن تشغيلي',
+      },
+      alternatives: [{
+        offer_id: 'financial',
+        supplier_name: 'مخزن سونيستا',
+        purchase_qty: 3,
+        quantity_fully_available: true,
+        net_unit_cost: 75,
+        effective_unit_cost: 70,
+        cash_cost: 225,
+      }],
+    }],
+  };
+
+  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري' });
+  assert.equal(rows[0].supplier_name, 'مخزن سونيستا');
+  assert.equal(rows[0].cash_unit_cost, 75);
+  assert.equal(rows[0].effective_unit_cost, 70);
+  assert.equal(rows[0].cash_cost, 225);
+  assert.equal(rows[0].operational_recommended_supplier, 'فارما');
+
+  const safe = buildSafeCurrentOfferPlan(decision);
+  assert.deepEqual(safe.items, [{ item_id: 'x', offer_id: 'financial' }]);
+});
+
+
+test('single-supplier mode does not count an MOQ-changing offer as current coverage', () => {
+  const decision = {
+    items: [{
+      product_code: '9',
+      product_name: 'MOQ Item',
+      needed_qty: 5,
+      recommended: {
+        offer_id: 'offer-moq',
+        supplier_name: 'مخزن سونيستا',
+        purchase_qty: 10,
+        quantity_fully_available: true,
+        net_unit_cost: 40,
+        effective_unit_cost: 38,
+        cash_cost: 400,
+      },
+      alternatives: [],
+    }],
+  };
+
+  const scenarios = buildSingleSupplierScenarios({
+    decision,
+    historyRows: [],
+    branch: 'دواء شكري',
+  });
+  const sonista = scenarios.find((row) => row.supplier_name === 'مخزن سونيستا');
+  assert.ok(sonista);
+  assert.equal(sonista.current_offer_items, 0);
+  assert.equal(sonista.missing_items, 1);
+  assert.equal(sonista.rows[0].constraint, 'offer_changes_v10_quantity');
+  assert.equal(sonista.rows[0].cash_cost, 0);
+});
+
+
+test('does not price the financial plan from an MOQ-changing current offer', () => {
+  const decision = {
+    items: [{
+      item_id: 'moq-financial',
+      product_code: '10',
+      product_name: 'MOQ Financial',
+      needed_qty: 5,
+      recommended: {
+        offer_id: 'offer-moq',
+        supplier_name: 'فارما',
+        purchase_qty: 10,
+        quantity_fully_available: true,
+        net_unit_cost: 40,
+        effective_unit_cost: 35,
+        cash_cost: 400,
+      },
+      alternatives: [],
+    }],
+  };
+
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows: [{
+      product_code: '10',
+      product_name: 'MOQ Financial',
+      historical_supplier: 'مخزن سونيستا',
+      historical_effective_unit_cost: 55,
+    }],
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].current_offer, false);
+  assert.equal(rows[0].supplier_name, 'مخزن سونيستا');
+  assert.equal(rows[0].cost_source, 'historical_average');
+  assert.equal(rows[0].unit_cost, 55);
+  assert.equal(rows[0].cash_cost, 275);
+});
