@@ -186,6 +186,7 @@ export default function PurchaseCenterClean() {
     groups: [],
     scenarios: [],
     currentOfferPlans: {},
+    draftTotals: {},
   });
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
@@ -331,7 +332,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {} });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {} });
 
     try {
       setPhase('saving');
@@ -380,7 +381,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {} });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {} });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -414,6 +415,7 @@ export default function PurchaseCenterClean() {
       groups: [],
       scenarios: [],
       currentOfferPlans: {},
+      draftTotals: {},
     }));
     try {
       const [shokryDecision, shamyDecision, shokryOrder, shamyOrder] = await Promise.all([
@@ -473,6 +475,10 @@ export default function PurchaseCenterClean() {
         groups: buildSupplierGroups(rows),
         scenarios,
         currentOfferPlans,
+        draftTotals: {
+          shokry: Number(shokryOrder?.order?.approved_total || shokryOrder?.order?.expected_total || 0),
+          shamy: Number(shamyOrder?.order?.approved_total || shamyOrder?.order?.expected_total || 0),
+        },
       });
     } catch (err) {
       setSupplierWorkspace({
@@ -484,6 +490,7 @@ export default function PurchaseCenterClean() {
         groups: [],
         scenarios: [],
         currentOfferPlans: {},
+        draftTotals: {},
       });
     }
   }
@@ -997,6 +1004,7 @@ export default function PurchaseCenterClean() {
               message={supplierWorkspace.message}
               applying={supplierWorkspace.applying}
               currentOfferPlans={supplierWorkspace.currentOfferPlans}
+              draftTotals={supplierWorkspace.draftTotals}
               onApplyCurrentOffers={applyCurrentOffersForBranch}
             />
           )}
