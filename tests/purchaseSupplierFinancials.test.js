@@ -373,3 +373,42 @@ test('single-supplier mode does not count an MOQ-changing offer as current cover
   assert.equal(sonista.rows[0].constraint, 'offer_changes_v10_quantity');
   assert.equal(sonista.rows[0].cash_cost, 0);
 });
+
+
+test('does not price the financial plan from an MOQ-changing current offer', () => {
+  const decision = {
+    items: [{
+      item_id: 'moq-financial',
+      product_code: '10',
+      product_name: 'MOQ Financial',
+      needed_qty: 5,
+      recommended: {
+        offer_id: 'offer-moq',
+        supplier_name: 'فارما',
+        purchase_qty: 10,
+        quantity_fully_available: true,
+        net_unit_cost: 40,
+        effective_unit_cost: 35,
+        cash_cost: 400,
+      },
+      alternatives: [],
+    }],
+  };
+
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows: [{
+      product_code: '10',
+      product_name: 'MOQ Financial',
+      historical_supplier: 'مخزن سونيستا',
+      historical_effective_unit_cost: 55,
+    }],
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].current_offer, false);
+  assert.equal(rows[0].supplier_name, 'مخزن سونيستا');
+  assert.equal(rows[0].cost_source, 'historical_average');
+  assert.equal(rows[0].unit_cost, 55);
+  assert.equal(rows[0].cash_cost, 275);
+});
