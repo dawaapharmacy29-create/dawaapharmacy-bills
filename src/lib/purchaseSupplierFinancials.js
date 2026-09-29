@@ -228,3 +228,48 @@ export function buildSingleSupplierScenarios({ decision = null, historyRows = []
     || a.estimated_total - b.estimated_total
   );
 }
+
+
+export function combineSingleSupplierScenarioSets(scenarioSets = []) {
+  const suppliers = new Map();
+
+  for (const scenario of (scenarioSets || []).flat()) {
+    const name = String(scenario?.supplier_name || '').trim();
+    if (!name) continue;
+    if (!suppliers.has(name)) {
+      suppliers.set(name, {
+        supplier_name: name,
+        items_count: 0,
+        current_offer_items: 0,
+        historical_reference_items: 0,
+        missing_items: 0,
+        estimated_total: 0,
+        rows: [],
+      });
+    }
+    const target = suppliers.get(name);
+    target.items_count += number(scenario.items_count);
+    target.current_offer_items += number(scenario.current_offer_items);
+    target.historical_reference_items += number(scenario.historical_reference_items);
+    target.missing_items += number(scenario.missing_items);
+    target.estimated_total += number(scenario.estimated_total);
+    target.rows.push(...(scenario.rows || []));
+  }
+
+  return [...suppliers.values()]
+    .map((scenario) => ({
+      ...scenario,
+      estimated_total: Math.round(scenario.estimated_total * 100) / 100,
+      current_coverage_percent: scenario.items_count
+        ? (scenario.current_offer_items / scenario.items_count) * 100
+        : 0,
+      reference_coverage_percent: scenario.items_count
+        ? ((scenario.current_offer_items + scenario.historical_reference_items) / scenario.items_count) * 100
+        : 0,
+    }))
+    .sort((a, b) =>
+      b.current_offer_items - a.current_offer_items
+      || a.missing_items - b.missing_items
+      || a.estimated_total - b.estimated_total
+    );
+}
