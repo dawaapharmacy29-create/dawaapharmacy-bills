@@ -50,18 +50,21 @@ function currentCandidateForSupplier(item, supplierName) {
   return candidates.find((candidate) => String(candidate.supplier_name || '').trim().toLowerCase() === target) || null;
 }
 
-export function buildSupplierFinancialRows({ decision = null, historyRows = [], branch = '' } = {}) {
+export function buildSupplierFinancialRows({ decision = null, historyRows = [], orderItems = [], branch = '' } = {}) {
   const history = new Map((historyRows || []).map((row) => [purchaseProductKey(row), row]));
+  const orderItemMap = new Map((orderItems || []).map((row) => [purchaseProductKey(row), row]));
   const items = Array.isArray(decision?.items) ? decision.items : [];
 
   return items.map((item) => {
     const hist = history.get(purchaseProductKey(item)) || {};
+    const orderItem = orderItemMap.get(purchaseProductKey(item)) || {};
     const recommended = item?.recommended || {};
     const quantity = number(item.needed_qty);
     const currentEffectiveCost = number(recommended.effective_unit_cost || recommended.net_unit_cost);
     const historicalCost = number(hist.historical_effective_unit_cost);
     const historicalLastCost = number(hist.historical_last_unit_cost || hist.last_purchase_price);
-    const fallbackCost = number(hist.planning_reference_unit_cost || hist.unit_cost);
+    const draftCost = number(orderItem.expected_unit_cost);
+    const fallbackCost = draftCost > 0 ? draftCost : number(hist.planning_reference_unit_cost || hist.unit_cost);
     const hasCurrentOffer = Boolean(recommended.supplier_name) && currentEffectiveCost > 0;
 
     const supplierName = hasCurrentOffer
@@ -86,11 +89,21 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
         ? 'historical_average'
         : historicalLastCost > 0
           ? 'historical_last'
-          : fallbackCost > 0
-            ? 'planner_reference'
-            : 'missing';
+          : draftCost > 0
+            ? 'draft_saved_cost'
+            : fallbackCost > 0
+              ? 'planner_reference'
+              : 'missing';
 
-    const listPrice = number(recommended.list_price || hist.public_price || hist.list_price || hist.reference_price);
+    const listPrice = number(
+      recommended.list_price
+      || orderItem.public_price
+      || orderItem.reference_unit_price
+      || orderItem.list_price
+      || hist.public_price
+      || hist.list_price
+      || hist.reference_price
+    );
     const referenceValue = listPrice > 0 ? quantity * listPrice : 0;
     const effectiveSavingPercent = referenceValue > 0 && cashCost >= 0 && cashCost <= referenceValue
       ? ((referenceValue - cashCost) / referenceValue) * 100
@@ -108,7 +121,11 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       unit_cost: unitCost,
       cash_cost: cashCost,
       list_price: listPrice,
-      discount_percent: recommended.discount_percent != null ? number(recommended.discount_percent) : null,
+      discount_percent: recommended.discount_percent != null
+        ? number(recommended.discount_percent)
+        : orderItem.expected_discount != null
+          ? number(orderItem.expected_discount)
+          : null,
       extra_discount_percent: recommended.extra_discount_percent != null ? number(recommended.extra_discount_percent) : null,
       bonus_units: number(recommended.earned_bonus_units),
       received_units: number(recommended.received_units) || quantity,
