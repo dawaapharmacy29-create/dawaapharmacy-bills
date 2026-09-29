@@ -39,6 +39,7 @@ test('marks delivery/service rows as non-inventory', () => {
   const result = normalizeDualBranchStockRows([{
     'الكود': '9999',
     'إسم الصنف': 'توصيل منزلي',
+    'الوحدة': '',
     'الفرعية الشامي': 0,
     'الادارة فرع شكري': 0,
   }], 'stock.xlsx');
@@ -50,8 +51,8 @@ test('marks delivery/service rows as non-inventory', () => {
 
 test('rejects duplicate product codes before any stock write', () => {
   const rows = [
-    { 'الكود': '7', 'إسم الصنف': 'A', 'الفرعية الشامي': 1, 'الادارة فرع شكري': 2 },
-    { 'الكود': '7', 'إسم الصنف': 'B', 'الفرعية الشامي': 3, 'الادارة فرع شكري': 4 },
+    { 'الكود': '7', 'إسم الصنف': 'A', 'الوحدة': 'علبة', 'الفرعية الشامي': 1, 'الادارة فرع شكري': 2 },
+    { 'الكود': '7', 'إسم الصنف': 'B', 'الوحدة': 'علبة', 'الفرعية الشامي': 3, 'الادارة فرع شكري': 4 },
   ];
   assert.throws(
     () => normalizeDualBranchStockRows(rows, 'stock.xlsx'),
@@ -63,6 +64,7 @@ test('rejects a file missing one branch balance column', () => {
   const rows = [{
     'الكود': '1',
     'إسم الصنف': 'A',
+    'الوحدة': 'علبة',
     'الفرعية الشامي': 1,
   }];
   assert.throws(
@@ -76,6 +78,7 @@ test('tracks negative stock as a quality signal while clamping it to zero for pl
   const result = normalizeDualBranchStockRows([{
     'الكود': '2002',
     'إسم الصنف': 'Negative Stock Item',
+    'الوحدة': 'علبة',
     'الفرعية الشامي': '-2',
     'الادارة فرع شكري': '-0.5',
   }], 'stock.xlsx');
@@ -92,6 +95,7 @@ test('counts fractional stock without rounding it away', () => {
   const result = normalizeDualBranchStockRows([{
     'الكود': '3003',
     'إسم الصنف': 'Fractional Stock Item',
+    'الوحدة': 'علبة',
     'الفرعية الشامي': '1.25',
     'الادارة فرع شكري': '2.5',
   }], 'stock.xlsx');
@@ -155,6 +159,7 @@ test('rejects a nonblank row with missing product identity instead of silently d
   const rows = [{
     'الكود': '',
     'إسم الصنف': 'Missing Code Item',
+    'الوحدة': 'علبة',
     'الفرعية الشامي': 1,
     'الادارة فرع شكري': 2,
   }];
@@ -168,6 +173,7 @@ test('rejects non-numeric stock instead of turning it into a false zero stockout
   const rows = [{
     'الكود': '4004',
     'إسم الصنف': 'Bad Stock Item',
+    'الوحدة': 'علبة',
     'الفرعية الشامي': 'غير معروف',
     'الادارة فرع شكري': 2,
   }];
@@ -181,6 +187,7 @@ test('accepts Arabic digits and preserves the actual stock value', () => {
   const result = normalizeDualBranchStockRows([{
     'الكود': '5005',
     'إسم الصنف': 'Arabic Digits Item',
+    'الوحدة': 'علبة',
     'الفرعية الشامي': '١٫٥',
     'الادارة فرع شكري': '٢',
   }], 'stock.xlsx');
@@ -194,12 +201,14 @@ test('reports original source row count without counting blank rows as products'
     {
       'الكود': '6006',
       'إسم الصنف': 'Valid Item',
+      'الوحدة': 'علبة',
       'الفرعية الشامي': 1,
       'الادارة فرع شكري': 2,
     },
     {
       'الكود': '',
       'إسم الصنف': '',
+      'الوحدة': '',
       'الفرعية الشامي': '',
       'الادارة فرع شكري': '',
     },
