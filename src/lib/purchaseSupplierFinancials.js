@@ -3,6 +3,25 @@ const number = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const INVALID_SUPPLIER_LABELS = [
+  'شحن خارجي',
+  'جرد',
+  'صيدليات',
+  'دواء شكري',
+  'دواء الشامي',
+];
+
+export function isUsableSupplierName(value) {
+  const name = String(value || '').trim();
+  if (!name) return false;
+  const normalized = name.toLowerCase();
+  return !INVALID_SUPPLIER_LABELS.some((label) => normalized.includes(label.toLowerCase()));
+}
+
+function safeHistoricalSupplier(value) {
+  return isUsableSupplierName(value) ? String(value || '').trim() : '';
+}
+
 export function purchaseProductKey(row = {}) {
   const code = String(row.product_code || '').trim().replace(/\.0+$/, '');
   if (code) return `code:${code}`;
@@ -32,7 +51,7 @@ export function mergePlanWithHistory(planRows = [], historyRows = []) {
     const buyQty = number(row.buy_quantity);
     return {
       ...row,
-      historical_supplier: hist.historical_supplier || row.historical_supplier || '',
+      historical_supplier: safeHistoricalSupplier(hist.historical_supplier || row.historical_supplier),
       historical_effective_unit_cost: historicalCost,
       historical_last_unit_cost: historicalLastCost,
       historical_last_purchase_date: hist.historical_last_purchase_date || row.historical_last_purchase_date || null,
@@ -48,7 +67,7 @@ function currentOfferCandidates(item) {
     .filter(Boolean)
     .filter((candidate) =>
       Boolean(candidate.offer_id)
-      && Boolean(candidate.supplier_name)
+      && isUsableSupplierName(candidate.supplier_name)
       && number(candidate.effective_unit_cost || candidate.net_unit_cost) > 0
     );
 }
@@ -80,6 +99,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
 
   return items.map((item) => {
     const hist = history.get(purchaseProductKey(item)) || {};
+    const historicalSupplier = safeHistoricalSupplier(hist.historical_supplier);
     const orderItem = orderItemMap.get(purchaseProductKey(item)) || {};
     const recommended = item?.recommended || {};
     const financialOffer = bestFinancialCurrentOffer(item, { preserveQuantity: true }) || {};
@@ -98,7 +118,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
 
     const supplierName = hasCurrentOffer
       ? financialOffer.supplier_name
-      : hist.historical_supplier || '';
+      : historicalSupplier;
 
     const unitCost = hasCurrentOffer
       ? currentCashUnitCost
@@ -161,7 +181,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       bonus_units: number(financialOffer.earned_bonus_units),
       received_units: number(financialOffer.received_units) || quantity,
       effective_saving_percent: effectiveSavingPercent,
-      historical_supplier: hist.historical_supplier || '',
+      historical_supplier: historicalSupplier,
       historical_effective_unit_cost: historicalCost,
       historical_last_purchase_date: hist.historical_last_purchase_date || null,
       current_offer: hasCurrentOffer,
@@ -178,7 +198,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
               ? 'all_current_offers'
               : 'advisor_visible_candidates'
           )
-        : hist.historical_supplier
+        : historicalSupplier
           ? 'historical_best'
           : 'none',
       financial_supplier_reason: hasCurrentOffer
@@ -188,7 +208,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
               ? 'أفضل تكلفة فعالة بين كل العروض الحالية التي فحصها المحرك'
               : 'أقل تكلفة فعالة بين العروض المرشحة التي أعادها المحرك للواجهة'
           )
-        : hist.historical_supplier
+        : historicalSupplier
           ? 'أفضل مورد تاريخيًا حسب متوسط التكلفة الفعلية المتاح'
           : 'لا يوجد مورد مالي موثوق بعد',
     };
@@ -241,12 +261,13 @@ export function buildSingleSupplierScenarios({ decision = null, historyRows = []
   const suppliers = new Set();
 
   for (const item of items) {
-    if (item?.recommended?.supplier_name) suppliers.add(item.recommended.supplier_name);
+    if (isUsableSupplierName(item?.recommended?.supplier_name)) suppliers.add(item.recommended.supplier_name);
     for (const alternative of item?.alternatives || []) {
-      if (alternative?.supplier_name) suppliers.add(alternative.supplier_name);
+      if (isUsableSupplierName(alternative?.supplier_name)) suppliers.add(alternative.supplier_name);
     }
     const hist = history.get(purchaseProductKey(item));
-    if (hist?.historical_supplier) suppliers.add(hist.historical_supplier);
+    const historicalSupplier = safeHistoricalSupplier(hist?.historical_supplier);
+    if (historicalSupplier) suppliers.add(historicalSupplier);
   }
 
   const scenarios = [...suppliers].map((supplierName) => {
@@ -254,7 +275,8 @@ export function buildSingleSupplierScenarios({ decision = null, historyRows = []
       const quantity = number(item.needed_qty);
       const hist = history.get(purchaseProductKey(item)) || {};
       const current = currentCandidateForSupplier(item, supplierName);
-      const historicalMatch = String(hist.historical_supplier || '').trim().toLowerCase() === String(supplierName).trim().toLowerCase();
+      const historicalSupplier = safeHistoricalSupplier(hist.historical_supplier);
+      const historicalMatch = historicalSupplier.toLowerCase() === String(supplierName).trim().toLowerCase();
       const currentAvailable = Boolean(current) && current.quantity_fully_available !== false;
       const currentPreservesQuantity = Boolean(current)
         && Math.abs(number(current.purchase_qty || quantity) - quantity) <= 0.0001;
@@ -326,7 +348,7 @@ export function combineSingleSupplierScenarioSets(scenarioSets = []) {
 
   for (const scenario of (scenarioSets || []).flat()) {
     const name = String(scenario?.supplier_name || '').trim();
-    if (!name) continue;
+    if (!isUsableSupplierName(name)) continue;
     if (!suppliers.has(name)) {
       suppliers.set(name, {
         supplier_name: name,
