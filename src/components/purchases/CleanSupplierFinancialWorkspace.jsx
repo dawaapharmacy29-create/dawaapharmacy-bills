@@ -394,10 +394,10 @@ export default function CleanSupplierFinancialWorkspace({
           </div>
 
           <div className="overflow-auto rounded-xl border bg-white">
-            <table className="min-w-[1450px] w-full text-sm">
+            <table className="min-w-[2100px] w-full text-sm">
               <thead className="bg-indigo-50/60">
                 <tr>
-                  {['الفرع','الصنف','الكمية','أفضل مورد','مصدر التكلفة','تكلفة الوحدة','قيمة السطر','خصم/وفر','بونص','المورد التاريخي'].map((head) => (
+                  {['الفرع','الصنف','الكمية','أفضل مورد مالي','مصدر التكلفة','تكلفة نقدية/وحدة','فعالة بعد البونص','القيمة النقدية','خصم مسجل','خصم إضافي','وفر فعلي تقديري','بونص','سبب الاختيار المالي','بدائل حالية','المورد التاريخي'].map((head) => (
                     <th key={head} className="p-2 text-right">{head}</th>
                   ))}
                 </tr>
