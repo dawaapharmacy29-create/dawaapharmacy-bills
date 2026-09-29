@@ -170,6 +170,57 @@ function Metric({ label, value }) {
   );
 }
 
+function PurchaseJourneyTabs({ activeStep, onStepChange, plan, draftResult, supplierReady }) {
+  const steps = [
+    { id: 1, label: 'رفع الرصيد', ready: true, done: Boolean(plan) },
+    { id: 2, label: 'مراجعة الخطة', ready: Boolean(plan), done: Boolean(draftResult) },
+    { id: 3, label: 'إنشاء المسودتين', ready: Boolean(plan), done: Boolean(draftResult) },
+    { id: 4, label: 'الموردون والأسعار', ready: Boolean(draftResult), done: Boolean(supplierReady) },
+    { id: 5, label: 'المراجعة النهائية', ready: Boolean(draftResult && supplierReady), done: false },
+  ];
+
+  return (
+    <nav className="rounded-2xl border bg-white p-2 shadow-sm" aria-label="رحلة تجهيز الطلبية">
+      <div className="grid gap-2 md:grid-cols-5">
+        {steps.map((step) => {
+          const active = step.id === activeStep;
+          return (
+            <button
+              key={step.id}
+              type="button"
+              disabled={!step.ready}
+              onClick={() => step.ready && onStepChange(step.id)}
+              className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-right transition ${
+                active
+                  ? 'border-teal-600 bg-teal-700 text-white shadow-sm'
+                  : step.done
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                    : step.ready
+                      ? 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'
+                      : 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300'
+              }`}
+            >
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-black ${
+                active
+                  ? 'border-white/40 bg-white/15'
+                  : step.done
+                    ? 'border-emerald-300 bg-emerald-100'
+                    : 'border-slate-200 bg-white'
+              }`}>
+                {step.done ? '✓' : step.id}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[10px] font-bold opacity-70">الخطوة {step.id}</span>
+                <span className="block truncate text-sm font-black">{step.label}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 export default function PurchaseCenterClean() {
   const [fileName, setFileName] = useState('');
   const [fileModifiedAt, setFileModifiedAt] = useState(null);
@@ -193,6 +244,7 @@ export default function PurchaseCenterClean() {
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
+  const [activeStep, setActiveStep] = useState(1);
   const runRef = useRef(false);
 
   const transfers = useMemo(() => {
@@ -397,7 +449,10 @@ export default function PurchaseCenterClean() {
     setPlan(financialPlan);
     if (recoveredDrafts) {
       setDraftResult(recoveredDrafts);
+      setActiveStep(4);
       void loadSupplierWorkspace(recoveredDrafts);
+    } else {
+      setActiveStep(2);
     }
     setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
@@ -454,6 +509,7 @@ export default function PurchaseCenterClean() {
 
   async function handleFile(file) {
     if (!file) return;
+    setActiveStep(1);
     setFileName(file.name);
     setFileModifiedAt(file.lastModified ? new Date(file.lastModified) : null);
     setParsed(null);
@@ -625,6 +681,7 @@ export default function PurchaseCenterClean() {
         planHash: plan.plan_hash,
       });
       setDraftResult(result);
+      setActiveStep(4);
       setPhase('ready');
       void loadSupplierWorkspace(result);
     } catch (err) {
@@ -642,6 +699,12 @@ export default function PurchaseCenterClean() {
     phase === 'planning' ? 'جاري بناء طلبية شكري والشامي والتحويلات...' :
     phase === 'creating' ? 'جاري إنشاء مسودتي شكري والشامي من نفس الخطة...' :
     '';
+
+  const supplierReady =
+    Boolean(draftResult)
+    && !supplierWorkspace.loading
+    && !supplierWorkspace.error
+    && supplierWorkspace.rows.length > 0;
 
   return (
     <div dir="rtl" className="mx-auto max-w-[1600px] space-y-5 p-3 md:p-5">
@@ -664,7 +727,15 @@ export default function PurchaseCenterClean() {
         </div>
       </header>
 
-      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+      <PurchaseJourneyTabs
+        activeStep={activeStep}
+        onStepChange={setActiveStep}
+        plan={plan}
+        draftResult={draftResult}
+        supplierReady={supplierReady}
+      />
+
+      <section className={`rounded-2xl border bg-white p-5 shadow-sm ${activeStep === 1 ? '' : 'hidden'}`}>
         {!plan ? (
           <label className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition ${busy ? 'pointer-events-none opacity-60' : 'hover:border-teal-400 hover:bg-teal-50/30'}`}>
             <input
@@ -787,7 +858,7 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
+          <section className={`rounded-2xl border border-teal-200 bg-white p-4 shadow-sm ${activeStep === 2 || activeStep === 5 ? '' : 'hidden'}`}>
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-black text-slate-900">ملخص الطلبية الآن</h2>
@@ -807,7 +878,7 @@ export default function PurchaseCenterClean() {
             </div>
           </section>
 
-          <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
               تفاصيل تقنية وتشغيلية
             </summary>
@@ -831,7 +902,7 @@ export default function PurchaseCenterClean() {
             </div>
           </details>
 
-          <details className="rounded-2xl border border-amber-200 bg-white shadow-sm">
+          <details className={`rounded-2xl border border-amber-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
               المراجعات والتنبيهات • {reviewAlertsTotal} حالة للمراجعة
             </summary>
@@ -1009,7 +1080,7 @@ export default function PurchaseCenterClean() {
             </div>
           </details>
 
-          <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
               تفاصيل خطة شكري والشامي
             </summary>
@@ -1020,7 +1091,7 @@ export default function PurchaseCenterClean() {
           </details>
 
           {(plan.creation_guard?.legacy_stale_orders || []).length > 0 && (
-            <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
               <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
                 طلبيات قديمة للمراجعة • {(plan.creation_guard?.legacy_stale_orders || []).length}
               </summary>
@@ -1050,7 +1121,7 @@ export default function PurchaseCenterClean() {
             </details>
           )}
 
-          <details className="rounded-2xl border border-indigo-200 bg-white shadow-sm">
+          <details className={`rounded-2xl border border-indigo-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
               التحويلات بين الفروع • {transfers.length} حركة
             </summary>
@@ -1097,7 +1168,20 @@ export default function PurchaseCenterClean() {
             </section>
           </details>
 
-          <section className={`rounded-2xl border p-4 ${draftResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+          {activeStep === 2 && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={!plan || busy}
+                onClick={() => setActiveStep(3)}
+                className="rounded-xl bg-teal-700 px-5 py-3 font-black text-white shadow-sm disabled:opacity-40"
+              >
+                التالي: إنشاء المسودتين
+              </button>
+            </div>
+          )}
+
+          <section className={`rounded-2xl border p-4 ${activeStep === 3 ? '' : 'hidden'} ${draftResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className={`font-black ${draftResult ? 'text-emerald-900' : 'text-amber-900'}`}>
@@ -1173,7 +1257,7 @@ export default function PurchaseCenterClean() {
             </div>
           </section>
 
-          {draftResult && (
+          {draftResult && activeStep === 4 && (
             <CleanSupplierFinancialWorkspace
               rows={supplierWorkspace.rows}
               groups={supplierWorkspace.groups}
@@ -1188,10 +1272,57 @@ export default function PurchaseCenterClean() {
               onRefresh={() => loadSupplierWorkspace(draftResult)}
             />
           )}
+
+          {activeStep === 4 && draftResult && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={!supplierReady}
+                onClick={() => setActiveStep(5)}
+                className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white shadow-sm disabled:opacity-40"
+              >
+                التالي: المراجعة النهائية
+              </button>
+            </div>
+          )}
+
+          {activeStep === 5 && draftResult && (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-black text-emerald-950">المراجعة النهائية للطلبية</h2>
+                  <p className="mt-1 text-sm text-emerald-800">
+                    المسودتان محفوظتان ومطابقتان للخطة. راجع الإجمالي والموردين قبل أي اعتماد أو إرسال.
+                  </p>
+                </div>
+                <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-black text-emerald-800">
+                  جاهزة للمراجعة النهائية
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
+                <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} />
+                <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
+                <Metric label="عدد الأصناف" value={plan?.totals?.buy_items || 0} />
+                <Metric label="تغطية الموردين" value={`${supplierWorkspace.rows.length}/${plan?.totals?.buy_items || 0}`} />
+              </div>
+
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveStep(4)}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700"
+                >
+                  رجوع للموردين والأسعار
+                </button>
+              </div>
+            </section>
+          )}
         </>
       )}
 
-      {!plan && !busy && !error && (
+      {activeStep === 1 && !plan && !busy && !error && (
         <section className="rounded-2xl border border-dashed bg-white p-10 text-center text-slate-400">
           <FileSpreadsheet className="mx-auto mb-3 h-10 w-10" />
           ارفع ملف الرصيد لبدء الرحلة الجديدة.
