@@ -132,7 +132,7 @@ test('single supplier scenarios show missing items instead of pretending full co
     ],
   };
 
-  const scenarios = buildSingleSupplierScenarios({ decision, historyRows, branch: 'دواء شكري' });
+  const scenarios = buildSingleSupplierScenarios({ decision, historyRows, branch: 'دواء شكري', historicalOnly: false });
   const pharma = scenarios.find((row) => row.supplier_name === 'فارما');
   assert.ok(pharma);
   assert.equal(pharma.current_offer_items, 1);
