@@ -3,19 +3,22 @@ const number = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const INVALID_SUPPLIER_LABELS = [
+const INVALID_SUPPLIER_EXACT_LABELS = new Set([
   'شحن خارجي',
-  'جرد',
   'صيدليات',
-  'دواء شكري',
-  'دواء الشامي',
-];
+  'مورد متنوع',
+]);
 
 export function isUsableSupplierName(value) {
   const name = String(value || '').trim();
   if (!name) return false;
   const normalized = name.toLowerCase();
-  return !INVALID_SUPPLIER_LABELS.some((label) => normalized.includes(label.toLowerCase()));
+
+  if (INVALID_SUPPLIER_EXACT_LABELS.has(normalized)) return false;
+  if (normalized.includes('جرد')) return false;
+  if (normalized.startsWith('دواء ')) return false;
+
+  return true;
 }
 
 function safeHistoricalSupplier(value) {
