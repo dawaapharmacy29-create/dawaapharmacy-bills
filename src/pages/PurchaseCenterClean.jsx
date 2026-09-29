@@ -301,6 +301,7 @@ export default function PurchaseCenterClean() {
   async function runPlannerOnly(expectedSyncId = saveResult?.stock_sync_id) {
     setPhase('planning');
     const startedAt = performance.now();
+    await purchaseApi.refreshDecisionDailySnapshot('all');
     const result = await purchaseApi.dualBranchInstantPlan();
     if (result?.planner !== 'dual_branch_instant_plan_v1') {
       throw new Error('لم يتم تشغيل مخطط الفرعين المعتمد.');
