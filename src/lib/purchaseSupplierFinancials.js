@@ -442,7 +442,7 @@ export function buildHistoricalReferencePlan({ orderItems = [], historyRows = []
     const historicalSupplier = String(hist.historical_supplier || '').trim();
     const source = String(orderItem.cost_source || 'reference');
 
-    if (source === 'supplier_offer' || source === 'manual') {
+    if (source === 'supplier_offer' || source === 'manual' || orderItem.cost_verified_at) {
       skipped.push({
         id: orderItem.id,
         product_code: orderItem.product_code,
