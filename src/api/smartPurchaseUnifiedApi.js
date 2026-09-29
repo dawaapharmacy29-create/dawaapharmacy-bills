@@ -134,7 +134,8 @@ export const smartPurchaseUnifiedApi = {
   }),
   saveDualBranchStockMasterClean: async ({ rows = [], chunkSize = 2500, stageConcurrency = 2, onProgress = null }) => {
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد صفوف رصيد صالحة للحفظ.');
-    const syncId = `dual-stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const syncNonce = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const syncId = `dual-stock-${syncNonce}`;
     const compactRows = rows.map((row) => ({
       product_code: row.product_code,
       product_name: row.product_name,
@@ -159,7 +160,8 @@ export const smartPurchaseUnifiedApi = {
           p_stock_sync_id: syncId,
           p_rows: chunk,
         });
-        return Number(result?.staged_rows || chunk.length);
+        const reported = Number(result?.staged_rows ?? chunk.length);
+        return Number.isFinite(reported) ? Math.max(0, Math.min(chunk.length, reported)) : chunk.length;
       },
       {
         concurrency: stageConcurrency,
