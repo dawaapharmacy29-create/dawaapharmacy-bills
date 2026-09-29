@@ -180,7 +180,7 @@ function PurchaseJourneyTabs({ activeStep, onStepChange, plan, draftResult, supp
   ];
 
   return (
-    <nav className="rounded-2xl border bg-white p-2 shadow-sm" aria-label="رحلة تجهيز الطلبية">
+    <nav className="sticky top-2 z-30 rounded-2xl border bg-white/95 p-2 shadow-md backdrop-blur" aria-label="رحلة تجهيز الطلبية">
       <div className="grid gap-2 md:grid-cols-5">
         {steps.map((step) => {
           const active = step.id === activeStep;
@@ -705,6 +705,31 @@ export default function PurchaseCenterClean() {
     && !supplierWorkspace.loading
     && !supplierWorkspace.error
     && supplierWorkspace.rows.length > 0;
+
+  const supplierDecision = useMemo(() => {
+    const rows = supplierWorkspace.rows || [];
+    const currentOfferItems = rows.filter((row) => row.cost_source === 'current_offer').length;
+    const historicalItems = rows.filter((row) =>
+      row.cost_source === 'historical_average' || row.cost_source === 'historical_last'
+    ).length;
+    const missingSupplierItems = rows.filter((row) => !String(row.supplier_name || '').trim()).length;
+    const missingCostItems = rows.filter((row) => Number(row.unit_cost || 0) <= 0).length;
+    const topGroups = [...(supplierWorkspace.groups || [])]
+      .filter((group) => String(group.supplier_name || '').trim() && group.supplier_name !== 'غير محدد')
+      .sort((a, b) => Number(b.estimated_cash_total || 0) - Number(a.estimated_cash_total || 0))
+      .slice(0, 6);
+
+    return {
+      currentOfferItems,
+      historicalItems,
+      missingSupplierItems,
+      missingCostItems,
+      supplierCount: topGroups.length,
+      topGroups,
+      readyForFinalReview: rows.length > 0 && missingCostItems === 0,
+      readyForSupplierConfirmation: rows.length > 0 && missingSupplierItems === 0 && missingCostItems === 0,
+    };
+  }, [supplierWorkspace.groups, supplierWorkspace.rows]);
 
   return (
     <div dir="rtl" className="mx-auto max-w-[1600px] space-y-5 p-3 md:p-5">
@@ -1287,28 +1312,94 @@ export default function PurchaseCenterClean() {
           )}
 
           {activeStep === 5 && draftResult && (
-            <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-black text-emerald-950">المراجعة النهائية للطلبية</h2>
-                  <p className="mt-1 text-sm text-emerald-800">
-                    المسودتان محفوظتان ومطابقتان للخطة. راجع الإجمالي والموردين قبل أي اعتماد أو إرسال.
-                  </p>
+            <section className="space-y-4">
+              <div className={`rounded-2xl border p-5 shadow-sm ${
+                supplierDecision.readyForSupplierConfirmation
+                  ? 'border-emerald-200 bg-emerald-50/60'
+                  : 'border-amber-200 bg-amber-50/70'
+              }`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black text-slate-950">المراجعة النهائية للطلبية</h2>
+                    <p className="mt-1 text-sm text-slate-700">
+                      راجع القرار في شاشة واحدة. لا يوجد اعتماد أو إرسال تلقائي من هذه الخطوة.
+                    </p>
+                  </div>
+                  <span className={`rounded-full border bg-white px-3 py-1 text-xs font-black ${
+                    supplierDecision.readyForSupplierConfirmation
+                      ? 'border-emerald-200 text-emerald-800'
+                      : 'border-amber-200 text-amber-800'
+                  }`}>
+                    {supplierDecision.readyForSupplierConfirmation
+                      ? 'الموردون والتكلفة مكتملان للمراجعة'
+                      : 'تحتاج تأكيد مورد/سعر قبل الاعتماد'}
+                  </span>
                 </div>
-                <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-black text-emerald-800">
-                  جاهزة للمراجعة النهائية
-                </span>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                  <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
+                  <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} />
+                  <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
+                  <Metric label="أصناف الطلبية" value={plan?.totals?.buy_items || 0} />
+                  <Metric label="عروض حالية مؤكدة" value={supplierDecision.currentOfferItems} />
+                  <Metric label="مرجع تاريخي" value={supplierDecision.historicalItems} />
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <Metric label="موردون مقترحون" value={supplierWorkspace.groups.filter((group) => group.supplier_name !== 'غير محدد').length} />
+                  <Metric label="بدون مورد فعلي" value={supplierDecision.missingSupplierItems} />
+                  <Metric label="بدون تكلفة" value={supplierDecision.missingCostItems} />
+                  <Metric label="مطابقة المسودتين للخطة" value={draftResult.content_verified ? 'مؤكدة ✓' : 'تحتاج مراجعة'} />
+                </div>
+
+                {!supplierDecision.readyForSupplierConfirmation && (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-amber-900">
+                    {supplierDecision.missingSupplierItems > 0 && (
+                      <div className="font-bold">• {supplierDecision.missingSupplierItems} صنف بدون مورد فعلي محدد.</div>
+                    )}
+                    {supplierDecision.currentOfferItems === 0 && (
+                      <div className="mt-1">• لا توجد عروض أسعار حالية مؤكدة؛ الأسعار التاريخية مرجع للمراجعة وليست سعر إرسال نهائي.</div>
+                    )}
+                    {supplierDecision.missingCostItems > 0 && (
+                      <div className="mt-1 font-bold">• {supplierDecision.missingCostItems} صنف بدون تكلفة صالحة.</div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
-                <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} />
-                <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
-                <Metric label="عدد الأصناف" value={plan?.totals?.buy_items || 0} />
-                <Metric label="تغطية الموردين" value={`${supplierWorkspace.rows.length}/${plan?.totals?.buy_items || 0}`} />
-              </div>
+              {supplierDecision.topGroups.length > 0 && (
+                <section className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-black text-slate-900">أهم الموردين المقترحين</h3>
+                      <p className="mt-1 text-xs text-slate-500">أعلى الموردين حسب القيمة المرجعية الحالية.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveStep(4)}
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+                    >
+                      تعديل توزيع الموردين
+                    </button>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {supplierDecision.topGroups.map((group) => (
+                      <div key={group.supplier_name} className="rounded-xl border bg-slate-50/70 p-3">
+                        <div className="font-black text-slate-900">{group.supplier_name}</div>
+                        <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
+                          <span>{group.items_count} صنف • {qty(group.units)} وحدة</span>
+                          <span className="font-black text-slate-900">{money(group.estimated_cash_total)} ج</span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-slate-500">
+                          عرض حالي {group.current_offer_items} • تاريخي {group.historical_reference_items}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
-              <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <div className="flex flex-wrap justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => setActiveStep(4)}
@@ -1316,6 +1407,9 @@ export default function PurchaseCenterClean() {
                 >
                   رجوع للموردين والأسعار
                 </button>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-600">
+                  الخطوة التالية لاحقًا: اعتماد مقصود ثم إرسال المورد — غير تلقائي
+                </div>
               </div>
             </section>
           )}
