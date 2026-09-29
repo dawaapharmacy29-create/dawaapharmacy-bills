@@ -985,6 +985,9 @@ export default function PurchaseCenterClean() {
     const historicalCoverageComplete = rows.length > 0 && historicalItems === rows.length;
     const missingSupplierItems = rows.filter((row) => !String(row.supplier_name || '').trim()).length;
     const missingCostItems = rows.filter((row) => Number(row.unit_cost || 0) <= 0).length;
+    const highConfidenceItems = rows.filter((row) => row.historical_confidence === 'high').length;
+    const mediumConfidenceItems = rows.filter((row) => row.historical_confidence === 'medium').length;
+    const lowConfidenceItems = rows.filter((row) => row.historical_confidence === 'low').length;
     const topGroups = [...(supplierWorkspace.groups || [])]
       .filter((group) => String(group.supplier_name || '').trim() && group.supplier_name !== 'غير محدد')
       .sort((a, b) => Number(b.estimated_cash_total || 0) - Number(a.estimated_cash_total || 0))
@@ -995,6 +998,9 @@ export default function PurchaseCenterClean() {
       historicalItems,
       historicalCoverageComplete,
       totalItems: rows.length,
+      highConfidenceItems,
+      mediumConfidenceItems,
+      lowConfidenceItems,
       missingSupplierItems,
       missingCostItems,
       supplierCount: topGroups.length,
@@ -1038,6 +1044,12 @@ export default function PurchaseCenterClean() {
   const supplierMissingRows = useMemo(() => (
     (supplierWorkspace.rows || [])
       .filter((row) => !String(row.supplier_name || '').trim() || Number(row.unit_cost || 0) <= 0)
+      .slice(0, 12)
+  ), [supplierWorkspace.rows]);
+
+  const lowConfidenceHistoryRows = useMemo(() => (
+    (supplierWorkspace.rows || [])
+      .filter((row) => row.historical_confidence === 'low')
       .slice(0, 12)
   ), [supplierWorkspace.rows]);
 
@@ -1693,7 +1705,7 @@ export default function PurchaseCenterClean() {
                   <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
                   <Metric label="أصناف الطلبية" value={plan?.totals?.buy_items || 0} />
                   <Metric label="تغطية التحليل التاريخي" value={`${supplierDecision.historicalItems}/${supplierDecision.totalItems}`} />
-                  <Metric label="المصدر المعتمد" value="فواتير المشتريات" />
+                  <Metric label="ثقة تاريخية عالية" value={`${supplierDecision.highConfidenceItems}/${supplierDecision.totalItems}`} />
                 </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -1746,7 +1758,7 @@ export default function PurchaseCenterClean() {
 
               <section className="rounded-2xl border bg-white p-4 shadow-sm">
                 <div className="mb-3 font-black text-slate-900">Checklist الجاهزية</div>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                   {[
                     {
                       label: 'مطابقة المسودتين للخطة',
@@ -1770,6 +1782,14 @@ export default function PurchaseCenterClean() {
                       note: supplierDecision.historicalCoverageComplete
                         ? `مكتمل ${supplierDecision.historicalItems}/${supplierDecision.totalItems}`
                         : `مغطى ${supplierDecision.historicalItems}/${supplierDecision.totalItems}`,
+                    },
+                    {
+                      label: 'ثقة التاريخ',
+                      ok: supplierDecision.lowConfidenceItems === 0,
+                      warn: supplierDecision.lowConfidenceItems > 0,
+                      note: supplierDecision.lowConfidenceItems === 0
+                        ? 'لا توجد اختيارات منخفضة الثقة'
+                        : `${supplierDecision.lowConfidenceItems} أصناف منخفضة الثقة — للمراجعة فقط`,
                     },
                   ].map((item) => (
                     <div
@@ -1795,6 +1815,25 @@ export default function PurchaseCenterClean() {
                   ))}
                 </div>
               </section>
+
+              {lowConfidenceHistoryRows.length > 0 && (
+                <details className="rounded-2xl border border-amber-200 bg-amber-50/50">
+                  <summary className="cursor-pointer select-none px-4 py-3 text-sm font-black text-amber-900">
+                    مراجعة تاريخية اختيارية • {supplierDecision.lowConfidenceItems} أصناف منخفضة الثقة
+                  </summary>
+                  <div className="grid gap-2 border-t border-amber-100 p-3 md:grid-cols-2">
+                    {lowConfidenceHistoryRows.map((row) => (
+                      <div key={`${row.branch}-${row.item_id || row.product_code || row.product_name}`} className="rounded-xl bg-white p-3 text-xs">
+                        <div className="font-black text-slate-900">{row.product_name}</div>
+                        <div className="mt-1 text-slate-500">
+                          {row.branch} • {row.supplier_name || 'بدون مورد'} • {row.historical_purchase_events || 0} عملية شراء
+                          {row.historical_last_purchase_date ? ` • آخر شراء ${row.historical_last_purchase_date}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
 
               {supplierDecision.topGroups.length > 0 && (
                 <section className="rounded-2xl border bg-white p-4 shadow-sm">
