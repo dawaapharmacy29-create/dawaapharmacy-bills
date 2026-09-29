@@ -167,6 +167,12 @@ export default function CleanSupplierFinancialWorkspace({
     (plan?.items || []).length > 0 || Number(plan?.already_applied_items || 0) > 0
   );
 
+  const topSupplierGroups = useMemo(() => (
+    (groups || [])
+      .filter((group) => String(group.supplier_name || '').trim() && group.supplier_name !== 'غير محدد')
+      .slice(0, 5)
+  ), [groups]);
+
   const singleSupplierComparison = useMemo(() => {
     if (!selectedScenario || selectedScenario.missing_items > 0 || summary.total <= 0) return null;
     const difference = Number(selectedScenario.estimated_total || 0) - summary.total;
@@ -388,36 +394,70 @@ export default function CleanSupplierFinancialWorkspace({
             </button>
           </div>
 
-          <div className="overflow-auto rounded-xl border bg-white">
-            <table className="min-w-[1100px] w-full text-sm">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="p-2 text-right">المورد</th>
-                  <th className="p-2 text-right">الأصناف</th>
-                  <th className="p-2 text-right">الوحدات</th>
-                  <th className="p-2 text-right">بعرض حالي</th>
-                  <th className="p-2 text-right">مرجع تاريخي</th>
-                  <th className="p-2 text-right">بدون تكلفة</th>
-                  <th className="p-2 text-right">القيمة</th>
-                  <th className="p-2 text-right">وفر/خصم فعلي</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groups.map((group) => (
-                  <tr key={group.supplier_name} className="border-t">
-                    <td className="p-2 font-black text-indigo-900">{group.supplier_name}</td>
-                    <td className="p-2">{group.items_count}</td>
-                    <td className="p-2">{qty(group.units)}</td>
-                    <td className="p-2 text-emerald-700">{group.current_offer_items}</td>
-                    <td className="p-2 text-amber-700">{group.historical_reference_items}</td>
-                    <td className="p-2 text-red-700">{group.missing_cost_items}</td>
-                    <td className="p-2 font-bold">{money(group.estimated_cash_total)} ج</td>
-                    <td className="p-2">{group.weighted_saving_percent == null ? '—' : `${qty(group.weighted_saving_percent)}%`}</td>
+          {topSupplierGroups.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              {topSupplierGroups.map((group) => (
+                <div key={group.supplier_name} className="rounded-xl border bg-white p-3 shadow-sm">
+                  <div className="truncate font-black text-indigo-950" title={group.supplier_name}>{group.supplier_name}</div>
+                  <div className="mt-2 text-xl font-black text-slate-900">{money(group.estimated_cash_total)} ج</div>
+                  <div className="mt-2 text-xs text-slate-600">{group.items_count} صنف • {qty(group.units)} وحدة</div>
+                  <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">
+                    {group.current_offer_items > 0 && (
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                        حالي {group.current_offer_items}
+                      </span>
+                    )}
+                    {group.historical_reference_items > 0 && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+                        تاريخي {group.historical_reference_items}
+                      </span>
+                    )}
+                    {group.missing_cost_items > 0 && (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-red-700">
+                        بدون تكلفة {group.missing_cost_items}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <details className="rounded-xl border bg-white">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800">
+              جدول كل الموردين • {groups.length}
+            </summary>
+            <div className="overflow-auto border-t">
+              <table className="min-w-[1100px] w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="p-2 text-right">المورد</th>
+                    <th className="p-2 text-right">الأصناف</th>
+                    <th className="p-2 text-right">الوحدات</th>
+                    <th className="p-2 text-right">بعرض حالي</th>
+                    <th className="p-2 text-right">مرجع تاريخي</th>
+                    <th className="p-2 text-right">بدون تكلفة</th>
+                    <th className="p-2 text-right">القيمة</th>
+                    <th className="p-2 text-right">وفر/خصم فعلي</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {groups.map((group) => (
+                    <tr key={group.supplier_name} className="border-t">
+                      <td className="p-2 font-black text-indigo-900">{group.supplier_name}</td>
+                      <td className="p-2">{group.items_count}</td>
+                      <td className="p-2">{qty(group.units)}</td>
+                      <td className="p-2 text-emerald-700">{group.current_offer_items}</td>
+                      <td className="p-2 text-amber-700">{group.historical_reference_items}</td>
+                      <td className="p-2 text-red-700">{group.missing_cost_items}</td>
+                      <td className="p-2 font-bold">{money(group.estimated_cash_total)} ج</td>
+                      <td className="p-2">{group.weighted_saving_percent == null ? '—' : `${qty(group.weighted_saving_percent)}%`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
 
           <details className="rounded-xl border bg-white">
             <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800">
