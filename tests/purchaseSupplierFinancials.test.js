@@ -340,3 +340,36 @@ test('chooses the lowest effective current cost as the financial supplier', () =
   const safe = buildSafeCurrentOfferPlan(decision);
   assert.deepEqual(safe.items, [{ item_id: 'x', offer_id: 'financial' }]);
 });
+
+
+test('single-supplier mode does not count an MOQ-changing offer as current coverage', () => {
+  const decision = {
+    items: [{
+      product_code: '9',
+      product_name: 'MOQ Item',
+      needed_qty: 5,
+      recommended: {
+        offer_id: 'offer-moq',
+        supplier_name: 'مخزن سونيستا',
+        purchase_qty: 10,
+        quantity_fully_available: true,
+        net_unit_cost: 40,
+        effective_unit_cost: 38,
+        cash_cost: 400,
+      },
+      alternatives: [],
+    }],
+  };
+
+  const scenarios = buildSingleSupplierScenarios({
+    decision,
+    historyRows: [],
+    branch: 'دواء شكري',
+  });
+  const sonista = scenarios.find((row) => row.supplier_name === 'مخزن سونيستا');
+  assert.ok(sonista);
+  assert.equal(sonista.current_offer_items, 0);
+  assert.equal(sonista.missing_items, 1);
+  assert.equal(sonista.rows[0].constraint, 'offer_changes_v10_quantity');
+  assert.equal(sonista.rows[0].cash_cost, 0);
+});
