@@ -269,10 +269,10 @@ export default function CleanSupplierFinancialWorkspace({
         <div>
           <h2 className="flex items-center gap-2 text-xl font-black text-indigo-950">
             <WalletCards className="h-5 w-5" />
-            التكلفة الحقيقية وتوزيع الموردين
+            الموردون والأسعار
           </h2>
-          <p className="mt-1 max-w-4xl text-sm leading-6 text-indigo-800">
-            الأولوية لعرض حالي يحافظ على كمية V10؛ وإلا نستخدم متوسط التكلفة الفعلية من تاريخ المشتريات كمرجع. القيمة النقدية تمثل المتوقع دفعه للمورد، أما التكلفة الفعالة فتأخذ البونص في الاعتبار. المرجع التاريخي لا يُعتبر سعرًا حاليًا مؤكدًا قبل الإرسال.
+          <p className="mt-1 text-sm text-indigo-800">
+            اختر أفضل مورد لكل صنف أو قارن بمخزن واحد. السعر التاريخي مرجع فقط حتى وصول عرض حالي.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -317,15 +317,11 @@ export default function CleanSupplierFinancialWorkspace({
         <Metric icon={AlertTriangle} label="بدون تكلفة" value={summary.missing} />
       </div>
 
-      {summary.current === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
-          لا توجد عروض أسعار حالية مؤكدة حتى الآن؛ توزيع الموردين الحالي مرجعي من تاريخ المشتريات وليس سعرًا نهائيًا للإرسال.
-        </div>
-      )}
-
-      {Math.abs(draftFinancialGapPercent) > 1 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          إجمالي المسودة المخزن مختلف عن أفضل تقدير مالي الحالي. ثبّت العروض الحالية الآمنة أولًا؛ الأصناف المعتمدة على التاريخ تظل تقديرية حتى تأكيد السعر.
+      {(summary.current === 0 || Math.abs(draftFinancialGapPercent) > 1) && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
+          {summary.current === 0
+            ? 'لا توجد عروض حالية مؤكدة؛ الموردون والأسعار المعروضة مرجع تاريخي فقط.'
+            : 'يوجد فرق بين قيمة المسودتين وأفضل تقدير مالي حالي؛ راجع الأسعار قبل أي اعتماد.'}
         </div>
       )}
 
