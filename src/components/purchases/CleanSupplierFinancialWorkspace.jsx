@@ -77,7 +77,9 @@ function splitExportRow(row) {
     'أفضل مورد تاريخي': row.historical_supplier || '',
     'متوسط التكلفة التاريخية': Number(row.historical_effective_unit_cost || 0),
     'آخر شراء تاريخي': row.historical_last_purchase_date || '',
-    'سبب اختيار المورد': row.recommended?.reason || (row.historical_supplier ? 'أفضل مورد تاريخيًا حسب متوسط التكلفة المتاح' : ''),
+    'سبب اختيار المورد المالي': row.financial_supplier_reason || '',
+    'المورد الموصى به تشغيليًا': row.operational_recommended_supplier || '',
+    'سبب التوصية التشغيلية': row.operational_recommendation_reason || '',
     'بدائل حالية': (row.alternatives || []).map((alt) => `${alt.supplier_name || '—'} (${Number(alt.effective_unit_cost || 0).toFixed(2)})`).join(' | '),
     'يوجد عرض حالي': row.current_offer ? 'نعم' : 'لا',
     'مثبت في المسودة': row.current_offer_applied ? 'نعم' : 'لا',
@@ -405,7 +407,7 @@ export default function CleanSupplierFinancialWorkspace({
                     <td className="p-2">{row.effective_saving_percent == null ? '—' : `${qty(row.effective_saving_percent)}%`}</td>
                     <td className="p-2">{qty(row.bonus_units)}</td>
                     <td className="p-2 max-w-[300px] text-xs text-slate-600">
-                      {row.recommended?.reason || (row.historical_supplier ? 'أفضل مورد تاريخيًا حسب متوسط التكلفة المتاح' : '—')}
+                      {row.financial_supplier_reason || '—'}
                     </td>
                     <td className="p-2 max-w-[260px] text-xs text-slate-500">
                       {(row.alternatives || []).slice(0, 2).map((alt) =>
