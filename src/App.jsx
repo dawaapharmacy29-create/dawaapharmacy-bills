@@ -122,7 +122,7 @@ const AuthenticatedApp = () => {
     <Route path="/branch-settlements" element={<RoleRouteGuard adminOnly><BranchSettlements /></RoleRouteGuard>} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
     <Route path="/purchase-center" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />
-    <Route path="/purchase-center-clean" element={<Navigate to="/purchase-center" replace />} />
+    <Route path="/purchase-center-clean" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />
     <Route path="/purchase-center-legacy" element={<RoleRouteGuard adminOnly><PurchaseCommandCenter /></RoleRouteGuard>} />
     <Route path="/smart-purchase-orders" element={<Navigate to="/purchase-center" replace />} />
     <Route path="/smart-purchase-orders/manage" element={<Navigate to="/purchase-center" replace />} />
