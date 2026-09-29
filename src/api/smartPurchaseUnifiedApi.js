@@ -240,6 +240,10 @@ export const smartPurchaseUnifiedApi = {
     p_shokry_budget: Number(shokryBudget) > 0 ? Number(shokryBudget) : null,
     p_shamy_budget: Number(shamyBudget) > 0 ? Number(shamyBudget) : null,
   }),
+  applyReferenceItemPlan: (orderId, items = []) => standaloneRpc('smart_purchase_apply_item_plan_guarded_v2', {
+    p_order_id: orderId,
+    p_items: items,
+  }),
   createDualDrafts: ({ stockSyncId, planHash }) => standaloneRpc('smart_purchase_create_dual_drafts_v1', {
     p_stock_sync_id: stockSyncId,
     p_plan_hash: planHash,
