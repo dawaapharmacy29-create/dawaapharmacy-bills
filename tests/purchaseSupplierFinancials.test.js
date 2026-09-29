@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildSingleSupplierScenarios,
+  buildHistoricalReferencePlan,
   buildSafeCurrentOfferPlan,
   combineSingleSupplierScenarioSets,
   buildSupplierFinancialRows,
@@ -444,4 +445,61 @@ test('does not price the financial plan from an MOQ-changing current offer', () 
   assert.equal(rows[0].cost_source, 'historical_average');
   assert.equal(rows[0].unit_cost, 55);
   assert.equal(rows[0].cash_cost, 275);
+});
+
+
+test('builds historical reference updates without changing quantity or verifying cost', () => {
+  const plan = buildHistoricalReferencePlan({
+    orderItems: [{
+      id: 'item-1',
+      product_code: '1',
+      product_name: 'A',
+      approved_quantity: 5,
+      cost_source: 'reference',
+      cost_verified_at: null,
+    }],
+    historyRows,
+  });
+
+  assert.deepEqual(plan.items, [{
+    id: 'item-1',
+    expected_unit_cost: 80,
+    supplier_name: 'مخزن سونيستا',
+  }]);
+  assert.equal(Object.hasOwn(plan.items[0], 'approved_quantity'), false);
+  assert.equal(Object.hasOwn(plan.items[0], 'cost_verified_at'), false);
+});
+
+test('historical reference plan preserves manual supplier-offer and already verified costs', () => {
+  const plan = buildHistoricalReferencePlan({
+    orderItems: [
+      {
+        id: 'supplier-offer',
+        product_code: '1',
+        product_name: 'A',
+        approved_quantity: 5,
+        cost_source: 'supplier_offer',
+      },
+      {
+        id: 'manual',
+        product_code: '1',
+        product_name: 'A',
+        approved_quantity: 5,
+        cost_source: 'manual',
+      },
+      {
+        id: 'verified-reference',
+        product_code: '1',
+        product_name: 'A',
+        approved_quantity: 5,
+        cost_source: 'reference',
+        cost_verified_at: '2026-09-29T05:00:00Z',
+      },
+    ],
+    historyRows,
+  });
+
+  assert.equal(plan.applicable_items, 0);
+  assert.equal(plan.skipped_items, 3);
+  assert.ok(plan.skipped.every((row) => row.reason === 'verified_cost_preserved'));
 });
