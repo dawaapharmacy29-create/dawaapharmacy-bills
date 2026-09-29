@@ -207,7 +207,7 @@ function PurchaseJourneyTabs({ activeStep, onStepChange, plan, draftResult, supp
                     ? 'border-emerald-300 bg-emerald-100'
                     : 'border-slate-200 bg-white'
               }`}>
-                {step.done ? '✓' : step.id}
+                {active ? step.id : step.done ? '✓' : step.id}
               </span>
               <span className="min-w-0">
                 <span className="block text-[10px] font-bold opacity-70">الخطوة {step.id}</span>
@@ -1028,7 +1028,7 @@ export default function PurchaseCenterClean() {
 
           <details className={`rounded-2xl border border-amber-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
-              المراجعات والتنبيهات • {reviewAlertsTotal} حالة للمراجعة
+              مراجعات لا تعطل الطلبية • داخل الطلبية {quickReviewRows.length} • Watchlist خارجي {reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy + movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy}
             </summary>
             <div className="space-y-4 border-t p-4">
           {(Number(plan.execution_pending?.shokry?.items || 0) > 0 || Number(plan.execution_pending?.shamy?.items || 0) > 0) && (
@@ -1217,7 +1217,7 @@ export default function PurchaseCenterClean() {
           {(plan.creation_guard?.legacy_stale_orders || []).length > 0 && (
             <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
               <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
-                طلبيات قديمة للمراجعة • {(plan.creation_guard?.legacy_stale_orders || []).length}
+                طلبيات قديمة لا تمنع الشراء • {(plan.creation_guard?.legacy_stale_orders || []).length}
               </summary>
               <section className="border-t bg-slate-50 p-4">
               <div className="flex items-start gap-3">
