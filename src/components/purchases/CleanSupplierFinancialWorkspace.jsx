@@ -398,6 +398,8 @@ export default function CleanSupplierFinancialWorkspace({
                     <td className="p-2">{money(row.cash_unit_cost || row.unit_cost)} ج</td>
                     <td className="p-2">{money(row.effective_unit_cost || row.unit_cost)} ج</td>
                     <td className="p-2 font-bold">{money(row.cash_cost)} ج</td>
+                    <td className="p-2">{row.discount_percent == null ? '—' : `${qty(row.discount_percent)}%`}</td>
+                    <td className="p-2">{row.extra_discount_percent == null ? '—' : `${qty(row.extra_discount_percent)}%`}</td>
                     <td className="p-2">{row.effective_saving_percent == null ? '—' : `${qty(row.effective_saving_percent)}%`}</td>
                     <td className="p-2">{qty(row.bonus_units)}</td>
                     <td className="p-2 text-xs text-slate-500">{row.historical_supplier || '—'}</td>
