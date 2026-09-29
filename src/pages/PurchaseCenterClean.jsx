@@ -226,22 +226,28 @@ function PurchaseJourneyTabs({
   supplierError,
   supplierDecision,
 }) {
+  const stage = activeStep === 1 ? 1 : activeStep <= 3 ? 2 : 3;
   const planBlocked = Boolean(plan) && !draftResult && plan?.creation_guard?.can_create_dual === false;
-  const steps = [
+
+  const stages = [
     {
       id: 1,
+      target: 1,
       label: 'رفع الرصيد',
+      note: 'ملف واحد لشكري والشامي',
       ready: true,
       done: Boolean(plan),
       status: plan ? 'تم' : 'ابدأ هنا',
     },
     {
       id: 2,
-      label: 'مراجعة الخطة',
+      target: 2,
+      label: 'راجع وأنشئ',
+      note: 'راجع الأرقام ثم أنشئ المسودتين',
       ready: Boolean(plan),
       done: Boolean(draftResult),
       status: draftResult
-        ? 'تم'
+        ? 'تم إنشاء المسودتين'
         : planBlocked
           ? 'تحتاج حل'
           : quickReviewCount > 0
@@ -252,64 +258,42 @@ function PurchaseJourneyTabs({
     },
     {
       id: 3,
-      label: 'إنشاء المسودتين',
-      ready: Boolean(plan),
-      done: Boolean(draftResult),
-      status: draftResult
-        ? 'تم'
-        : planBlocked
-          ? 'متوقفة'
-          : plan
-            ? 'جاهزة'
-            : 'مقفلة',
-    },
-    {
-      id: 4,
-      label: 'تحليل تاريخ المشتريات',
+      target: 4,
+      label: 'المورد والنتيجة',
+      note: 'تحليل تاريخي ثم مراجعة نهائية',
       ready: Boolean(draftResult),
-      done: Boolean(supplierReady),
+      done: Boolean(supplierReady && supplierDecision?.readyForHistoricalReview),
       status: supplierLoading
-        ? 'جاري التحميل'
+        ? 'جاري التحليل'
         : supplierError
           ? 'تحتاج مراجعة'
           : supplierReady
-            ? supplierDecision?.historicalCoverageComplete
-              ? 'تاريخي مكتمل'
-              : 'تاريخي ناقص'
+            ? supplierDecision?.readyForHistoricalReview
+              ? 'جاهزة'
+              : 'تاريخ ناقص'
             : draftResult
               ? 'جاهزة'
               : 'مقفلة',
-    },
-    {
-      id: 5,
-      label: 'المراجعة النهائية',
-      ready: Boolean(draftResult && supplierReady),
-      done: false,
-      status: supplierReady
-        ? supplierDecision?.readyForHistoricalReview
-          ? 'جاهزة'
-          : 'تحتاج تأكيد'
-        : 'مقفلة',
     },
   ];
 
   return (
     <nav className="sticky top-2 z-30 rounded-2xl border bg-white/95 p-2 shadow-md backdrop-blur" aria-label="رحلة تجهيز الطلبية">
-      <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-5 md:overflow-visible md:pb-0">
-        {steps.map((step) => {
-          const active = step.id === activeStep;
+      <div className="grid gap-2 sm:grid-cols-3">
+        {stages.map((item) => {
+          const active = item.id === stage;
           return (
             <button
-              key={step.id}
+              key={item.id}
               type="button"
-              disabled={!step.ready}
-              onClick={() => step.ready && onStepChange(step.id)}
-              className={`min-w-[180px] snap-start flex items-center gap-3 rounded-xl border px-3 py-3 text-right transition md:min-w-0 ${
+              disabled={!item.ready}
+              onClick={() => item.ready && onStepChange(item.target)}
+              className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-right transition ${
                 active
                   ? 'border-teal-600 bg-teal-700 text-white shadow-sm'
-                  : step.done
+                  : item.done
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                    : step.ready
+                    : item.ready
                       ? 'border-slate-200 bg-white text-slate-700 hover:border-teal-300'
                       : 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300'
               }`}
@@ -317,27 +301,28 @@ function PurchaseJourneyTabs({
               <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-black ${
                 active
                   ? 'border-white/40 bg-white/15'
-                  : step.done
+                  : item.done
                     ? 'border-emerald-300 bg-emerald-100'
                     : 'border-slate-200 bg-white'
               }`}>
-                {active ? step.id : step.done ? '✓' : step.id}
+                {item.done && !active ? '✓' : item.id}
               </span>
               <span className="min-w-0">
-                <span className="block text-[10px] font-bold opacity-70">الخطوة {step.id}</span>
-                <span className="block truncate text-sm font-black">{step.label}</span>
+                <span className="block text-[10px] font-bold opacity-70">مرحلة {item.id} من 3</span>
+                <span className="block text-sm font-black">{item.label}</span>
+                <span className="mt-0.5 block text-[10px] opacity-70">{item.note}</span>
                 <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${
                   active
                     ? 'bg-white/15 text-white'
-                    : step.done
+                    : item.done
                       ? 'bg-emerald-100 text-emerald-700'
-                      : /متوقفة|تحتاج حل/.test(step.status)
+                      : /تحتاج حل/.test(item.status)
                         ? 'bg-red-50 text-red-700'
-                        : /مراجعة|تأكيد/.test(step.status)
+                        : /مراجعة|ناقص/.test(item.status)
                           ? 'bg-amber-50 text-amber-700'
                           : 'bg-slate-100 text-slate-600'
                 }`}>
-                  {step.status}
+                  {item.status}
                 </span>
               </span>
             </button>
@@ -383,7 +368,7 @@ function JourneyActionBar({
     <div className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-[1100px] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:inset-x-auto md:left-1/2 md:w-[min(1100px,calc(100vw-3rem))] md:-translate-x-1/2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-xs font-bold text-slate-500">
-          الخطوة {step} من 5
+          المرحلة {step === 1 ? 1 : step <= 3 ? 2 : 3} من 3
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -426,7 +411,7 @@ function JourneyActionBar({
               onClick={() => onStepChange(5)}
               className="rounded-xl bg-slate-900 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
             >
-              التالي: المراجعة النهائية
+              التالي: النتيجة النهائية
             </button>
           )}
 
@@ -436,7 +421,7 @@ function JourneyActionBar({
               onClick={() => onStepChange(4)}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700"
             >
-              رجوع للموردين والأسعار
+              رجوع للتحليل التاريخي
             </button>
           )}
         </div>
@@ -1060,7 +1045,7 @@ export default function PurchaseCenterClean() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-teal-700">
               <ShoppingCart className="h-5 w-5" />
-              <span className="text-sm font-bold">مركز المشتريات الجديد</span>
+              <span className="text-sm font-bold">مركز المشتريات والطلبية</span>
             </div>
             {!plan ? (
               <>
@@ -1089,7 +1074,7 @@ export default function PurchaseCenterClean() {
             </button>
             <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
               <ShieldCheck className="h-4 w-4" />
-              Atomic + Guards
+              مسار مبسط
             </div>
           </div>
         </div>
@@ -1133,7 +1118,7 @@ export default function PurchaseCenterClean() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <span className="font-black text-slate-900">الرصيد معتمد Atomic</span>
+                <span className="font-black text-slate-900">تم حفظ الرصيد بنجاح</span>
                 <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
                   {parsed?.rows_count || 0} صف
                 </span>
@@ -1224,7 +1209,7 @@ export default function PurchaseCenterClean() {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
             <div className="flex items-center gap-2 font-bold">
               <CheckCircle2 className="h-5 w-5" />
-              تم اعتماد الرصيد Atomic: شكري {saveResult.shokry_saved} صف • الشامي {saveResult.shamy_saved} صف
+              تم حفظ رصيد شكري {saveResult.shokry_saved} صف • الشامي {saveResult.shamy_saved} صف
             </div>
             <div className="font-mono text-[11px] opacity-70">{saveResult.stock_sync_id}</div>
           </div>
@@ -1294,7 +1279,7 @@ export default function PurchaseCenterClean() {
             </div>
             {plan.creation_guard?.can_create_dual === true && quickReviewRows.length === 0 && (
               <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
-                ✓ Fast Path: لا توجد أصناف داخل الطلبية تحتاج مراجعة سريعة، والـGuards تسمح بإنشاء المسودتين مباشرة.
+                ✓ لا توجد مراجعات سريعة مطلوبة؛ الطلبية جاهزة لإنشاء المسودتين.
               </div>
             )}
           </section>
