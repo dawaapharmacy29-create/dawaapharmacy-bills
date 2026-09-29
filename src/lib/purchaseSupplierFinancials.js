@@ -60,19 +60,20 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
     const orderItem = orderItemMap.get(purchaseProductKey(item)) || {};
     const recommended = item?.recommended || {};
     const quantity = number(item.needed_qty);
+    const currentCashUnitCost = number(recommended.net_unit_cost || recommended.effective_unit_cost);
     const currentEffectiveCost = number(recommended.effective_unit_cost || recommended.net_unit_cost);
     const historicalCost = number(hist.historical_effective_unit_cost);
     const historicalLastCost = number(hist.historical_last_unit_cost || hist.last_purchase_price);
     const draftCost = number(orderItem.expected_unit_cost);
     const fallbackCost = draftCost > 0 ? draftCost : number(hist.planning_reference_unit_cost || hist.unit_cost);
-    const hasCurrentOffer = Boolean(recommended.supplier_name) && currentEffectiveCost > 0;
+    const hasCurrentOffer = Boolean(recommended.supplier_name) && currentCashUnitCost > 0;
 
     const supplierName = hasCurrentOffer
       ? recommended.supplier_name
       : hist.historical_supplier || '';
 
     const unitCost = hasCurrentOffer
-      ? currentEffectiveCost
+      ? currentCashUnitCost
       : historicalCost > 0
         ? historicalCost
         : historicalLastCost > 0
@@ -80,7 +81,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
           : fallbackCost;
 
     const cashCost = hasCurrentOffer
-      ? number(recommended.cash_cost) || quantity * number(recommended.net_unit_cost || currentEffectiveCost)
+      ? number(recommended.cash_cost) || quantity * currentCashUnitCost
       : quantity * unitCost;
 
     const source = hasCurrentOffer
@@ -119,6 +120,8 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       cost_source: source,
       price_verified: hasCurrentOffer,
       unit_cost: unitCost,
+      cash_unit_cost: unitCost,
+      effective_unit_cost: hasCurrentOffer ? currentEffectiveCost : historicalCost > 0 ? historicalCost : unitCost,
       cash_cost: cashCost,
       list_price: listPrice,
       discount_percent: recommended.discount_percent != null
