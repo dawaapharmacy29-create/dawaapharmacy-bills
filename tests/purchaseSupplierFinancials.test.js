@@ -57,7 +57,7 @@ test('current supplier offer takes precedence over historical average', () => {
       alternatives: [],
     }],
   };
-  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري' });
+  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري', historicalOnly: false });
   assert.equal(rows[0].supplier_name, 'فارما');
   assert.equal(rows[0].cost_source, 'current_offer');
   assert.equal(rows[0].unit_cost, 72);
@@ -327,6 +327,7 @@ test('marks a current offer as applied only when the draft stores that exact off
       cost_source: 'supplier_offer',
     }],
     branch: 'دواء شكري',
+    historicalOnly: false,
   });
 
   assert.equal(rows[0].current_offer, true);
@@ -363,7 +364,7 @@ test('chooses the lowest effective current cost as the financial supplier', () =
     }],
   };
 
-  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري' });
+  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري', historicalOnly: false });
   assert.equal(rows[0].supplier_name, 'مخزن سونيستا');
   assert.equal(rows[0].cash_unit_cost, 75);
   assert.equal(rows[0].effective_unit_cost, 70);
@@ -398,6 +399,7 @@ test('single-supplier mode does not count an MOQ-changing offer as current cover
     decision,
     historyRows: [],
     branch: 'دواء شكري',
+    historicalOnly: false,
   });
   const sonista = scenarios.find((row) => row.supplier_name === 'مخزن سونيستا');
   assert.ok(sonista);
@@ -511,7 +513,7 @@ test('current offer candidates with internal or non-supplier labels are ignored'
     }],
   };
 
-  const rows = buildSupplierFinancialRows({ decision, historyRows: [], branch: 'دواء شكري' });
+  const rows = buildSupplierFinancialRows({ decision, historyRows: [], branch: 'دواء شكري', historicalOnly: false });
   assert.equal(rows[0].supplier_name, 'فارما');
   assert.equal(rows[0].unit_cost, 12);
 });
@@ -542,4 +544,38 @@ test('internal branches and generic supplier placeholders are rejected consisten
     });
     assert.equal(rows[0].supplier_name, '', supplierName);
   }
+});
+
+
+test('historical invoice analysis is the default even when a current offer exists', () => {
+  const decision = {
+    items: [{
+      item_id: 'hist-default',
+      product_code: '1',
+      product_name: 'A',
+      needed_qty: 3,
+      recommended: {
+        offer_id: 'offer-current',
+        supplier_name: 'فارما',
+        purchase_qty: 3,
+        quantity_fully_available: true,
+        net_unit_cost: 60,
+        effective_unit_cost: 58,
+        cash_cost: 180,
+      },
+      alternatives: [],
+    }],
+  };
+
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows,
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].supplier_name, 'مخزن سونيستا');
+  assert.equal(rows[0].cost_source, 'historical_average');
+  assert.equal(rows[0].unit_cost, 80);
+  assert.equal(rows[0].current_offer, false);
+  assert.equal(rows[0].price_verified, false);
 });
