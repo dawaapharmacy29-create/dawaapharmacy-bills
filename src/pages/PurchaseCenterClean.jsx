@@ -1531,16 +1531,29 @@ export default function PurchaseCenterClean() {
           )}
 
           {activeStep === 3 && (
-          <section className={`rounded-2xl border p-4 ${draftResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+          <section className={`rounded-2xl border p-4 ${draftResult ? 'border-emerald-200 bg-emerald-50' : plan.creation_guard?.can_create_dual ? 'border-teal-200 bg-teal-50/60' : 'border-red-200 bg-red-50/60'}`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className={`font-black ${draftResult ? 'text-emerald-900' : 'text-amber-900'}`}>
-                  {draftResult ? 'المرحلة الحالية: مراجعة الموردين والتكلفة' : 'المرحلة الحالية: مراجعة الخطة ثم إنشاء المسودتين'}
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-black text-slate-900">إنشاء مسودتي شكري والشامي</h2>
+                  <span className={`rounded-full border bg-white px-2.5 py-1 text-xs font-black ${
+                    draftResult
+                      ? 'border-emerald-200 text-emerald-700'
+                      : plan.creation_guard?.can_create_dual
+                        ? 'border-teal-200 text-teal-700'
+                        : 'border-red-200 text-red-700'
+                  }`}>
+                    {draftResult ? 'تم ✓' : plan.creation_guard?.can_create_dual ? 'جاهزة للإنشاء' : 'متوقفة'}
+                  </span>
                 </div>
-                <div className={`mt-1 text-sm ${draftResult ? 'text-emerald-800' : 'text-amber-800'}`}>
-                  {draftResult
-                    ? 'المسودتان محفوظتان ومطابقتان للخطة. راجع الموردين والأسعار فقط؛ لا يوجد اعتماد أو إرسال للمورد تلقائيًا.'
-                    : 'المسودتان ستُنشآن من نفس plan_hash بدون إعادة حساب الكميات. لا يوجد اعتماد أو إرسال للمورد في هذه الخطوة.'}
+                <p className="mt-1 text-sm text-slate-600">
+                  نفس كميات الخطة بدون إعادة حساب، وبدون اعتماد أو إرسال للمورد.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
+                  <Metric label="شكري" value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`} />
+                  <Metric label="الشامي" value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`} />
+                  <Metric label="أصناف الشراء" value={plan.totals?.buy_items || 0} />
                 </div>
                 {plan.creation_guard?.can_create_dual === false && !draftResult && (
                   <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
