@@ -267,7 +267,7 @@ function PurchaseJourneyTabs({
     },
     {
       id: 4,
-      label: 'الموردون والأسعار',
+      label: 'تحليل تاريخ المشتريات',
       ready: Boolean(draftResult),
       done: Boolean(supplierReady),
       status: supplierLoading
@@ -275,9 +275,9 @@ function PurchaseJourneyTabs({
         : supplierError
           ? 'تحتاج مراجعة'
           : supplierReady
-            ? supplierDecision?.currentOfferItems > 0
-              ? `${supplierDecision.currentOfferItems} عرض حالي`
-              : 'مرجع تاريخي'
+            ? supplierDecision?.historicalCoverageComplete
+              ? 'تاريخي مكتمل'
+              : 'تاريخي ناقص'
             : draftResult
               ? 'جاهزة'
               : 'مقفلة',
@@ -355,7 +355,7 @@ function CurrentStepGuide({ step }) {
     1: ['ارفع ملف الرصيد', 'ملف واحد يحتوي رصيد شكري والشامي؛ الحفظ والتحليل يبدأان تلقائيًا.'],
     2: ['راجع الخطة', 'راجع الإجمالي وشكري والشامي فقط. افتح التفاصيل أو التنبيهات عند الحاجة ثم اضغط التالي.'],
     3: ['أنشئ المسودتين', 'ضغطة واحدة تنشئ مسودتي الفرعين من نفس الخطة بدون اعتماد أو إرسال.'],
-    4: ['راجع الموردين والأسعار', 'راجع التوزيع المرجعي أو حدّث العروض الحالية، ثم انتقل للمراجعة النهائية.'],
+    4: ['راجع تحليل تاريخ المشتريات', 'راجع أفضل الموردين والتكلفة المستنتجة من فواتير المشتريات السابقة، ثم انتقل للمراجعة النهائية.'],
     5: ['راجع القرار النهائي', 'راجع القيمة والموردين والنواقص في شاشة واحدة قبل أي اعتماد أو إرسال لاحقًا.'],
   };
   const [title, description] = guides[step] || guides[1];
@@ -885,12 +885,14 @@ export default function PurchaseCenterClean() {
           historyRows: freshHistory.shokry,
           orderItems: shokryOrder?.items || [],
           branch: 'دواء شكري',
+          historicalOnly: true,
         }),
         ...buildSupplierFinancialRows({
           decision: shamyDecision,
           historyRows: freshHistory.shamy,
           orderItems: shamyOrder?.items || [],
           branch: 'دواء الشامي',
+          historicalOnly: true,
         }),
       ];
 
@@ -899,26 +901,17 @@ export default function PurchaseCenterClean() {
           decision: shokryDecision,
           historyRows: freshHistory.shokry,
           branch: 'دواء شكري',
+          historicalOnly: true,
         }),
         buildSingleSupplierScenarios({
           decision: shamyDecision,
           historyRows: freshHistory.shamy,
           branch: 'دواء الشامي',
+          historicalOnly: true,
         }),
       ]);
 
-      const currentOfferPlans = {
-        shokry: {
-          orderId: shokryOrderId,
-          branch: 'دواء شكري',
-          ...buildSafeCurrentOfferPlan(shokryDecision, shokryOrder?.items || []),
-        },
-        shamy: {
-          orderId: shamyOrderId,
-          branch: 'دواء الشامي',
-          ...buildSafeCurrentOfferPlan(shamyDecision, shamyOrder?.items || []),
-        },
-      };
+      const currentOfferPlans = {};
 
       setSupplierWorkspace({
         loading: false,
@@ -1016,10 +1009,11 @@ export default function PurchaseCenterClean() {
 
   const supplierDecision = useMemo(() => {
     const rows = supplierWorkspace.rows || [];
-    const currentOfferItems = rows.filter((row) => row.cost_source === 'current_offer').length;
+    const currentOfferItems = 0;
     const historicalItems = rows.filter((row) =>
       row.cost_source === 'historical_average' || row.cost_source === 'historical_last'
     ).length;
+    const historicalCoverageComplete = rows.length > 0 && historicalItems === rows.length;
     const missingSupplierItems = rows.filter((row) => !String(row.supplier_name || '').trim()).length;
     const missingCostItems = rows.filter((row) => Number(row.unit_cost || 0) <= 0).length;
     const topGroups = [...(supplierWorkspace.groups || [])]
@@ -1030,6 +1024,8 @@ export default function PurchaseCenterClean() {
     return {
       currentOfferItems,
       historicalItems,
+      historicalCoverageComplete,
+      totalItems: rows.length,
       missingSupplierItems,
       missingCostItems,
       supplierCount: topGroups.length,
@@ -1722,8 +1718,8 @@ export default function PurchaseCenterClean() {
                   <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} />
                   <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
                   <Metric label="أصناف الطلبية" value={plan?.totals?.buy_items || 0} />
-                  <Metric label="عروض حالية مؤكدة" value={supplierDecision.currentOfferItems} />
-                  <Metric label="مرجع تاريخي" value={supplierDecision.historicalItems} />
+                  <Metric label="تغطية التحليل التاريخي" value={`${supplierDecision.historicalItems}/${supplierDecision.totalItems}`} />
+                  <Metric label="المصدر المعتمد" value="فواتير المشتريات" />
                 </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -1755,9 +1751,6 @@ export default function PurchaseCenterClean() {
                   <div className="mt-4 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-amber-900">
                     {supplierDecision.missingSupplierItems > 0 && (
                       <div className="font-bold">• {supplierDecision.missingSupplierItems} صنف بدون مورد فعلي محدد.</div>
-                    )}
-                    {supplierDecision.currentOfferItems === 0 && (
-                      <div className="mt-1">• لا توجد عروض أسعار حالية مؤكدة؛ الأسعار التاريخية مرجع للمراجعة وليست سعر إرسال نهائي.</div>
                     )}
                     {supplierDecision.missingCostItems > 0 && (
                       <div className="mt-1 font-bold">• {supplierDecision.missingCostItems} صنف بدون تكلفة صالحة.</div>
@@ -1797,12 +1790,12 @@ export default function PurchaseCenterClean() {
                       note: supplierDecision.missingSupplierItems === 0 ? 'كل الأصناف لها مورد' : `${supplierDecision.missingSupplierItems} صنف بدون مورد`,
                     },
                     {
-                      label: 'الأسعار الحالية',
-                      ok: supplierDecision.currentOfferItems > 0,
-                      warn: supplierDecision.currentOfferItems === 0,
-                      note: supplierDecision.currentOfferItems > 0
-                        ? `${supplierDecision.currentOfferItems} عرض حالي`
-                        : 'الاعتماد الحالي على التاريخ فقط',
+                      label: 'التحليل التاريخي',
+                      ok: supplierDecision.historicalCoverageComplete,
+                      warn: !supplierDecision.historicalCoverageComplete,
+                      note: supplierDecision.historicalCoverageComplete
+                        ? `مكتمل ${supplierDecision.historicalItems}/${supplierDecision.totalItems}`
+                        : `مغطى ${supplierDecision.historicalItems}/${supplierDecision.totalItems}`,
                     },
                   ].map((item) => (
                     <div
@@ -1853,7 +1846,7 @@ export default function PurchaseCenterClean() {
                           <span className="font-black text-slate-900">{money(group.estimated_cash_total)} ج</span>
                         </div>
                         <div className="mt-1 text-[11px] text-slate-500">
-                          عرض حالي {group.current_offer_items} • تاريخي {group.historical_reference_items}
+                          تاريخ مشتريات {group.historical_reference_items} صنف
                         </div>
                       </div>
                     ))}
