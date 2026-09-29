@@ -64,7 +64,7 @@ function BranchPlanCard({ branchKey, data, mode }) {
       </div>
       <div className="mx-4 mb-4 flex flex-wrap gap-2 text-xs">
         <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.stock_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
-          الرصيد {data?.method?.data_quality?.stock_snapshot_fresh ? 'حديث' : 'قديم'}
+          مزامنة الرصيد {data?.method?.data_quality?.stock_snapshot_fresh ? 'حديثة' : 'قديمة'}
         </span>
         <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.movement_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
           الحركة {data?.method?.data_quality?.movement_snapshot_fresh ? 'حديثة' : 'قديمة'}
@@ -141,6 +141,7 @@ function Metric({ label, value }) {
 
 export default function PurchaseCenterClean() {
   const [fileName, setFileName] = useState('');
+  const [fileModifiedAt, setFileModifiedAt] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
@@ -302,6 +303,7 @@ export default function PurchaseCenterClean() {
   async function handleFile(file) {
     if (!file) return;
     setFileName(file.name);
+    setFileModifiedAt(file.lastModified ? new Date(file.lastModified) : null);
     setParsed(null);
     setPlan(null);
     setDraftResult(null);
@@ -397,10 +399,11 @@ export default function PurchaseCenterClean() {
 
         {parsed && (
           <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <Metric label="صفوف الملف" value={parsed.rows_count} />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric label="صفوف المصدر" value={parsed.source_rows_count ?? parsed.rows_count} />
+              <Metric label="صفوف معتمدة" value={parsed.rows_count} />
               <Metric label="أصناف مخزنية" value={parsed.inventory_rows} />
-              <Metric label="الفرعين" value="شكري + الشامي" />
+              <Metric label="آخر تعديل للملف" value={fileModifiedAt ? fileModifiedAt.toLocaleString('ar-EG') : 'غير متاح'} />
             </div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-xs">
               <div className="rounded-lg border bg-slate-50 p-2">كسور شكري: <strong>{parsed.quality?.fractional_shokry || 0}</strong></div>
