@@ -106,7 +106,11 @@ export default function CleanSupplierFinancialWorkspace({
   groups = [],
   scenarios = [],
   loading = false,
+  applying = '',
+  message = '',
   error = '',
+  currentOfferPlans = {},
+  onApplyCurrentOffers = null,
 }) {
   const [mode, setMode] = useState('split');
   const [supplierChoice, setSupplierChoice] = useState('');
@@ -261,6 +265,52 @@ export default function CleanSupplierFinancialWorkspace({
         <Metric icon={WalletCards} label="إجمالي تقديري" value={`${money(summary.total)} ج`} />
         <Metric icon={CheckCircle2} label="نسبة مؤكدة حاليًا" value={rows.length ? `${qty((summary.current / rows.length) * 100)}%` : '0%'} />
       </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {[
+          ['shokry', 'دواء شكري'],
+          ['shamy', 'دواء الشامي'],
+        ].map(([key, label]) => {
+          const offerPlan = currentOfferPlans?.[key] || {};
+          return (
+            <div key={key} className="rounded-2xl border bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="font-black text-slate-900">{label} — تثبيت العروض الحالية</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    آمن بدون تغيير كمية V10: <b>{offerPlan.safe_items || 0}</b> صنف
+                    {' • '}للمراجعة/بدون عرض: <b>{offerPlan.skipped_items || 0}</b>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={!onApplyCurrentOffers || applying || !(offerPlan.items || []).length}
+                  onClick={() => onApplyCurrentOffers?.(key)}
+                  className="rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+                >
+                  {applying === key ? 'جاري التثبيت...' : (offerPlan.items || []).length ? 'تثبيت أفضل العروض الحالية' : 'لا توجد عروض جديدة آمنة'}
+                </button>
+              </div>
+              {(offerPlan.skipped || []).some((row) => row.reason === 'offer_changes_v10_quantity') && (
+                <div className="mt-2 text-xs font-bold text-amber-700">
+                  بعض العروض مستبعدة لأنها تفرض MOQ يغير كمية V10؛ لم يتم تعديلها تلقائيًا.
+                </div>
+              )}
+              {(offerPlan.skipped || []).some((row) => row.reason === 'insufficient_availability') && (
+                <div className="mt-1 text-xs font-bold text-amber-700">
+                  بعض العروض مستبعدة لأن التوافر المعلن لا يغطي الكمية.
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {message && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
+          {message}
+        </div>
+      )}
 
       {mode === 'split' && (
         <>
