@@ -16,7 +16,7 @@ export function useUserRole() {
   const canEnterInvoice = isAdmin || isBranchManager || isInvoiceEntry;
   const canReviewInvoice = isAdmin || isBranchManager || isInvoiceReviewer;
   const canApproveInvoice = isAdmin || isAccountant;
-  const canPlanPurchases = isAdmin || isBranchManager || ['purchasing', 'purchases'].includes(role);
+  const canPlanPurchases = isAdmin || ['purchasing', 'purchases'].includes(role);
 
   return {
     role,
