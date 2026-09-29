@@ -240,3 +240,62 @@ test('only applies current offers that preserve the V10 quantity', () => {
   assert.equal(plan.skipped.find((row) => row.item_id === 'availability').reason, 'insufficient_availability');
   assert.equal(plan.skipped.find((row) => row.item_id === 'missing').reason, 'no_current_offer');
 });
+
+
+test('does not reapply an offer already stored as supplier_offer', () => {
+  const decision = {
+    items: [{
+      item_id: 'safe',
+      product_name: 'Safe',
+      needed_qty: 5,
+      recommended: {
+        offer_id: 'offer-safe',
+        purchase_qty: 5,
+        quantity_fully_available: true,
+      },
+    }],
+  };
+  const plan = buildSafeCurrentOfferPlan(decision, [{
+    id: 'safe',
+    supplier_offer_id: 'offer-safe',
+    cost_source: 'supplier_offer',
+  }]);
+
+  assert.equal(plan.safe_items, 0);
+  assert.equal(plan.skipped_items, 1);
+  assert.equal(plan.skipped[0].reason, 'already_applied');
+});
+
+test('marks a current offer as applied only when the draft stores that exact offer', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      needed_qty: 3,
+      recommended: {
+        offer_id: 'offer-1',
+        supplier_name: 'فارما',
+        effective_unit_cost: 70,
+        net_unit_cost: 72,
+        cash_cost: 216,
+      },
+      alternatives: [],
+    }],
+  };
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows,
+    orderItems: [{
+      id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      supplier_offer_id: 'offer-1',
+      cost_source: 'supplier_offer',
+    }],
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].current_offer, true);
+  assert.equal(rows[0].current_offer_applied, true);
+});
