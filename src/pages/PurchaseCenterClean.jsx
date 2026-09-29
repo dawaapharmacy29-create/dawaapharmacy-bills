@@ -45,7 +45,14 @@ function BranchPlanCard({ branchKey, data, mode }) {
   const plan = Array.isArray(data?.plan) ? data.plan : [];
   const buyRows = plan
     .filter((row) => Number(row.buy_quantity || 0) > 0)
-    .sort((a, b) => Number(b.buy_estimated_cost || 0) - Number(a.buy_estimated_cost || 0));
+    .sort((a, b) => Number(b.planning_reference_total || b.buy_estimated_cost || 0) - Number(a.planning_reference_total || a.buy_estimated_cost || 0));
+  const financialReferenceValue = buyRows.reduce(
+    (sum, row) => sum + Number(row.planning_reference_total || row.buy_estimated_cost || 0),
+    0
+  );
+  const historicalReferenceItems = buyRows.filter((row) =>
+    ['historical_average', 'historical_last'].includes(row.planning_cost_source)
+  ).length;
 
   return (
     <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
@@ -56,18 +63,20 @@ function BranchPlanCard({ branchKey, data, mode }) {
             <p className="mt-1 text-sm text-slate-500">{modeLabel(mode?.mode)}</p>
           </div>
           <div className="rounded-xl border bg-white px-4 py-2 text-left">
-            <div className="text-xs text-slate-500">شراء مقترح</div>
-            <div className="text-xl font-black text-teal-700">{money(summary.suggested_buy_value)} ج</div>
+            <div className="text-xs text-slate-500">تكلفة مرجعية محسّنة</div>
+            <div className="text-xl font-black text-teal-700">{money(financialReferenceValue)} ج</div>
+            <div className="mt-1 text-[10px] text-slate-400">V10: {money(summary.suggested_buy_value)} ج</div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-7">
         <Metric label="أصناف شراء" value={summary.buy_now_items || 0} />
         <Metric label="نواقص حرجة" value={(summary.stockout_items || 0) + (summary.below_min_items || 0)} />
         <Metric label="احتياج الفترة" value={`${money(summary.period_need_value)} ج`} />
-        <Metric label="شراء اليوم" value={`${money(summary.suggested_buy_value)} ج`} />
-        <Metric label="تحويلات" value={(summary.transfer_only_items || 0) + (summary.transfer_then_buy_items || 0)} />
+        <Metric label="قيمة V10" value={`${money(summary.suggested_buy_value)} ج`} />
+        <Metric label="تكلفة مرجعية" value={`${money(financialReferenceValue)} ج`} />
+        <Metric label="بتاريخ تكلفة" value={historicalReferenceItems} />
         <Metric label="Safe Order Today" value={`${money(mode?.safe_order_today)} ج`} />
       </div>
       <div className="mx-4 mb-4 flex flex-wrap gap-2 text-xs">
@@ -105,7 +114,9 @@ function BranchPlanCard({ branchKey, data, mode }) {
                 <th className="p-2 text-right">Max</th>
                 <th className="p-2 text-right">الشراء</th>
                 <th className="p-2 text-right">التحويل</th>
-                <th className="p-2 text-right">القيمة</th>
+                <th className="p-2 text-right">المورد المرجعي</th>
+                <th className="p-2 text-right">تكلفة الوحدة</th>
+                <th className="p-2 text-right">القيمة المرجعية</th>
                 <th className="p-2 text-right">القرار</th>
               </tr>
             </thead>
@@ -123,12 +134,21 @@ function BranchPlanCard({ branchKey, data, mode }) {
                   <td className="p-2">{qty(row.max_stock)}</td>
                   <td className="p-2 font-bold text-teal-700">{qty(row.buy_quantity)}</td>
                   <td className="p-2">{qty(row.suggested_transfer_qty)}</td>
-                  <td className="p-2 font-semibold">{money(row.buy_estimated_cost)} ج</td>
+                  <td className="p-2 text-xs font-bold text-indigo-800">{row.historical_supplier || '—'}</td>
+                  <td className="p-2">
+                    <div className="font-semibold">{money(row.planning_reference_unit_cost || row.unit_cost)} ج</div>
+                    <div className="text-[10px] text-slate-400">
+                      {row.planning_cost_source === 'historical_average' ? 'متوسط تاريخي' :
+                       row.planning_cost_source === 'historical_last' ? 'آخر شراء' :
+                       row.planning_cost_source === 'planner_reference' ? 'مرجع الخطة' : '—'}
+                    </div>
+                  </td>
+                  <td className="p-2 font-semibold">{money(row.planning_reference_total || row.buy_estimated_cost)} ج</td>
                   <td className="p-2 text-xs text-slate-500">{row.reason || row.decision}</td>
                 </tr>
               ))}
               {!buyRows.length && (
-                <tr><td colSpan="10" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
+                <tr><td colSpan="12" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
               )}
             </tbody>
           </table>
@@ -893,6 +913,16 @@ export default function PurchaseCenterClean() {
               </div>
             </div>
           </section>
+
+          {draftResult && (
+            <CleanSupplierFinancialWorkspace
+              rows={supplierWorkspace.rows}
+              groups={supplierWorkspace.groups}
+              scenarios={supplierWorkspace.scenarios}
+              loading={supplierWorkspace.loading}
+              error={supplierWorkspace.error}
+            />
+          )}
         </>
       )}
 
