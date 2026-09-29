@@ -1,5 +1,12 @@
 const normalizeText = (value) =>
-  String(value ?? '').trim().toLowerCase().replace(/[\s_\-]+/g, ' ');
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[ـًٌٍَُِّْ]/g, '')
+    .replace(/[\s_\-]+/g, ' ');
 
 const normalizeDigits = (value) =>
   String(value ?? '')
@@ -12,7 +19,14 @@ function parseStockNumber(value) {
   }
   const text = normalizeDigits(value).trim();
   if (!text || text === '-' || text === '—') return { value: 0, invalid: false };
-  const normalized = text.replace(/[٬,]/g, '').replace(/٫/g, '.').replace(/\s+/g, '');
+  let normalized = text.replace(/٬/g, '').replace(/٫/g, '.').replace(/\s+/g, '');
+  if (normalized.includes(',') && !normalized.includes('.')) {
+    normalized = /^-?\d+,\d{1,2}$/.test(normalized)
+      ? normalized.replace(',', '.')
+      : normalized.replace(/,/g, '');
+  } else {
+    normalized = normalized.replace(/,/g, '');
+  }
   const parsed = Number(normalized);
   return { value: Number.isFinite(parsed) ? parsed : 0, invalid: !Number.isFinite(parsed) };
 }
@@ -20,10 +34,10 @@ function parseStockNumber(value) {
 const ALIASES = {
   code: ['الكود', 'كود الصنف'],
   name: ['إسم الصنف', 'اسم الصنف'],
-  unit: ['الوحدة'],
-  company: ['الشركة'],
-  shamy: ['الفرعية الشامي'],
-  shokry: ['الادارة فرع شكري', 'الإدارة فرع شكري'],
+  unit: ['الوحدة', 'الوحده', 'وحدة'],
+  company: ['الشركة', 'الشركه'],
+  shamy: ['الفرعية الشامي', 'الفرعيه الشامي', 'الشامي'],
+  shokry: ['الادارة فرع شكري', 'الإدارة فرع شكري', 'الاداره فرع شكري', 'شكري'],
 };
 
 function exactHeader(headers, aliases) {
