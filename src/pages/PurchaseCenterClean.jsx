@@ -1032,17 +1032,28 @@ export default function PurchaseCenterClean() {
 
   return (
     <div dir="rtl" className="mx-auto max-w-[1600px] space-y-5 p-3 pb-28 md:p-5 md:pb-28">
-      <header className="rounded-3xl border bg-gradient-to-l from-white to-teal-50/70 p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-teal-700">
-              <ShoppingCart className="h-6 w-6" />
+      <header className={`rounded-3xl border bg-gradient-to-l from-white to-teal-50/70 shadow-sm ${plan ? 'p-3' : 'p-5'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-teal-700">
+              <ShoppingCart className="h-5 w-5" />
               <span className="text-sm font-bold">مركز المشتريات الجديد</span>
             </div>
-            <h1 className="text-2xl font-black text-slate-900 md:text-3xl">ارفع الرصيد مرة واحدة — استلم خطتي الفرعين فورًا</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
-              نفس عقل Min / Reorder / Max المعتمد، مع التحويل بين الفرعين والوضع المالي، بدون مسارات التغطية القديمة وبدون إعادة حساب بعد التحليل.
-            </p>
+            {!plan ? (
+              <>
+                <h1 className="mt-2 text-2xl font-black text-slate-900 md:text-3xl">ارفع الرصيد مرة واحدة — استلم خطتي الفرعين فورًا</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
+                  نفس عقل Min / Reorder / Max المعتمد، مع التحويل بين الفرعين والوضع المالي، بدون إعادة حساب الكميات بعد التحليل.
+                </p>
+              </>
+            ) : (
+              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span className="font-black text-slate-900">الطلبية الحالية: {money(draftOrderTotal)} ج</span>
+                <span className="text-slate-500">{plan.totals?.buy_items || 0} صنف</span>
+                <span className="text-slate-500">شكري {money(plan.shokry?.summary?.suggested_buy_value)} ج</span>
+                <span className="text-slate-500">الشامي {money(plan.shamy?.summary?.suggested_buy_value)} ج</span>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1053,9 +1064,9 @@ export default function PurchaseCenterClean() {
             >
               بدء طلبية جديدة
             </button>
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
-              <ShieldCheck className="h-5 w-5" />
-              Atomic Stock Sync + Integrity Guards
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+              <ShieldCheck className="h-4 w-4" />
+              Atomic + Guards
             </div>
           </div>
         </div>
