@@ -65,3 +65,10 @@ test('clean page freezes replan after dual drafts are created', () => {
   assert.match(cleanPageSource, /if \(runRef\.current \|\| !saveResult \|\| draftResult\) return/);
   assert.match(cleanPageSource, /disabled=\{busy \|\| !saveResult \|\| Boolean\(draftResult\)\}/);
 });
+
+
+test('negative stock remains review-only instead of blocking dual draft creation', async () => {
+  assert.doesNotMatch(cleanPageSource, /hasNegativeStock/);
+  assert.doesNotMatch(cleanPageSource, /إنشاء المسودتين متوقف لأن ملف الرصيد يحتوي على أرصدة سالبة/);
+  assert.match(cleanPageSource, /تمت معاملة الأرصدة السالبة كصفر في الفرع المتأثر فقط/);
+});
