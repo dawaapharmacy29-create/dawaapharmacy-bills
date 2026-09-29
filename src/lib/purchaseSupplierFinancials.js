@@ -67,6 +67,10 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
     const draftCost = number(orderItem.expected_unit_cost);
     const fallbackCost = draftCost > 0 ? draftCost : number(hist.planning_reference_unit_cost || hist.unit_cost);
     const hasCurrentOffer = Boolean(recommended.supplier_name) && currentCashUnitCost > 0;
+    const currentOfferApplied =
+      hasCurrentOffer
+      && String(orderItem.supplier_offer_id || '') === String(recommended.offer_id || '')
+      && orderItem.cost_source === 'supplier_offer';
 
     const supplierName = hasCurrentOffer
       ? recommended.supplier_name
@@ -137,6 +141,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       historical_effective_unit_cost: historicalCost,
       historical_last_purchase_date: hist.historical_last_purchase_date || null,
       current_offer: hasCurrentOffer,
+      current_offer_applied: currentOfferApplied,
       alternatives: item.alternatives || [],
       recommended,
     };
