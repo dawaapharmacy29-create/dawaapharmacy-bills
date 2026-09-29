@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   Layers3,
+  RefreshCw,
   Store,
   WalletCards,
 } from 'lucide-react';
@@ -122,6 +123,7 @@ export default function CleanSupplierFinancialWorkspace({
   currentOfferPlans = {},
   draftTotals = {},
   onApplyCurrentOffers = null,
+  onRefresh = null,
 }) {
   const [mode, setMode] = useState('split');
   const [supplierChoice, setSupplierChoice] = useState('');
@@ -266,7 +268,17 @@ export default function CleanSupplierFinancialWorkspace({
             الأولوية لعرض حالي يحافظ على كمية V10؛ وإلا نستخدم متوسط التكلفة الفعلية من تاريخ المشتريات كمرجع. القيمة النقدية تمثل المتوقع دفعه للمورد، أما التكلفة الفعالة فتأخذ البونص في الاعتبار. المرجع التاريخي لا يُعتبر سعرًا حاليًا مؤكدًا قبل الإرسال.
           </p>
         </div>
-        <div className="flex rounded-xl border bg-white p-1 text-sm font-bold">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onRefresh?.()}
+            disabled={!onRefresh || loading || applying}
+            className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-40"
+          >
+            <RefreshCw className="h-4 w-4" />
+            تحديث الأسعار والموردين
+          </button>
+          <div className="flex rounded-xl border bg-white p-1 text-sm font-bold">
           <button
             type="button"
             onClick={() => setMode('split')}
@@ -281,6 +293,7 @@ export default function CleanSupplierFinancialWorkspace({
           >
             مخزن واحد للطلبية
           </button>
+          </div>
         </div>
       </div>
 
