@@ -156,3 +156,34 @@ test('combines one-supplier coverage across both branch drafts', () => {
   assert.equal(Math.round(combined[0].current_coverage_percent), 60);
   assert.equal(Math.round(combined[0].reference_coverage_percent), 80);
 });
+
+
+test('uses saved draft cost and discount after historical fallbacks are exhausted', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '3',
+      product_name: 'C',
+      needed_qty: 5,
+      recommended: null,
+      alternatives: [],
+    }],
+  };
+  const rows = buildSupplierFinancialRows({
+    decision,
+    historyRows: [{ product_code: '3', product_name: 'C', unit_cost: 0 }],
+    orderItems: [{
+      product_code: '3',
+      product_name: 'C',
+      expected_unit_cost: 42,
+      expected_discount: 18,
+      public_price: 60,
+    }],
+    branch: 'دواء شكري',
+  });
+
+  assert.equal(rows[0].cost_source, 'draft_saved_cost');
+  assert.equal(rows[0].unit_cost, 42);
+  assert.equal(rows[0].cash_cost, 210);
+  assert.equal(rows[0].discount_percent, 18);
+});
