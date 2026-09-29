@@ -286,7 +286,7 @@ function PurchaseJourneyTabs({
       ready: Boolean(draftResult && supplierReady),
       done: false,
       status: supplierReady
-        ? supplierDecision?.readyForSupplierConfirmation
+        ? supplierDecision?.readyForHistoricalReview
           ? 'جاهزة'
           : 'تحتاج تأكيد'
         : 'مقفلة',
@@ -1000,7 +1000,10 @@ export default function PurchaseCenterClean() {
       supplierCount: topGroups.length,
       topGroups,
       readyForFinalReview: rows.length > 0 && missingCostItems === 0,
-      readyForSupplierConfirmation: rows.length > 0 && missingSupplierItems === 0 && missingCostItems === 0,
+      readyForHistoricalReview: rows.length > 0
+        && historicalCoverageComplete
+        && missingSupplierItems === 0
+        && missingCostItems === 0,
     };
   }, [supplierWorkspace.groups, supplierWorkspace.rows]);
 
@@ -1017,10 +1020,14 @@ export default function PurchaseCenterClean() {
         branch: branchName,
         items: branchRows.length,
         value: branchRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0),
-        current: branchRows.filter((row) => row.cost_source === 'current_offer').length,
         historical: branchRows.filter((row) =>
           row.cost_source === 'historical_average' || row.cost_source === 'historical_last'
         ).length,
+        historicalCoveragePercent: branchRows.length
+          ? (branchRows.filter((row) =>
+              row.cost_source === 'historical_average' || row.cost_source === 'historical_last'
+            ).length / branchRows.length) * 100
+          : 0,
         missingSupplier: branchRows.filter((row) => !String(row.supplier_name || '').trim()).length,
         missingCost: branchRows.filter((row) => Number(row.unit_cost || 0) <= 0).length,
         suppliers: suppliers.size,
@@ -1658,7 +1665,7 @@ export default function PurchaseCenterClean() {
           {activeStep === 5 && draftResult && (
             <section className="space-y-4">
               <div className={`rounded-2xl border p-5 shadow-sm ${
-                supplierDecision.readyForSupplierConfirmation
+                supplierDecision.readyForHistoricalReview
                   ? 'border-emerald-200 bg-emerald-50/60'
                   : 'border-amber-200 bg-amber-50/70'
               }`}>
@@ -1670,19 +1677,19 @@ export default function PurchaseCenterClean() {
                     </p>
                   </div>
                   <span className={`rounded-full border bg-white px-3 py-1 text-xs font-black ${
-                    supplierDecision.readyForSupplierConfirmation
+                    supplierDecision.readyForHistoricalReview
                       ? 'border-emerald-200 text-emerald-800'
                       : 'border-amber-200 text-amber-800'
                   }`}>
-                    {supplierDecision.readyForSupplierConfirmation
-                      ? 'الموردون والتكلفة مكتملان للمراجعة'
-                      : 'تحتاج تأكيد مورد/سعر قبل الاعتماد'}
+                    {supplierDecision.readyForHistoricalReview
+                      ? 'التحليل التاريخي مكتمل للمراجعة'
+                      : 'تحتاج استكمال تاريخ المورد أو التكلفة'}
                   </span>
                 </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                   <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
-                  <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} />
+                  <Metric label="القيمة التاريخية المرجعية" value={`${money(liveReferenceTotal)} ج`} />
                   <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
                   <Metric label="أصناف الطلبية" value={plan?.totals?.buy_items || 0} />
                   <Metric label="تغطية التحليل التاريخي" value={`${supplierDecision.historicalItems}/${supplierDecision.totalItems}`} />
@@ -1699,8 +1706,8 @@ export default function PurchaseCenterClean() {
                       <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
                         <div><span className="text-slate-400">أصناف</span><div className="font-black">{branch.items}</div></div>
                         <div><span className="text-slate-400">موردون</span><div className="font-black">{branch.suppliers}</div></div>
-                        <div><span className="text-slate-400">حالي</span><div className="font-black text-emerald-700">{branch.current}</div></div>
-                        <div><span className="text-slate-400">تاريخي</span><div className="font-black text-amber-700">{branch.historical}</div></div>
+                        <div><span className="text-slate-400">تاريخي</span><div className="font-black text-emerald-700">{branch.historical}</div></div>
+                        <div><span className="text-slate-400">تغطية</span><div className="font-black text-emerald-700">{qty(branch.historicalCoveragePercent)}%</div></div>
                         <div><span className="text-slate-400">ناقص</span><div className={`font-black ${branch.missingSupplier || branch.missingCost ? 'text-red-700' : 'text-emerald-700'}`}>{branch.missingSupplier + branch.missingCost}</div></div>
                       </div>
                     </div>
@@ -1708,16 +1715,16 @@ export default function PurchaseCenterClean() {
                 </div>
 
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <Metric label="موردون مقترحون" value={supplierWorkspace.groups.filter((group) => group.supplier_name !== 'غير محدد').length} />
-                  <Metric label="بدون مورد فعلي" value={supplierDecision.missingSupplierItems} />
+                  <Metric label="موردون تاريخيون" value={supplierWorkspace.groups.filter((group) => group.supplier_name !== 'غير محدد').length} />
+                  <Metric label="بدون مورد تاريخي" value={supplierDecision.missingSupplierItems} />
                   <Metric label="بدون تكلفة" value={supplierDecision.missingCostItems} />
                   <Metric label="مطابقة المسودتين للخطة" value={draftResult.content_verified ? 'مؤكدة ✓' : 'تحتاج مراجعة'} />
                 </div>
 
-                {!supplierDecision.readyForSupplierConfirmation && (
+                {!supplierDecision.readyForHistoricalReview && (
                   <div className="mt-4 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-amber-900">
                     {supplierDecision.missingSupplierItems > 0 && (
-                      <div className="font-bold">• {supplierDecision.missingSupplierItems} صنف بدون مورد فعلي محدد.</div>
+                      <div className="font-bold">• {supplierDecision.missingSupplierItems} صنف بدون مورد تاريخي صالح.</div>
                     )}
                     {supplierDecision.missingCostItems > 0 && (
                       <div className="mt-1 font-bold">• {supplierDecision.missingCostItems} صنف بدون تكلفة صالحة.</div>
