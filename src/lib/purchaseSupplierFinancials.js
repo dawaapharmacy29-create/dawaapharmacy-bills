@@ -82,7 +82,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
     const hist = history.get(purchaseProductKey(item)) || {};
     const orderItem = orderItemMap.get(purchaseProductKey(item)) || {};
     const recommended = item?.recommended || {};
-    const financialOffer = bestFinancialCurrentOffer(item) || recommended;
+    const financialOffer = bestFinancialCurrentOffer(item, { preserveQuantity: true }) || {};
     const quantity = number(item.needed_qty);
     const currentCashUnitCost = number(financialOffer.net_unit_cost || financialOffer.effective_unit_cost);
     const currentEffectiveCost = number(financialOffer.effective_unit_cost || financialOffer.net_unit_cost);
