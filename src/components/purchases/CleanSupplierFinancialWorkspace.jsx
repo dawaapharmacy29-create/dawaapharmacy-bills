@@ -314,8 +314,9 @@ export default function CleanSupplierFinancialWorkspace({
                 <div>
                   <div className="font-black text-slate-900">{label} — تثبيت العروض الحالية</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    آمن بدون تغيير كمية V10: <b>{offerPlan.safe_items || 0}</b> صنف
-                    {' • '}للمراجعة/بدون عرض: <b>{offerPlan.skipped_items || 0}</b>
+                    جديد آمن بدون تغيير كمية V10: <b>{offerPlan.safe_items || 0}</b>
+                    {' • '}مثبت بالفعل: <b>{offerPlan.already_applied_items || 0}</b>
+                    {' • '}يحتاج مراجعة/بدون عرض: <b>{offerPlan.review_items || 0}</b>
                   </div>
                 </div>
                 <button
