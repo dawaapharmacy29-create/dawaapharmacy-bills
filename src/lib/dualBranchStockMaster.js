@@ -56,6 +56,27 @@ function inventoryEligible(name) {
   return Boolean(value) && !['توصيل', 'delivery', 'رسوم', 'service'].some((token) => value.includes(token));
 }
 
+function looksLikeTrailingFooter(row, map) {
+  const code = normalizeText(normalizeDigits(row?.[map.code]));
+  const name = normalizeText(row?.[map.name]);
+  const identity = `${code} ${name}`.trim();
+  if (!identity) return true;
+
+  const footerTokens = [
+    'اجمالي',
+    'الاجمالي',
+    'المجموع',
+    'مجموع',
+    'total',
+    'grand total',
+    'summary',
+    'نهايه',
+    'نهاية',
+  ];
+
+  return footerTokens.some((token) => identity === normalizeText(token) || identity.startsWith(`${normalizeText(token)} `));
+}
+
 export function normalizeDualBranchStockRows(rows = [], fileName = '') {
   const headers = Object.keys(rows[0] || {});
   const map = detectDualBranchStockColumns(headers);
@@ -82,6 +103,12 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
   };
   const invalidRows = [];
 
+  const lastCompleteIdentityIndex = rows.reduce((last, row, index) => {
+    const code = normalizeDigits(row?.[map.code]).trim().replace(/\.0+$/, '');
+    const name = String(row?.[map.name] ?? '').trim();
+    return code && name ? index : last;
+  }, -1);
+
   rows.forEach((row, index) => {
     const productCode = normalizeDigits(row[map.code]).trim().replace(/\.0+$/, '');
     const productName = String(row[map.name] ?? '').trim();
@@ -93,6 +120,12 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
       quality.ignored_blank_rows += 1;
       return;
     }
+
+    if (index > lastCompleteIdentityIndex && (!productCode || !productName) && looksLikeTrailingFooter(row, map)) {
+      quality.ignored_blank_rows += 1;
+      return;
+    }
+
     if (!productCode || !productName) {
       quality.invalid_identity_rows += 1;
       invalidRows.push(`صف ${index + 2}: كود أو اسم الصنف ناقص`);
