@@ -399,10 +399,15 @@ export function buildSafeCurrentOfferPlan(decision = null, orderItems = []) {
     });
   }
 
+  const alreadyAppliedItems = skipped.filter((row) => row.reason === 'already_applied').length;
+  const reviewItems = skipped.length - alreadyAppliedItems;
+
   return {
     items: applied,
     skipped,
     safe_items: applied.length,
+    already_applied_items: alreadyAppliedItems,
+    review_items: reviewItems,
     skipped_items: skipped.length,
     total_items: items.filter((item) => number(item?.needed_qty) > 0).length,
   };
