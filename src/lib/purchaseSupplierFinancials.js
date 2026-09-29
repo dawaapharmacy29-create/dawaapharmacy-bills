@@ -295,8 +295,9 @@ export function combineSingleSupplierScenarioSets(scenarioSets = []) {
 }
 
 
-export function buildSafeCurrentOfferPlan(decision = null) {
+export function buildSafeCurrentOfferPlan(decision = null, orderItems = []) {
   const items = Array.isArray(decision?.items) ? decision.items : [];
+  const orderItemMap = new Map((orderItems || []).map((row) => [String(row.id || ''), row]));
   const applied = [];
   const skipped = [];
 
@@ -307,8 +308,13 @@ export function buildSafeCurrentOfferPlan(decision = null) {
     const fullyAvailable = offer?.quantity_fully_available !== false;
     const quantityPreserved = Math.abs(purchaseQty - neededQty) <= 0.0001;
     const hasOffer = Boolean(offer?.offer_id);
+    const orderItem = orderItemMap.get(String(item.item_id || '')) || {};
+    const alreadyApplied =
+      hasOffer
+      && String(orderItem.supplier_offer_id || '') === String(offer.offer_id || '')
+      && orderItem.cost_source === 'supplier_offer';
 
-    if (hasOffer && fullyAvailable && quantityPreserved && neededQty > 0) {
+    if (hasOffer && fullyAvailable && quantityPreserved && neededQty > 0 && !alreadyApplied) {
       applied.push({
         item_id: item.item_id,
         offer_id: offer.offer_id,
@@ -318,13 +324,15 @@ export function buildSafeCurrentOfferPlan(decision = null) {
         item_id: item.item_id,
         product_code: item.product_code,
         product_name: item.product_name,
-        reason: !hasOffer
-          ? 'no_current_offer'
-          : !fullyAvailable
-            ? 'insufficient_availability'
-            : !quantityPreserved
-              ? 'offer_changes_v10_quantity'
-              : 'not_safe_to_apply',
+        reason: alreadyApplied
+          ? 'already_applied'
+          : !hasOffer
+            ? 'no_current_offer'
+            : !fullyAvailable
+              ? 'insufficient_availability'
+              : !quantityPreserved
+                ? 'offer_changes_v10_quantity'
+                : 'not_safe_to_apply',
       });
     }
   }
