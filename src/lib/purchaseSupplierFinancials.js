@@ -95,7 +95,7 @@ function currentCandidateForSupplier(item, supplierName) {
   return candidates.find((candidate) => String(candidate.supplier_name || '').trim().toLowerCase() === target) || null;
 }
 
-export function buildSupplierFinancialRows({ decision = null, historyRows = [], orderItems = [], branch = '' } = {}) {
+export function buildSupplierFinancialRows({ decision = null, historyRows = [], orderItems = [], branch = '', historicalOnly = true } = {}) {
   const history = new Map((historyRows || []).map((row) => [purchaseProductKey(row), row]));
   const orderItemMap = new Map((orderItems || []).map((row) => [purchaseProductKey(row), row]));
   const items = Array.isArray(decision?.items) ? decision.items : [];
@@ -105,7 +105,7 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
     const historicalSupplier = safeHistoricalSupplier(hist.historical_supplier);
     const orderItem = orderItemMap.get(purchaseProductKey(item)) || {};
     const recommended = item?.recommended || {};
-    const financialOffer = bestFinancialCurrentOffer(item, { preserveQuantity: true }) || {};
+    const financialOffer = historicalOnly ? {} : (bestFinancialCurrentOffer(item, { preserveQuantity: true }) || {});
     const quantity = number(item.needed_qty);
     const currentCashUnitCost = number(financialOffer.net_unit_cost || financialOffer.effective_unit_cost);
     const currentEffectiveCost = number(financialOffer.effective_unit_cost || financialOffer.net_unit_cost);
@@ -258,15 +258,17 @@ export function buildSupplierGroups(rows = []) {
     .sort((a, b) => b.estimated_cash_total - a.estimated_cash_total || b.items_count - a.items_count);
 }
 
-export function buildSingleSupplierScenarios({ decision = null, historyRows = [], branch = '' } = {}) {
+export function buildSingleSupplierScenarios({ decision = null, historyRows = [], branch = '', historicalOnly = true } = {}) {
   const items = Array.isArray(decision?.items) ? decision.items : [];
   const history = new Map((historyRows || []).map((row) => [purchaseProductKey(row), row]));
   const suppliers = new Set();
 
   for (const item of items) {
-    if (isUsableSupplierName(item?.recommended?.supplier_name)) suppliers.add(item.recommended.supplier_name);
-    for (const alternative of item?.alternatives || []) {
-      if (isUsableSupplierName(alternative?.supplier_name)) suppliers.add(alternative.supplier_name);
+    if (!historicalOnly) {
+      if (isUsableSupplierName(item?.recommended?.supplier_name)) suppliers.add(item.recommended.supplier_name);
+      for (const alternative of item?.alternatives || []) {
+        if (isUsableSupplierName(alternative?.supplier_name)) suppliers.add(alternative.supplier_name);
+      }
     }
     const hist = history.get(purchaseProductKey(item));
     const historicalSupplier = safeHistoricalSupplier(hist?.historical_supplier);
@@ -277,7 +279,7 @@ export function buildSingleSupplierScenarios({ decision = null, historyRows = []
     const rows = items.map((item) => {
       const quantity = number(item.needed_qty);
       const hist = history.get(purchaseProductKey(item)) || {};
-      const current = currentCandidateForSupplier(item, supplierName);
+      const current = historicalOnly ? null : currentCandidateForSupplier(item, supplierName);
       const historicalSupplier = safeHistoricalSupplier(hist.historical_supplier);
       const historicalMatch = historicalSupplier.toLowerCase() === String(supplierName).trim().toLowerCase();
       const currentAvailable = Boolean(current) && current.quantity_fully_available !== false;
