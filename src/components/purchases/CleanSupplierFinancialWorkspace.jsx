@@ -416,6 +416,9 @@ export default function CleanSupplierFinancialWorkspace({
 
       {mode === 'single' && (
         <>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+            هذا الوضع يجهز طلبية تفاوض/شراء موحدة على مخزن واحد للفرعين. لا يغيّر المورد أو السعر داخل المسودتين تلقائيًا؛ الأسعار التاريخية تظل مرجعًا حتى يرسل المورد سعرًا حاليًا.
+          </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(260px,420px)_1fr]">
             <label className="text-sm font-bold text-slate-700">
               اختر المخزن الذي تريد تجميع الطلبية عليه
