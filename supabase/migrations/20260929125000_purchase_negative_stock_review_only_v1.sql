@@ -1,5 +1,5 @@
--- Negative stock balances are already normalized to zero during stock parsing.
--- Keep the audit counters visible, but do not block dual draft creation because of them.
+-- Negative stock balances are normalized to zero during parsing.
+-- Keep their audit counters visible, but do not block dual draft creation.
 
 CREATE OR REPLACE FUNCTION public.smart_purchase_dual_branch_instant_plan_v1(p_session_token text, p_shokry_budget numeric DEFAULT NULL::numeric, p_shamy_budget numeric DEFAULT NULL::numeric)
  RETURNS jsonb
@@ -241,12 +241,13 @@ begin
     'stock_quality',jsonb_build_object(
       'negative_shokry',v_negative_shokry,
       'negative_shamy',v_negative_shamy,
+      'ok',(v_negative_shokry=0 and v_negative_shamy=0)
     ),
     'can_create_dual',
       not public.smart_purchase_branch_has_blocking_order_clean_v1('دواء شكري')
       and not public.smart_purchase_branch_has_blocking_order_clean_v1('دواء الشامي')
       and coalesce((v_shokry->'method'->'data_quality'->>'analysis_ready_for_order')::boolean,false)
-      and coalesce((v_shamy->'method'->'data_quality'->>'analysis_ready_for_order')::boolean,false)
+      and coalesce((v_shamy->'method'->'data_quality'->>'analysis_ready_for_order')::boolean,false),
     'shokry_open_orders',coalesce((
       select jsonb_agg(jsonb_build_object(
         'id',o.id,
