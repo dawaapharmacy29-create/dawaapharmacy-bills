@@ -199,7 +199,7 @@ export const smartPurchaseUnifiedApi = {
     const syncId = `stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const saveBranch = async (branch, rows) => {
       let staged = 0;
-      for (let offset = 0; offset < rows.length; offset += safeChunkSize) {
+      for (let offset = 0; offset < rows.length; offset += chunkSize) {
         const chunk = rows.slice(offset, offset + chunkSize);
         const result = await standaloneRpc('smart_purchase_stage_stock_snapshot_v1', {
           p_branch: branch,
