@@ -240,12 +240,24 @@ export function buildSingleSupplierScenarios({ decision = null, historyRows = []
       const hist = history.get(purchaseProductKey(item)) || {};
       const current = currentCandidateForSupplier(item, supplierName);
       const historicalMatch = String(hist.historical_supplier || '').trim().toLowerCase() === String(supplierName).trim().toLowerCase();
-      const currentCost = number(current?.effective_unit_cost || current?.net_unit_cost);
+      const currentAvailable = Boolean(current) && current.quantity_fully_available !== false;
+      const currentPreservesQuantity = Boolean(current)
+        && Math.abs(number(current.purchase_qty || quantity) - quantity) <= 0.0001;
+      const currentSafe = currentAvailable && currentPreservesQuantity;
+      const currentCashUnitCost = currentSafe ? number(current?.net_unit_cost || current?.effective_unit_cost) : 0;
+      const currentEffectiveCost = currentSafe ? number(current?.effective_unit_cost || current?.net_unit_cost) : 0;
       const historicalCost = historicalMatch ? number(hist.historical_effective_unit_cost || hist.last_purchase_price) : 0;
-      const unitCost = currentCost > 0 ? currentCost : historicalCost;
-      const cashCost = current
-        ? number(current.cash_cost) || quantity * number(current.net_unit_cost || currentCost)
+      const unitCost = currentCashUnitCost > 0 ? currentCashUnitCost : historicalCost;
+      const cashCost = currentSafe
+        ? number(current.cash_cost) || quantity * currentCashUnitCost
         : quantity * unitCost;
+      const constraint = current && !currentSafe
+        ? !currentAvailable
+          ? 'insufficient_availability'
+          : !currentPreservesQuantity
+            ? 'offer_changes_v10_quantity'
+            : 'current_offer_not_safe'
+        : '';
 
       return {
         branch,
@@ -253,10 +265,17 @@ export function buildSingleSupplierScenarios({ decision = null, historyRows = []
         product_name: item.product_name,
         quantity,
         supplier_name: supplierName,
-        coverage: currentCost > 0 ? 'current_offer' : historicalCost > 0 ? 'historical_reference' : 'missing',
+        coverage: currentSafe && currentCashUnitCost > 0
+          ? 'current_offer'
+          : historicalCost > 0
+            ? 'historical_reference'
+            : 'missing',
+        constraint,
         unit_cost: unitCost,
+        cash_unit_cost: unitCost,
+        effective_unit_cost: currentSafe && currentEffectiveCost > 0 ? currentEffectiveCost : historicalCost || unitCost,
         cash_cost: cashCost,
-        bonus_units: number(current?.earned_bonus_units),
+        bonus_units: currentSafe ? number(current?.earned_bonus_units) : 0,
       };
     });
 
