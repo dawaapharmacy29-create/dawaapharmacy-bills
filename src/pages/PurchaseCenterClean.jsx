@@ -395,20 +395,24 @@ export default function PurchaseCenterClean() {
 
     setSupplierWorkspace({ loading: true, error: '', rows: [], groups: [], scenarios: [] });
     try {
-      const [shokryDecision, shamyDecision] = await Promise.all([
+      const [shokryDecision, shamyDecision, shokryOrder, shamyOrder] = await Promise.all([
         purchaseApi.supplierDecision(shokryOrderId),
         purchaseApi.supplierDecision(shamyOrderId),
+        purchaseApi.getOrder(shokryOrderId),
+        purchaseApi.getOrder(shamyOrderId),
       ]);
 
       const rows = [
         ...buildSupplierFinancialRows({
           decision: shokryDecision,
           historyRows: historyByBranch.shokry,
+          orderItems: shokryOrder?.items || [],
           branch: 'دواء شكري',
         }),
         ...buildSupplierFinancialRows({
           decision: shamyDecision,
           historyRows: historyByBranch.shamy,
+          orderItems: shamyOrder?.items || [],
           branch: 'دواء الشامي',
         }),
       ];
