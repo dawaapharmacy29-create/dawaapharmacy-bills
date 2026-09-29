@@ -384,7 +384,11 @@ export default function PurchaseCenterClean() {
             accept=".xlsx,.xls"
             className="hidden"
             disabled={busy}
-            onChange={(event) => handleFile(event.target.files?.[0])}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              void handleFile(file);
+            }}
           />
           <Upload className="mb-3 h-9 w-9 text-teal-600" />
           <div className="text-lg font-black text-slate-800">{fileName || 'اختر ملف رصيد شكري والشامي'}</div>
