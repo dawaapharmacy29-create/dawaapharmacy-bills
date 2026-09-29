@@ -149,3 +149,63 @@ test('stops scheduling new stock chunks after a staging failure', async () => {
   assert.ok(started.length <= 2);
   assert.ok(started.includes(1));
 });
+
+
+test('rejects a nonblank row with missing product identity instead of silently dropping it', () => {
+  const rows = [{
+    'الكود': '',
+    'إسم الصنف': 'Missing Code Item',
+    'الفرعية الشامي': 1,
+    'الادارة فرع شكري': 2,
+  }];
+  assert.throws(
+    () => normalizeDualBranchStockRows(rows, 'stock.xlsx'),
+    /كود أو اسم الصنف ناقص/
+  );
+});
+
+test('rejects non-numeric stock instead of turning it into a false zero stockout', () => {
+  const rows = [{
+    'الكود': '4004',
+    'إسم الصنف': 'Bad Stock Item',
+    'الفرعية الشامي': 'غير معروف',
+    'الادارة فرع شكري': 2,
+  }];
+  assert.throws(
+    () => normalizeDualBranchStockRows(rows, 'stock.xlsx'),
+    /رصيد الشامي غير رقمي/
+  );
+});
+
+test('accepts Arabic digits and preserves the actual stock value', () => {
+  const result = normalizeDualBranchStockRows([{
+    'الكود': '5005',
+    'إسم الصنف': 'Arabic Digits Item',
+    'الفرعية الشامي': '١٫٥',
+    'الادارة فرع شكري': '٢',
+  }], 'stock.xlsx');
+
+  assert.equal(result.rows[0].shamy_stock, 1.5);
+  assert.equal(result.rows[0].shokry_stock, 2);
+});
+
+test('reports original source row count without counting blank rows as products', () => {
+  const result = normalizeDualBranchStockRows([
+    {
+      'الكود': '6006',
+      'إسم الصنف': 'Valid Item',
+      'الفرعية الشامي': 1,
+      'الادارة فرع شكري': 2,
+    },
+    {
+      'الكود': '',
+      'إسم الصنف': '',
+      'الفرعية الشامي': '',
+      'الادارة فرع شكري': '',
+    },
+  ], 'stock.xlsx');
+
+  assert.equal(result.source_rows_count, 2);
+  assert.equal(result.rows_count, 1);
+  assert.equal(result.quality.ignored_blank_rows, 1);
+});
