@@ -1058,12 +1058,16 @@ export default function PurchaseCenterClean() {
             </section>
           </details>
 
-          <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <section className={`rounded-2xl border p-4 ${draftResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="font-black text-amber-900">المرحلة الحالية: مراجعة الخطة ثم إنشاء المسودتين</div>
-                <div className="mt-1 text-sm text-amber-800">
-                  المسودتان ستُنشآن من نفس plan_hash بدون إعادة حساب الكميات. لا يوجد اعتماد أو إرسال للمورد في هذه الخطوة.
+                <div className={`font-black ${draftResult ? 'text-emerald-900' : 'text-amber-900'}`}>
+                  {draftResult ? 'المرحلة الحالية: مراجعة الموردين والتكلفة' : 'المرحلة الحالية: مراجعة الخطة ثم إنشاء المسودتين'}
+                </div>
+                <div className={`mt-1 text-sm ${draftResult ? 'text-emerald-800' : 'text-amber-800'}`}>
+                  {draftResult
+                    ? 'المسودتان محفوظتان ومطابقتان للخطة. راجع الموردين والأسعار فقط؛ لا يوجد اعتماد أو إرسال للمورد تلقائيًا.'
+                    : 'المسودتان ستُنشآن من نفس plan_hash بدون إعادة حساب الكميات. لا يوجد اعتماد أو إرسال للمورد في هذه الخطوة.'}
                 </div>
                 {plan.creation_guard?.can_create_dual === false && (
                   <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -1098,32 +1102,31 @@ export default function PurchaseCenterClean() {
                     {draftResult.content_verified && (
                       <div className="mt-1 font-bold">✓ تم التحقق حسابيًا أن محتوى المسودتين يطابق خطة V10 بدون أي اختلاف.</div>
                     )}
-                    <div className="mt-1 font-mono text-[11px]">
-                      شكري: {draftResult.shokry_order_id || '—'} • الشامي: {draftResult.shamy_order_id || '—'}
-                    </div>
                   </div>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={busy || !saveResult || Boolean(draftResult)}
-                  onClick={replan}
-                  className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  إعادة التحليل
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || !plan.creation_guard?.can_create_dual || Boolean(draftResult)}
-                  onClick={createDrafts}
-                  className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40"
-                >
-                  <ShoppingCart className="h-4 w-4" />
-                  إنشاء مسودتي شكري والشامي
-                </button>
-              </div>
+              {!draftResult && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || !saveResult}
+                    onClick={replan}
+                    className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    إعادة التحليل
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || !plan.creation_guard?.can_create_dual}
+                    onClick={createDrafts}
+                    className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40"
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    إنشاء مسودتي شكري والشامي
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 
