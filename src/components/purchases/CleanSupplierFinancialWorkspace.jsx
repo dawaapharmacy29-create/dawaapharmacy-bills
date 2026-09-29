@@ -288,7 +288,9 @@ export default function CleanSupplierFinancialWorkspace({
             الموردون والأسعار
           </h2>
           <p className="mt-1 text-sm text-indigo-800">
-            اختر أفضل مورد لكل صنف أو قارن بمخزن واحد. السعر التاريخي مرجع فقط حتى وصول عرض حالي.
+            {summary.current > 0
+              ? 'اختر أفضل مورد لكل صنف من العروض الحالية والمراجع المتاحة.'
+              : 'لا توجد عروض حالية؛ التوزيع المعروض مبني على تاريخ المشتريات فقط للمراجعة.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -307,14 +309,14 @@ export default function CleanSupplierFinancialWorkspace({
             onClick={() => setMode('split')}
             className={`rounded-lg px-3 py-2 ${mode === 'split' ? 'bg-indigo-700 text-white' : 'text-slate-600'}`}
           >
-            أفضل مورد لكل صنف
+            {summary.current > 0 ? 'أفضل مورد لكل صنف' : 'أفضل مورد تاريخي لكل صنف'}
           </button>
           <button
             type="button"
             onClick={() => setMode('single')}
             className={`rounded-lg px-3 py-2 ${mode === 'single' ? 'bg-indigo-700 text-white' : 'text-slate-600'}`}
           >
-            مخزن واحد للطلبية
+            {summary.current > 0 ? '{summary.current > 0 ? 'مخزن واحد للطلبية' : 'محاكاة مخزن واحد'}' : 'محاكاة مخزن واحد'}
           </button>
           </div>
         </div>
@@ -325,8 +327,8 @@ export default function CleanSupplierFinancialWorkspace({
         <Metric icon={WalletCards} label="مرجع التكلفة الحالي" value={`${money(summary.total)} ج`} />
         <Metric
           icon={AlertTriangle}
-          label="فرق تقديري"
-          value={`${draftFinancialGap >= 0 ? '+' : ''}${money(draftFinancialGap)} ج • ${draftFinancialGapPercent >= 0 ? '+' : ''}${qty(draftFinancialGapPercent)}%`}
+          label={draftFinancialGap >= 0 ? 'المسودتان أعلى من المرجع' : 'المسودتان أقل من المرجع'}
+          value={`${money(Math.abs(draftFinancialGap))} ج • ${qty(Math.abs(draftFinancialGapPercent))}%`}
         />
         <Metric icon={CheckCircle2} label="عروض حالية مؤكدة" value={`${summary.current}/${rows.length}`} />
         <Metric icon={Store} label="مرجع تاريخي" value={summary.historical} />
@@ -394,7 +396,9 @@ export default function CleanSupplierFinancialWorkspace({
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-black text-slate-800">التقسيم المقترح حسب أفضل مورد لكل صنف</div>
+              <div className="text-sm font-black text-slate-800">
+                {summary.current > 0 ? 'التقسيم المقترح حسب أفضل مورد لكل صنف' : 'التقسيم المرجعي حسب أفضل مورد تاريخي لكل صنف'}
+              </div>
               <div className="mt-2 flex flex-wrap gap-1">
                 {[
                   ['all', 'الكل'],
@@ -430,7 +434,16 @@ export default function CleanSupplierFinancialWorkspace({
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               {topSupplierGroups.map((group) => (
                 <div key={group.supplier_name} className="rounded-xl border bg-white p-3 shadow-sm">
-                  <div className="truncate font-black text-indigo-950" title={group.supplier_name}>{group.supplier_name}</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="truncate font-black text-indigo-950" title={group.supplier_name}>{group.supplier_name}</div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
+                      group.current_offer_items > 0
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      {group.current_offer_items > 0 ? 'عرض حالي' : 'مرجع تاريخي'}
+                    </span>
+                  </div>
                   <div className="mt-2 text-xl font-black text-slate-900">{money(group.estimated_cash_total)} ج</div>
                   <div className="mt-2 text-xs text-slate-600">{group.items_count} صنف • {qty(group.units)} وحدة</div>
                   <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">
