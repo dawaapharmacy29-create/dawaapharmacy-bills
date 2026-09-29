@@ -299,3 +299,44 @@ test('marks a current offer as applied only when the draft stores that exact off
   assert.equal(rows[0].current_offer, true);
   assert.equal(rows[0].current_offer_applied, true);
 });
+
+
+test('chooses the lowest effective current cost as the financial supplier', () => {
+  const decision = {
+    items: [{
+      item_id: 'x',
+      product_code: '1',
+      product_name: 'A',
+      needed_qty: 3,
+      recommended: {
+        offer_id: 'operational',
+        supplier_name: 'فارما',
+        purchase_qty: 3,
+        quantity_fully_available: true,
+        net_unit_cost: 82,
+        effective_unit_cost: 80,
+        cash_cost: 246,
+        reason: 'أفضل توازن تشغيلي',
+      },
+      alternatives: [{
+        offer_id: 'financial',
+        supplier_name: 'مخزن سونيستا',
+        purchase_qty: 3,
+        quantity_fully_available: true,
+        net_unit_cost: 75,
+        effective_unit_cost: 70,
+        cash_cost: 225,
+      }],
+    }],
+  };
+
+  const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري' });
+  assert.equal(rows[0].supplier_name, 'مخزن سونيستا');
+  assert.equal(rows[0].cash_unit_cost, 75);
+  assert.equal(rows[0].effective_unit_cost, 70);
+  assert.equal(rows[0].cash_cost, 225);
+  assert.equal(rows[0].operational_recommended_supplier, 'فارما');
+
+  const safe = buildSafeCurrentOfferPlan(decision);
+  assert.deepEqual(safe.items, [{ item_id: 'x', offer_id: 'financial' }]);
+});
