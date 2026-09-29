@@ -57,7 +57,8 @@ test('current supplier offer takes precedence over historical average', () => {
   const rows = buildSupplierFinancialRows({ decision, historyRows, branch: 'دواء شكري' });
   assert.equal(rows[0].supplier_name, 'فارما');
   assert.equal(rows[0].cost_source, 'current_offer');
-  assert.equal(rows[0].unit_cost, 70);
+  assert.equal(rows[0].unit_cost, 72);
+  assert.equal(rows[0].effective_unit_cost, 70);
   assert.equal(rows[0].cash_cost, 216);
   assert.equal(rows[0].price_verified, true);
 });
