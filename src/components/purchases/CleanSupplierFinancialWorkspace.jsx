@@ -163,6 +163,10 @@ export default function CleanSupplierFinancialWorkspace({
   const draftFinancialGap = storedDraftTotal - summary.total;
   const draftFinancialGapPercent = summary.total > 0 ? (draftFinancialGap / summary.total) * 100 : 0;
 
+  const hasCurrentOfferActions = Object.values(currentOfferPlans || {}).some((plan) =>
+    (plan?.items || []).length > 0 || Number(plan?.already_applied_items || 0) > 0
+  );
+
   const singleSupplierComparison = useMemo(() => {
     if (!selectedScenario || selectedScenario.missing_items > 0 || summary.total <= 0) return null;
     const difference = Number(selectedScenario.estimated_total || 0) - summary.total;
@@ -300,42 +304,24 @@ export default function CleanSupplierFinancialWorkspace({
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
-        <Metric icon={Layers3} label="أصناف لها توزيع" value={rows.length} />
-        <Metric icon={CheckCircle2} label="لها عرض حالي صالح" value={`${summary.current} • ${money(summary.currentTotal)} ج`} />
-        <Metric icon={CheckCircle2} label="مثبت فعليًا في المسودة" value={`${summary.applied} • ${money(summary.appliedTotal)} ج`} />
-        <Metric icon={Store} label="متوسط تاريخي" value={`${summary.historical} • ${money(summary.historicalTotal)} ج`} />
-        <Metric icon={WalletCards} label="تكلفة محفوظة بالمسودة" value={`${summary.draft} • ${money(summary.draftTotal)} ج`} />
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        <Metric icon={WalletCards} label="إجمالي المسودتين" value={`${money(storedDraftTotal)} ج`} />
+        <Metric icon={WalletCards} label="مرجع التكلفة الحالي" value={`${money(summary.total)} ج`} />
+        <Metric
+          icon={AlertTriangle}
+          label="فرق تقديري"
+          value={`${draftFinancialGap >= 0 ? '+' : ''}${money(draftFinancialGap)} ج • ${draftFinancialGapPercent >= 0 ? '+' : ''}${qty(draftFinancialGapPercent)}%`}
+        />
+        <Metric icon={CheckCircle2} label="عروض حالية مؤكدة" value={`${summary.current}/${rows.length}`} />
+        <Metric icon={Store} label="مرجع تاريخي" value={summary.historical} />
         <Metric icon={AlertTriangle} label="بدون تكلفة" value={summary.missing} />
-        <Metric icon={WalletCards} label="إجمالي تقديري" value={`${money(summary.total)} ج`} />
-        <Metric icon={CheckCircle2} label="نسبة مثبتة" value={rows.length ? `${qty((summary.applied / rows.length) * 100)}%` : '0%'} />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
-          <div className="text-xs font-bold text-teal-700">إجمالي المسودة المخزن — شكري</div>
-          <div className="mt-1 text-xl font-black">{money(draftTotals?.shokry)} ج</div>
+      {summary.current === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
+          لا توجد عروض أسعار حالية مؤكدة حتى الآن؛ توزيع الموردين الحالي مرجعي من تاريخ المشتريات وليس سعرًا نهائيًا للإرسال.
         </div>
-        <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
-          <div className="text-xs font-bold text-teal-700">إجمالي المسودة المخزن — الشامي</div>
-          <div className="mt-1 text-xl font-black">{money(draftTotals?.shamy)} ج</div>
-        </div>
-        <div className="rounded-xl border bg-white p-3 text-sm">
-          <div className="text-xs font-bold text-slate-500">إجمالي المسودتين المخزن</div>
-          <div className="mt-1 text-xl font-black text-slate-900">{money(storedDraftTotal)} ج</div>
-        </div>
-        <div className={`rounded-xl border p-3 text-sm ${
-          Math.abs(draftFinancialGapPercent) <= 1
-            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-            : 'border-amber-200 bg-amber-50 text-amber-900'
-        }`}>
-          <div className="text-xs font-bold">فرق المسودة عن الحساب المالي المرجعي</div>
-          <div className="mt-1 text-xl font-black">
-            {draftFinancialGap >= 0 ? '+' : ''}{money(draftFinancialGap)} ج
-          </div>
-          <div className="text-xs">{draftFinancialGapPercent >= 0 ? '+' : ''}{qty(draftFinancialGapPercent)}%</div>
-        </div>
-      </div>
+      )}
 
       {Math.abs(draftFinancialGapPercent) > 1 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -343,6 +329,7 @@ export default function CleanSupplierFinancialWorkspace({
         </div>
       )}
 
+      {hasCurrentOfferActions && (
       <div className="grid gap-3 lg:grid-cols-2">
         {[
           ['shokry', 'دواء شكري'],
@@ -383,6 +370,7 @@ export default function CleanSupplierFinancialWorkspace({
           );
         })}
       </div>
+      )}
 
       {message && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
@@ -435,7 +423,11 @@ export default function CleanSupplierFinancialWorkspace({
             </table>
           </div>
 
-          <div className="overflow-auto rounded-xl border bg-white">
+          <details className="rounded-xl border bg-white">
+            <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800">
+              تفاصيل الأصناف • {rows.length} صنف
+            </summary>
+            <div className="overflow-auto border-t">
             <table className="min-w-[2100px] w-full text-sm">
               <thead className="bg-indigo-50/60">
                 <tr>
@@ -477,7 +469,8 @@ export default function CleanSupplierFinancialWorkspace({
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </details>
           {rows.length > 100 && (
             <div className="text-xs text-indigo-700">المعاينة تعرض أول 100 صنف فقط؛ ملف Excel يحتوي كل الأصناف.</div>
           )}
@@ -556,7 +549,11 @@ export default function CleanSupplierFinancialWorkspace({
           </div>
 
           {selectedScenario && (
-            <div className="overflow-auto rounded-xl border bg-white">
+            <details className="rounded-xl border bg-white">
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-bold text-slate-800">
+                تفاصيل أصناف المخزن • {selectedScenario.items_count} صنف
+              </summary>
+              <div className="overflow-auto border-t">
               <table className="min-w-[1100px] w-full text-sm">
                 <thead className="bg-slate-50">
                   <tr>
@@ -604,7 +601,8 @@ export default function CleanSupplierFinancialWorkspace({
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </details>
           )}
         </>
       )}
