@@ -13,6 +13,14 @@ import {
 } from 'lucide-react';
 import { smartPurchaseUnifiedApi as purchaseApi } from '@/api/smartPurchaseUnifiedApi';
 import { normalizeDualBranchStockRows } from '@/lib/dualBranchStockMaster';
+import CleanSupplierFinancialWorkspace from '@/components/purchases/CleanSupplierFinancialWorkspace';
+import {
+  buildSingleSupplierScenarios,
+  buildSupplierFinancialRows,
+  buildSupplierGroups,
+  combineSingleSupplierScenarioSets,
+  mergePlanWithHistory,
+} from '@/lib/purchaseSupplierFinancials';
 
 const money = (value) =>
   new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(value || 0));
@@ -146,6 +154,8 @@ export default function PurchaseCenterClean() {
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
   const [draftResult, setDraftResult] = useState(null);
+  const [historyByBranch, setHistoryByBranch] = useState({ shokry: [], shamy: [] });
+  const [supplierWorkspace, setSupplierWorkspace] = useState({ loading: false, error: '', rows: [], groups: [], scenarios: [] });
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
   const [phase, setPhase] = useState('idle');
@@ -248,7 +258,35 @@ export default function PurchaseCenterClean() {
     if (expectedSyncId && result?.stock_sync_id !== expectedSyncId) {
       throw new Error('تم إيقاف الخطة لأن التحليل لا يطابق نفس نسخة ملف الرصيد المحفوظ.');
     }
-    setPlan(result);
+
+    let history = { shokry: [], shamy: [] };
+    try {
+      const [shokryHistory, shamyHistory] = await Promise.all([
+        purchaseApi.historyEnrichRows('دواء شكري', result?.shokry?.plan || []),
+        purchaseApi.historyEnrichRows('دواء الشامي', result?.shamy?.plan || []),
+      ]);
+      history = {
+        shokry: shokryHistory?.rows || [],
+        shamy: shamyHistory?.rows || [],
+      };
+    } catch {
+      history = { shokry: [], shamy: [] };
+    }
+
+    const financialPlan = {
+      ...result,
+      shokry: {
+        ...(result.shokry || {}),
+        plan: mergePlanWithHistory(result?.shokry?.plan || [], history.shokry),
+      },
+      shamy: {
+        ...(result.shamy || {}),
+        plan: mergePlanWithHistory(result?.shamy?.plan || [], history.shamy),
+      },
+    };
+
+    setHistoryByBranch(history);
+    setPlan(financialPlan);
     setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
     return result;
@@ -261,6 +299,8 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
+    setHistoryByBranch({ shokry: [], shamy: [] });
+    setSupplierWorkspace({ loading: false, error: '', rows: [], groups: [], scenarios: [] });
 
     try {
       setPhase('saving');
@@ -308,6 +348,8 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
+    setHistoryByBranch({ shokry: [], shamy: [] });
+    setSupplierWorkspace({ loading: false, error: '', rows: [], groups: [], scenarios: [] });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -323,6 +365,62 @@ export default function PurchaseCenterClean() {
     } catch (err) {
       setError(err?.message || 'تعذر قراءة ملف الرصيد.');
       setPhase('error');
+    }
+  }
+
+  async function loadSupplierWorkspace(result) {
+    const shokryOrderId = result?.shokry_order_id;
+    const shamyOrderId = result?.shamy_order_id;
+    if (!shokryOrderId || !shamyOrderId) return;
+
+    setSupplierWorkspace({ loading: true, error: '', rows: [], groups: [], scenarios: [] });
+    try {
+      const [shokryDecision, shamyDecision] = await Promise.all([
+        purchaseApi.supplierDecision(shokryOrderId),
+        purchaseApi.supplierDecision(shamyOrderId),
+      ]);
+
+      const rows = [
+        ...buildSupplierFinancialRows({
+          decision: shokryDecision,
+          historyRows: historyByBranch.shokry,
+          branch: 'دواء شكري',
+        }),
+        ...buildSupplierFinancialRows({
+          decision: shamyDecision,
+          historyRows: historyByBranch.shamy,
+          branch: 'دواء الشامي',
+        }),
+      ];
+
+      const scenarios = combineSingleSupplierScenarioSets([
+        buildSingleSupplierScenarios({
+          decision: shokryDecision,
+          historyRows: historyByBranch.shokry,
+          branch: 'دواء شكري',
+        }),
+        buildSingleSupplierScenarios({
+          decision: shamyDecision,
+          historyRows: historyByBranch.shamy,
+          branch: 'دواء الشامي',
+        }),
+      ]);
+
+      setSupplierWorkspace({
+        loading: false,
+        error: '',
+        rows,
+        groups: buildSupplierGroups(rows),
+        scenarios,
+      });
+    } catch (err) {
+      setSupplierWorkspace({
+        loading: false,
+        error: err?.message || 'تعذر حساب أفضل الموردين.',
+        rows: [],
+        groups: [],
+        scenarios: [],
+      });
     }
   }
 
@@ -342,6 +440,7 @@ export default function PurchaseCenterClean() {
       });
       setDraftResult(result);
       setPhase('ready');
+      void loadSupplierWorkspace(result);
     } catch (err) {
       setError(err?.message || 'تعذر إنشاء مسودتي الفرعين.');
       setPhase('error');
