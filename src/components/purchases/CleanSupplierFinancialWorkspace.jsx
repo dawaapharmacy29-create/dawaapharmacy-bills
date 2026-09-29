@@ -67,8 +67,9 @@ function splitExportRow(row) {
     الكمية: Number(row.quantity || 0),
     المورد: row.supplier_name || 'غير محدد',
     'مصدر السعر': sourceLabel[row.cost_source] || row.cost_source,
-    'تكلفة الوحدة': Number(row.unit_cost || 0),
-    'قيمة السطر': Number(row.cash_cost || 0),
+    'تكلفة الوحدة النقدية': Number(row.cash_unit_cost || row.unit_cost || 0),
+    'التكلفة الفعالة بعد البونص': Number(row.effective_unit_cost || row.unit_cost || 0),
+    'قيمة السطر النقدية': Number(row.cash_cost || 0),
     'بونص متوقع': Number(row.bonus_units || 0),
     'خصم أساسي %': row.discount_percent ?? '',
     'خصم إضافي %': row.extra_discount_percent ?? '',
@@ -115,10 +116,23 @@ export default function CleanSupplierFinancialWorkspace({
 
   const summary = useMemo(() => {
     const total = rows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
-    const current = rows.filter((row) => row.cost_source === 'current_offer').length;
-    const historical = rows.filter((row) => ['historical_average', 'historical_last'].includes(row.cost_source)).length;
+    const currentRows = rows.filter((row) => row.cost_source === 'current_offer');
+    const historicalRows = rows.filter((row) => ['historical_average', 'historical_last'].includes(row.cost_source));
+    const draftRows = rows.filter((row) => row.cost_source === 'draft_saved_cost');
+    const currentTotal = currentRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
+    const historicalTotal = historicalRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
+    const draftTotal = draftRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     const missing = rows.filter((row) => Number(row.unit_cost || 0) <= 0).length;
-    return { total, current, historical, missing };
+    return {
+      total,
+      current: currentRows.length,
+      historical: historicalRows.length,
+      draft: draftRows.length,
+      currentTotal,
+      historicalTotal,
+      draftTotal,
+      missing,
+    };
   }, [rows]);
 
   function exportSplitWorkbook() {
@@ -238,12 +252,14 @@ export default function CleanSupplierFinancialWorkspace({
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-7">
         <Metric icon={Layers3} label="أصناف لها توزيع" value={rows.length} />
-        <Metric icon={CheckCircle2} label="بسعر عرض حالي" value={summary.current} />
-        <Metric icon={Store} label="بسعر تاريخي مرجعي" value={summary.historical} />
+        <Metric icon={CheckCircle2} label="عرض حالي مؤكد" value={`${summary.current} • ${money(summary.currentTotal)} ج`} />
+        <Metric icon={Store} label="متوسط تاريخي" value={`${summary.historical} • ${money(summary.historicalTotal)} ج`} />
+        <Metric icon={WalletCards} label="تكلفة محفوظة بالمسودة" value={`${summary.draft} • ${money(summary.draftTotal)} ج`} />
         <Metric icon={AlertTriangle} label="بدون تكلفة" value={summary.missing} />
-        <Metric icon={WalletCards} label="القيمة التقديرية" value={`${money(summary.total)} ج`} />
+        <Metric icon={WalletCards} label="إجمالي تقديري" value={`${money(summary.total)} ج`} />
+        <Metric icon={CheckCircle2} label="نسبة مؤكدة حاليًا" value={rows.length ? `${qty((summary.current / rows.length) * 100)}%` : '0%'} />
       </div>
 
       {mode === 'split' && (
@@ -311,7 +327,8 @@ export default function CleanSupplierFinancialWorkspace({
                     <td className="p-2">{qty(row.quantity)}</td>
                     <td className="p-2 font-black text-indigo-900">{row.supplier_name || 'غير محدد'}</td>
                     <td className="p-2 text-xs">{sourceLabel[row.cost_source] || row.cost_source}</td>
-                    <td className="p-2">{money(row.unit_cost)} ج</td>
+                    <td className="p-2">{money(row.cash_unit_cost || row.unit_cost)} ج</td>
+                    <td className="p-2">{money(row.effective_unit_cost || row.unit_cost)} ج</td>
                     <td className="p-2 font-bold">{money(row.cash_cost)} ج</td>
                     <td className="p-2">{row.effective_saving_percent == null ? '—' : `${qty(row.effective_saving_percent)}%`}</td>
                     <td className="p-2">{qty(row.bonus_units)}</td>
