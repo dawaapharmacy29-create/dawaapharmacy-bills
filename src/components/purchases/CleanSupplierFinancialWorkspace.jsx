@@ -94,15 +94,20 @@ function singleExportRow(row) {
     الكمية: Number(row.quantity || 0),
     المورد: row.supplier_name || '',
     التغطية: coverageLabel[row.coverage] || row.coverage,
-    'تكلفة الوحدة': Number(row.unit_cost || 0),
-    'قيمة تقديرية': Number(row.cash_cost || 0),
+    'تكلفة الوحدة النقدية': Number(row.cash_unit_cost || row.unit_cost || 0),
+    'التكلفة الفعالة بعد البونص': Number(row.effective_unit_cost || row.unit_cost || 0),
+    'قيمة نقدية تقديرية': Number(row.cash_cost || 0),
     'بونص متوقع': Number(row.bonus_units || 0),
     ملاحظة:
       row.coverage === 'current_offer'
         ? 'يوجد عرض حالي لهذا المورد'
         : row.coverage === 'historical_reference'
           ? 'السعر من تاريخ المشتريات ويحتاج تأكيد قبل الإرسال'
-          : 'لا يوجد سعر/عرض كافٍ لهذا المورد — يحتاج تواصل يدوي',
+          : row.constraint === 'offer_changes_v10_quantity'
+            ? 'يوجد عرض لكن MOQ يغيّر كمية V10 — يحتاج تفاوض'
+            : row.constraint === 'insufficient_availability'
+              ? 'يوجد عرض لكن التوافر لا يغطي كمية V10'
+              : 'لا يوجد سعر/عرض كافٍ لهذا المورد — يحتاج تواصل يدوي',
   };
 }
 
@@ -481,7 +486,7 @@ export default function CleanSupplierFinancialWorkspace({
               <table className="min-w-[1100px] w-full text-sm">
                 <thead className="bg-slate-50">
                   <tr>
-                    {['الفرع','الصنف','الكمية','التغطية','تكلفة الوحدة','القيمة','بونص','ملاحظة'].map((head) => (
+                    {['الفرع','الصنف','الكمية','التغطية','تكلفة نقدية/وحدة','فعالة بعد البونص','القيمة النقدية','بونص','ملاحظة'].map((head) => (
                       <th key={head} className="p-2 text-right">{head}</th>
                     ))}
                   </tr>
@@ -506,15 +511,20 @@ export default function CleanSupplierFinancialWorkspace({
                           {coverageLabel[row.coverage]}
                         </span>
                       </td>
-                      <td className="p-2">{row.unit_cost > 0 ? `${money(row.unit_cost)} ج` : '—'}</td>
+                      <td className="p-2">{row.cash_unit_cost > 0 ? `${money(row.cash_unit_cost)} ج` : '—'}</td>
+                      <td className="p-2">{row.effective_unit_cost > 0 ? `${money(row.effective_unit_cost)} ج` : '—'}</td>
                       <td className="p-2 font-bold">{row.cash_cost > 0 ? `${money(row.cash_cost)} ج` : '—'}</td>
                       <td className="p-2">{qty(row.bonus_units)}</td>
                       <td className="p-2 text-xs text-slate-500">
                         {row.coverage === 'current_offer'
-                          ? 'عرض حالي'
+                          ? 'عرض حالي يحافظ على كمية V10'
                           : row.coverage === 'historical_reference'
                             ? 'من تاريخ المشتريات — يحتاج تأكيد السعر'
-                            : 'تواصل مع المورد لتسعير الصنف'}
+                            : row.constraint === 'offer_changes_v10_quantity'
+                              ? 'يوجد عرض لكن MOQ يغيّر كمية V10 — يحتاج تفاوض'
+                              : row.constraint === 'insufficient_availability'
+                                ? 'يوجد عرض لكن التوافر لا يغطي كمية V10'
+                                : 'تواصل مع المورد لتسعير الصنف'}
                       </td>
                     </tr>
                   ))}
