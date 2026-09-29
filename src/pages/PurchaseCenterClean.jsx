@@ -859,7 +859,8 @@ export default function PurchaseCenterClean() {
 
       <CurrentStepGuide step={activeStep} />
 
-      <section className={`rounded-2xl border bg-white p-5 shadow-sm ${activeStep === 1 ? '' : 'hidden'}`}>
+      {activeStep === 1 && (
+      <section className="rounded-2xl border bg-white p-5 shadow-sm">
         {!plan ? (
           <label className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition ${busy ? 'pointer-events-none opacity-60' : 'hover:border-teal-400 hover:bg-teal-50/30'}`}>
             <input
@@ -979,10 +980,13 @@ export default function PurchaseCenterClean() {
           </div>
         )}
       </section>
+      )}
 
       {plan && (
         <>
-          <section className={`rounded-2xl border border-teal-200 bg-white p-4 shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
+          {activeStep === 2 && (
+          <>
+          <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-black text-slate-900">ملخص الطلبية الآن</h2>
@@ -1002,7 +1006,7 @@ export default function PurchaseCenterClean() {
             </div>
           </section>
 
-          <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
+          <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
               تفاصيل تقنية وتشغيلية
             </summary>
@@ -1026,7 +1030,7 @@ export default function PurchaseCenterClean() {
             </div>
           </details>
 
-          <details className={`rounded-2xl border border-amber-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
+          <details className={`rounded-2xl border border-amber-200 bg-white shadow-sm`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
               مراجعات لا تعطل الطلبية • داخل الطلبية {quickReviewRows.length} • Watchlist خارجي {reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy + movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy}
             </summary>
@@ -1204,7 +1208,7 @@ export default function PurchaseCenterClean() {
             </div>
           </details>
 
-          <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
+          <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
               تفاصيل خطة شكري والشامي
             </summary>
@@ -1215,7 +1219,7 @@ export default function PurchaseCenterClean() {
           </details>
 
           {(plan.creation_guard?.legacy_stale_orders || []).length > 0 && (
-            <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
+            <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm`}>
               <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
                 طلبيات قديمة لا تمنع الشراء • {(plan.creation_guard?.legacy_stale_orders || []).length}
               </summary>
@@ -1245,7 +1249,7 @@ export default function PurchaseCenterClean() {
             </details>
           )}
 
-          <details className={`rounded-2xl border border-indigo-200 bg-white shadow-sm ${activeStep === 2 ? '' : 'hidden'}`}>
+          <details className={`rounded-2xl border border-indigo-200 bg-white shadow-sm`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
               التحويلات بين الفروع • {transfers.length} حركة
             </summary>
@@ -1291,8 +1295,11 @@ export default function PurchaseCenterClean() {
             </div>
             </section>
           </details>
+          </>
+          )}
 
-          <section className={`rounded-2xl border p-4 ${activeStep === 3 ? '' : 'hidden'} ${draftResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+          {activeStep === 3 && (
+          <section className={`rounded-2xl border p-4 ${draftResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className={`font-black ${draftResult ? 'text-emerald-900' : 'text-amber-900'}`}>
@@ -1345,6 +1352,7 @@ export default function PurchaseCenterClean() {
               </div>
             </div>
           </section>
+          )}
 
           {draftResult && activeStep === 4 && (
             <CleanSupplierFinancialWorkspace
