@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import {
   AlertTriangle,
@@ -35,6 +35,44 @@ const BRANCH_META = {
   shokry: { label: 'دواء شكري' },
   shamy: { label: 'دواء الشامي' },
 };
+
+const JOURNEY_RESUME_KEY = 'purchase-center-clean-resume-v1';
+const JOURNEY_RESUME_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+function readJourneyResume() {
+  try {
+    const raw = window.localStorage.getItem(JOURNEY_RESUME_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.stock_sync_id || !parsed?.saved_at) return null;
+    if (Date.now() - Number(parsed.saved_at) > JOURNEY_RESUME_MAX_AGE_MS) {
+      window.localStorage.removeItem(JOURNEY_RESUME_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeJourneyResume(payload) {
+  try {
+    window.localStorage.setItem(JOURNEY_RESUME_KEY, JSON.stringify({
+      ...payload,
+      saved_at: Date.now(),
+    }));
+  } catch {
+    // Local resume is optional; purchase data remains safely stored server-side.
+  }
+}
+
+function clearJourneyResume() {
+  try {
+    window.localStorage.removeItem(JOURNEY_RESUME_KEY);
+  } catch {
+    // No-op.
+  }
+}
 
 function modeLabel(mode) {
   if (mode === 'critical') return 'حرج — حماية الحد الأدنى';
@@ -343,6 +381,7 @@ export default function PurchaseCenterClean() {
   const [error, setError] = useState('');
   const [activeStep, setActiveStep] = useState(1);
   const runRef = useRef(false);
+  const resumeAttemptedRef = useRef(false);
 
   const transfers = useMemo(() => {
     if (!plan) return [];
@@ -580,6 +619,15 @@ export default function PurchaseCenterClean() {
         throw new Error('تم إيقاف التحليل لأن حفظ الرصيد الموحد لم يكتمل Transactionally للفرعين.');
       }
       setSaveResult(saved);
+      writeJourneyResume({
+        stock_sync_id: saved.stock_sync_id,
+        file_name: fileName || stockMaster.source_file || 'آخر رصيد محفوظ',
+        file_modified_at: fileModifiedAt?.toISOString?.() || null,
+        rows_count: Number(stockMaster.rows_count || stockMaster.rows?.length || 0),
+        inventory_rows: Number(stockMaster.inventory_rows || 0),
+        quality: stockMaster.quality || {},
+        save_result: saved,
+      });
       await runPlannerOnly(saved.stock_sync_id);
       setTimings((current) => ({ ...current, totalMs: Math.round(performance.now() - flowStartedAt) }));
     } catch (err) {
@@ -589,6 +637,68 @@ export default function PurchaseCenterClean() {
       runRef.current = false;
     }
   }
+
+  function startNewJourney() {
+    if (runRef.current) return;
+    clearJourneyResume();
+    setActiveStep(1);
+    setFileName('');
+    setFileModifiedAt(null);
+    setParsed(null);
+    setSaveResult(null);
+    setPlan(null);
+    setDraftResult(null);
+    setHistoryByBranch({ shokry: [], shamy: [] });
+    setSupplierWorkspace({
+      loading: false,
+      applying: '',
+      message: '',
+      error: '',
+      rows: [],
+      groups: [],
+      scenarios: [],
+      currentOfferPlans: {},
+      draftTotals: {},
+    });
+    setTimings({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
+    setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
+    setError('');
+    setPhase('idle');
+  }
+
+  useEffect(() => {
+    if (resumeAttemptedRef.current) return;
+    resumeAttemptedRef.current = true;
+    const resume = readJourneyResume();
+    if (!resume?.stock_sync_id || runRef.current) return;
+
+    runRef.current = true;
+    setFileName(resume.file_name || 'آخر رصيد محفوظ');
+    setFileModifiedAt(resume.file_modified_at ? new Date(resume.file_modified_at) : null);
+    setParsed({
+      rows_count: Number(resume.rows_count || 0),
+      source_rows_count: Number(resume.rows_count || 0),
+      inventory_rows: Number(resume.inventory_rows || 0),
+      quality: resume.quality || {},
+    });
+    setSaveResult(resume.save_result || {
+      stock_sync_id: resume.stock_sync_id,
+      dual_atomic_finalize: true,
+      row_count_verified: true,
+    });
+    setError('');
+
+    void runPlannerOnly(resume.stock_sync_id)
+      .catch((err) => {
+        clearJourneyResume();
+        setError(err?.message || 'تعذر استكمال آخر رحلة شراء محفوظة.');
+        setPhase('error');
+        setActiveStep(1);
+      })
+      .finally(() => {
+        runRef.current = false;
+      });
+  }, []);
 
   async function replan() {
     if (runRef.current || !saveResult || draftResult) return;
@@ -842,9 +952,19 @@ export default function PurchaseCenterClean() {
               نفس عقل Min / Reorder / Max المعتمد، مع التحويل بين الفرعين والوضع المالي، بدون مسارات التغطية القديمة وبدون إعادة حساب بعد التحليل.
             </p>
           </div>
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
-            <ShieldCheck className="h-5 w-5" />
-            Atomic Stock Sync + Integrity Guards
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={startNewJourney}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:border-teal-300 disabled:opacity-40"
+            >
+              بدء طلبية جديدة
+            </button>
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">
+              <ShieldCheck className="h-5 w-5" />
+              Atomic Stock Sync + Integrity Guards
+            </div>
           </div>
         </div>
       </header>
