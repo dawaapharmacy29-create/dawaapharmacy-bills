@@ -427,3 +427,52 @@ export function buildSafeCurrentOfferPlan(decision = null, orderItems = []) {
     total_items: items.filter((item) => number(item?.needed_qty) > 0).length,
   };
 }
+
+
+export function buildHistoricalReferencePlan({ orderItems = [], historyRows = [] } = {}) {
+  const history = new Map((historyRows || []).map((row) => [purchaseProductKey(row), row]));
+  const items = [];
+  const skipped = [];
+
+  for (const orderItem of orderItems || []) {
+    if (number(orderItem.approved_quantity) <= 0) continue;
+
+    const hist = history.get(purchaseProductKey(orderItem)) || {};
+    const historicalCost = number(hist.historical_effective_unit_cost);
+    const historicalSupplier = String(hist.historical_supplier || '').trim();
+    const source = String(orderItem.cost_source || 'reference');
+
+    if (source === 'supplier_offer' || source === 'manual') {
+      skipped.push({
+        id: orderItem.id,
+        product_code: orderItem.product_code,
+        product_name: orderItem.product_name,
+        reason: 'verified_cost_preserved',
+      });
+      continue;
+    }
+
+    if (historicalCost <= 0) {
+      skipped.push({
+        id: orderItem.id,
+        product_code: orderItem.product_code,
+        product_name: orderItem.product_name,
+        reason: 'no_historical_cost',
+      });
+      continue;
+    }
+
+    items.push({
+      id: orderItem.id,
+      expected_unit_cost: historicalCost,
+      ...(historicalSupplier ? { supplier_name: historicalSupplier } : {}),
+    });
+  }
+
+  return {
+    items,
+    applicable_items: items.length,
+    skipped_items: skipped.length,
+    skipped,
+  };
+}
