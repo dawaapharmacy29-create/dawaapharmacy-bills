@@ -626,24 +626,62 @@ export default function PurchaseCenterClean() {
       </header>
 
       <section className="rounded-2xl border bg-white p-5 shadow-sm">
-        <label className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition ${busy ? 'pointer-events-none opacity-60' : 'hover:border-teal-400 hover:bg-teal-50/30'}`}>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            disabled={busy}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = '';
-              void handleFile(file);
-            }}
-          />
-          <Upload className="mb-3 h-9 w-9 text-teal-600" />
-          <div className="text-lg font-black text-slate-800">{fileName || 'اختر ملف رصيد شكري والشامي'}</div>
-          <div className="mt-2 text-sm text-slate-500">بمجرد اختيار الملف يبدأ الحفظ والتحليل تلقائيًا.</div>
-        </label>
+        {!plan ? (
+          <label className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition ${busy ? 'pointer-events-none opacity-60' : 'hover:border-teal-400 hover:bg-teal-50/30'}`}>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              disabled={busy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                void handleFile(file);
+              }}
+            />
+            <Upload className="mb-3 h-9 w-9 text-teal-600" />
+            <div className="text-lg font-black text-slate-800">{fileName || 'اختر ملف رصيد شكري والشامي'}</div>
+            <div className="mt-2 text-sm text-slate-500">بمجرد اختيار الملف يبدأ الحفظ والتحليل تلقائيًا.</div>
+          </label>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                <span className="font-black text-slate-900">الرصيد معتمد Atomic</span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
+                  {parsed?.rows_count || 0} صف
+                </span>
+                {(parsed?.quality?.negative_shokry > 0 || parsed?.quality?.negative_shamy > 0) && (
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">
+                    السالب عومل كصفر • شكري {parsed?.quality?.negative_shokry || 0} • الشامي {parsed?.quality?.negative_shamy || 0}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 truncate text-sm text-slate-500">{fileName || 'ملف الرصيد الحالي'}</div>
+              {saveResult?.stock_sync_id && (
+                <div className="mt-1 font-mono text-[10px] text-slate-400">{saveResult.stock_sync_id}</div>
+              )}
+            </div>
+            <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-bold text-teal-800 ${busy ? 'pointer-events-none opacity-50' : 'hover:bg-teal-100'}`}>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                disabled={busy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  void handleFile(file);
+                }}
+              />
+              <Upload className="h-4 w-4" />
+              رفع رصيد جديد
+            </label>
+          </div>
+        )}
 
-        {parsed && (
+        {parsed && !plan && (
           <>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="صفوف المصدر" value={parsed.source_rows_count ?? parsed.rows_count} />
@@ -697,7 +735,7 @@ export default function PurchaseCenterClean() {
           </div>
         )}
 
-        {saveResult && (
+        {saveResult && !plan && (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
             <div className="flex items-center gap-2 font-bold">
               <CheckCircle2 className="h-5 w-5" />
