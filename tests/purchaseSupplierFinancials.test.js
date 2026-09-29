@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildSingleSupplierScenarios,
+  buildSafeCurrentOfferPlan,
   combineSingleSupplierScenarioSets,
   buildSupplierFinancialRows,
   buildSupplierGroups,
@@ -186,4 +187,55 @@ test('uses saved draft cost and discount after historical fallbacks are exhauste
   assert.equal(rows[0].unit_cost, 42);
   assert.equal(rows[0].cash_cost, 210);
   assert.equal(rows[0].discount_percent, 18);
+});
+
+
+test('only applies current offers that preserve the V10 quantity', () => {
+  const plan = buildSafeCurrentOfferPlan({
+    items: [
+      {
+        item_id: 'safe',
+        product_name: 'Safe',
+        needed_qty: 5,
+        recommended: {
+          offer_id: 'offer-safe',
+          purchase_qty: 5,
+          quantity_fully_available: true,
+        },
+      },
+      {
+        item_id: 'moq',
+        product_name: 'MOQ',
+        needed_qty: 5,
+        recommended: {
+          offer_id: 'offer-moq',
+          purchase_qty: 10,
+          quantity_fully_available: true,
+        },
+      },
+      {
+        item_id: 'availability',
+        product_name: 'Availability',
+        needed_qty: 5,
+        recommended: {
+          offer_id: 'offer-short',
+          purchase_qty: 5,
+          quantity_fully_available: false,
+        },
+      },
+      {
+        item_id: 'missing',
+        product_name: 'Missing',
+        needed_qty: 5,
+        recommended: null,
+      },
+    ],
+  });
+
+  assert.deepEqual(plan.items, [{ item_id: 'safe', offer_id: 'offer-safe' }]);
+  assert.equal(plan.safe_items, 1);
+  assert.equal(plan.skipped_items, 3);
+  assert.equal(plan.skipped.find((row) => row.item_id === 'moq').reason, 'offer_changes_v10_quantity');
+  assert.equal(plan.skipped.find((row) => row.item_id === 'availability').reason, 'insufficient_availability');
+  assert.equal(plan.skipped.find((row) => row.item_id === 'missing').reason, 'no_current_offer');
 });
