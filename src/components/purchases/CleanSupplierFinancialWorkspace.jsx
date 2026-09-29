@@ -104,15 +104,9 @@ function singleExportRow(row) {
     'قيمة نقدية تقديرية': Number(row.cash_cost || 0),
     'بونص متوقع': Number(row.bonus_units || 0),
     ملاحظة:
-      row.coverage === 'current_offer'
-        ? 'يوجد عرض حالي لهذا المورد'
-        : row.coverage === 'historical_reference'
-          ? 'السعر من تاريخ المشتريات ويحتاج تأكيد قبل الإرسال'
-          : row.constraint === 'offer_changes_v10_quantity'
-            ? 'يوجد عرض لكن MOQ يغيّر كمية V10 — يحتاج تفاوض'
-            : row.constraint === 'insufficient_availability'
-              ? 'يوجد عرض لكن التوافر لا يغطي كمية V10'
-              : 'لا يوجد سعر/عرض كافٍ لهذا المورد — يحتاج تواصل يدوي',
+      row.coverage === 'historical_reference'
+        ? 'التغطية مبنية على تاريخ المشتريات لهذا المورد'
+        : 'لا يوجد تاريخ شراء كافٍ لهذا المورد',
   };
 }
 
@@ -121,12 +115,9 @@ export default function CleanSupplierFinancialWorkspace({
   groups = [],
   scenarios = [],
   loading = false,
-  applying = '',
   message = '',
   error = '',
-  currentOfferPlans = {},
   draftTotals = {},
-  onApplyCurrentOffers = null,
   onRefresh = null,
 }) {
   const [mode, setMode] = useState('split');
@@ -164,10 +155,6 @@ export default function CleanSupplierFinancialWorkspace({
   const storedDraftTotal = Number(draftTotals?.shokry || 0) + Number(draftTotals?.shamy || 0);
   const draftFinancialGap = storedDraftTotal - summary.total;
   const draftFinancialGapPercent = summary.total > 0 ? (draftFinancialGap / summary.total) * 100 : 0;
-
-  const hasCurrentOfferActions = Object.values(currentOfferPlans || {}).some((plan) =>
-    (plan?.items || []).length > 0 || Number(plan?.already_applied_items || 0) > 0
-  );
 
   const splitRows = useMemo(() => (
     branchFilter === 'all'
@@ -232,10 +219,8 @@ export default function CleanSupplierFinancialWorkspace({
     const summaryRows = [{
       المورد: selectedScenario.supplier_name,
       'إجمالي الأصناف': selectedScenario.items_count,
-      'عروض حالية': selectedScenario.current_offer_items,
       'مراجع تاريخية فقط': selectedScenario.historical_reference_items,
       'بدون تغطية سعرية': selectedScenario.missing_items,
-      'تغطية بعروض حالية %': Number(selectedScenario.current_coverage_percent.toFixed(2)),
       'تغطية مع التاريخ %': Number(selectedScenario.reference_coverage_percent.toFixed(2)),
       'قيمة تقديرية': Number(selectedScenario.estimated_total || 0),
     }];
@@ -341,49 +326,6 @@ export default function CleanSupplierFinancialWorkspace({
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
           التحليل التاريخي يغطي {summary.historical} من {rows.length} صنف؛ راجع الأصناف غير المغطاة قبل إنهاء الطلبية.
         </div>
-      )}
-
-      {false && hasCurrentOfferActions && (
-      <div className="grid gap-3 lg:grid-cols-2">
-        {[
-          ['shokry', 'دواء شكري'],
-          ['shamy', 'دواء الشامي'],
-        ].map(([key, label]) => {
-          const offerPlan = currentOfferPlans?.[key] || {};
-          return (
-            <div key={key} className="rounded-2xl border bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="font-black text-slate-900">{label} — تثبيت العروض الحالية</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    جديد آمن بدون تغيير كمية V10: <b>{offerPlan.safe_items || 0}</b>
-                    {' • '}مثبت بالفعل: <b>{offerPlan.already_applied_items || 0}</b>
-                    {' • '}يحتاج مراجعة/بدون عرض: <b>{offerPlan.review_items || 0}</b>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={!onApplyCurrentOffers || applying || !(offerPlan.items || []).length}
-                  onClick={() => onApplyCurrentOffers?.(key)}
-                  className="rounded-xl bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
-                >
-                  {applying === key ? 'جاري التثبيت...' : (offerPlan.items || []).length ? 'تثبيت أفضل العروض الحالية' : 'لا توجد عروض جديدة آمنة'}
-                </button>
-              </div>
-              {(offerPlan.skipped || []).some((row) => row.reason === 'offer_changes_v10_quantity') && (
-                <div className="mt-2 text-xs font-bold text-amber-700">
-                  بعض العروض مستبعدة لأنها تفرض MOQ يغير كمية V10؛ لم يتم تعديلها تلقائيًا.
-                </div>
-              )}
-              {(offerPlan.skipped || []).some((row) => row.reason === 'insufficient_availability') && (
-                <div className="mt-1 text-xs font-bold text-amber-700">
-                  بعض العروض مستبعدة لأن التوافر المعلن لا يغطي الكمية.
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
       )}
 
       {message && (
@@ -556,7 +498,7 @@ export default function CleanSupplierFinancialWorkspace({
       {mode === 'single' && (
         <>
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
-            هذا الوضع يجهز طلبية تفاوض/شراء موحدة على مخزن واحد للفرعين. لا يغيّر المورد أو السعر داخل المسودتين تلقائيًا؛ الأسعار التاريخية تظل مرجعًا حتى يرسل المورد سعرًا حاليًا.
+            هذه محاكاة تاريخية: ماذا لو جُمعت أصناف الفرعين على مورد واحد اعتمادًا على سجل الشراء السابق فقط. لا تغيّر المسودتين تلقائيًا.
           </div>
           <div className="grid gap-3 lg:grid-cols-[minmax(260px,420px)_1fr]">
             <label className="text-sm font-bold text-slate-700">
@@ -568,7 +510,7 @@ export default function CleanSupplierFinancialWorkspace({
               >
                 {scenarios.map((scenario) => (
                   <option key={scenario.supplier_name} value={scenario.supplier_name}>
-                    {scenario.supplier_name} — عروض حالية {scenario.current_offer_items}/{scenario.items_count}
+                    {scenario.supplier_name} — تغطية تاريخية {scenario.historical_reference_items}/{scenario.items_count}
                   </option>
                 ))}
               </select>
@@ -577,8 +519,8 @@ export default function CleanSupplierFinancialWorkspace({
             {selectedScenario && (
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                 <Metric icon={Store} label="المخزن" value={selectedScenario.supplier_name} />
-                <Metric icon={CheckCircle2} label="تغطية بعروض حالية" value={`${qty(selectedScenario.current_coverage_percent)}%`} />
-                <Metric icon={Layers3} label="مرجع تاريخي إضافي" value={selectedScenario.historical_reference_items} />
+                <Metric icon={CheckCircle2} label="تغطية تاريخية" value={`${qty(selectedScenario.reference_coverage_percent)}%`} />
+                <Metric icon={Layers3} label="أصناف مغطاة تاريخيًا" value={selectedScenario.historical_reference_items} />
                 <Metric icon={AlertTriangle} label="أصناف بدون سعر" value={selectedScenario.missing_items} />
                 <Metric icon={WalletCards} label="قيمة تقديرية" value={`${money(selectedScenario.estimated_total)} ج`} />
               </div>
@@ -608,7 +550,7 @@ export default function CleanSupplierFinancialWorkspace({
 
           {selectedScenario && selectedScenario.missing_items > 0 && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-              المخزن المختار لا يملك عرضًا حاليًا أو تاريخ شراء كافيًا لكل الأصناف. الملف سيُظهر الأصناف الناقصة بوضوح ولن يخترع لها سعرًا.
+              المخزن المختار لا يملك تاريخ شراء كافيًا لكل الأصناف. الملف سيُظهر الأصناف غير المغطاة بوضوح ولن يخترع لها تكلفة.
             </div>
           )}
 
@@ -663,15 +605,9 @@ export default function CleanSupplierFinancialWorkspace({
                       <td className="p-2 font-bold">{row.cash_cost > 0 ? `${money(row.cash_cost)} ج` : '—'}</td>
                       <td className="p-2">{qty(row.bonus_units)}</td>
                       <td className="p-2 text-xs text-slate-500">
-                        {row.coverage === 'current_offer'
-                          ? 'عرض حالي يحافظ على كمية V10'
-                          : row.coverage === 'historical_reference'
-                            ? 'من تاريخ المشتريات — يحتاج تأكيد السعر'
-                            : row.constraint === 'offer_changes_v10_quantity'
-                              ? 'يوجد عرض لكن MOQ يغيّر كمية V10 — يحتاج تفاوض'
-                              : row.constraint === 'insufficient_availability'
-                                ? 'يوجد عرض لكن التوافر لا يغطي كمية V10'
-                                : 'تواصل مع المورد لتسعير الصنف'}
+                        {row.coverage === 'historical_reference'
+                          ? 'من تاريخ المشتريات'
+                          : 'لا يوجد تاريخ شراء كافٍ لهذا المورد'}
                       </td>
                     </tr>
                   ))}
