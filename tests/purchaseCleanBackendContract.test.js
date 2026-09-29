@@ -45,14 +45,13 @@ test('clean page only creates drafts from returned stock_sync_id and plan_hash',
 
 
 test('clean planner is the single visible purchase-center entry and remains permission-guarded', () => {
-  assert.match(appSource, /path="\\/purchase-center"[\\s\\S]*RoleRouteGuard permission="canPlanPurchases"[\\s\\S]*PurchaseCenterClean/);
-  assert.match(appSource, /path="\\/purchase-center-clean"[\\s\\S]*RoleRouteGuard permission="canPlanPurchases"[\\s\\S]*PurchaseCenterClean/);
-  assert.match(layoutSource, /path: "\\/purchase-center"[\\s\\S]*label: "مركز المشتريات والطلبية"[\\s\\S]*permission: "canPlanPurchases"/);
-  assert.doesNotMatch(layoutSource, /path: "\\/purchase-center-clean"/);
-  assert.match(roleSource, /canPlanPurchases\\s*=\\s*isAdmin\\s*\\|\\|[\\s\\S]*purchasing/);
-  assert.doesNotMatch(roleSource, /canPlanPurchases\\s*=.*isBranchManager/);
+  assert.ok(appSource.includes('<Route path="/purchase-center" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />'));
+  assert.ok(appSource.includes('<Route path="/purchase-center-clean" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />'));
+  assert.ok(layoutSource.includes('{ path: "/purchase-center", label: "مركز المشتريات والطلبية", icon: BrainCircuit, permission: "canPlanPurchases" }'));
+  assert.doesNotMatch(layoutSource, /path: "\/purchase-center-clean"/);
+  assert.match(roleSource, /canPlanPurchases\s*=\s*isAdmin\s*\|\|[\s\S]*purchasing/);
+  assert.doesNotMatch(roleSource, /canPlanPurchases\s*=.*isBranchManager/);
 });
-
 test('clean page does not fall back to legacy purchase creation paths', () => {
   assert.doesNotMatch(cleanPageSource, /createSafeDraft\s*\(/);
   assert.doesNotMatch(cleanPageSource, /demandTransferPreview\s*\(/);
