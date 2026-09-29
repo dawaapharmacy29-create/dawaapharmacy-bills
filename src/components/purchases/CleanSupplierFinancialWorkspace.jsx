@@ -77,7 +77,8 @@ function splitExportRow(row) {
     'أفضل مورد تاريخي': row.historical_supplier || '',
     'متوسط التكلفة التاريخية': Number(row.historical_effective_unit_cost || 0),
     'آخر شراء تاريخي': row.historical_last_purchase_date || '',
-    'السعر الحالي مؤكد': row.current_offer ? 'نعم' : 'لا — مرجع فقط',
+    'يوجد عرض حالي': row.current_offer ? 'نعم' : 'لا',
+    'مثبت في المسودة': row.current_offer_applied ? 'نعم' : 'لا',
   };
 }
 
@@ -110,6 +111,7 @@ export default function CleanSupplierFinancialWorkspace({
   message = '',
   error = '',
   currentOfferPlans = {},
+  draftTotals = {},
   onApplyCurrentOffers = null,
 }) {
   const [mode, setMode] = useState('split');
@@ -121,18 +123,22 @@ export default function CleanSupplierFinancialWorkspace({
   const summary = useMemo(() => {
     const total = rows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     const currentRows = rows.filter((row) => row.cost_source === 'current_offer');
+    const appliedRows = rows.filter((row) => row.current_offer_applied === true);
     const historicalRows = rows.filter((row) => ['historical_average', 'historical_last'].includes(row.cost_source));
     const draftRows = rows.filter((row) => row.cost_source === 'draft_saved_cost');
     const currentTotal = currentRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
+    const appliedTotal = appliedRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     const historicalTotal = historicalRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     const draftTotal = draftRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     const missing = rows.filter((row) => Number(row.unit_cost || 0) <= 0).length;
     return {
       total,
       current: currentRows.length,
+      applied: appliedRows.length,
       historical: historicalRows.length,
       draft: draftRows.length,
       currentTotal,
+      appliedTotal,
       historicalTotal,
       draftTotal,
       missing,
@@ -256,14 +262,26 @@ export default function CleanSupplierFinancialWorkspace({
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-7">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-8">
         <Metric icon={Layers3} label="أصناف لها توزيع" value={rows.length} />
-        <Metric icon={CheckCircle2} label="عرض حالي مؤكد" value={`${summary.current} • ${money(summary.currentTotal)} ج`} />
+        <Metric icon={CheckCircle2} label="لها عرض حالي صالح" value={`${summary.current} • ${money(summary.currentTotal)} ج`} />
+        <Metric icon={CheckCircle2} label="مثبت فعليًا في المسودة" value={`${summary.applied} • ${money(summary.appliedTotal)} ج`} />
         <Metric icon={Store} label="متوسط تاريخي" value={`${summary.historical} • ${money(summary.historicalTotal)} ج`} />
         <Metric icon={WalletCards} label="تكلفة محفوظة بالمسودة" value={`${summary.draft} • ${money(summary.draftTotal)} ج`} />
         <Metric icon={AlertTriangle} label="بدون تكلفة" value={summary.missing} />
         <Metric icon={WalletCards} label="إجمالي تقديري" value={`${money(summary.total)} ج`} />
-        <Metric icon={CheckCircle2} label="نسبة مؤكدة حاليًا" value={rows.length ? `${qty((summary.current / rows.length) * 100)}%` : '0%'} />
+        <Metric icon={CheckCircle2} label="نسبة مثبتة" value={rows.length ? `${qty((summary.applied / rows.length) * 100)}%` : '0%'} />
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
+          <div className="text-xs font-bold text-teal-700">إجمالي المسودة المخزن — شكري</div>
+          <div className="mt-1 text-xl font-black">{money(draftTotals?.shokry)} ج</div>
+        </div>
+        <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
+          <div className="text-xs font-bold text-teal-700">إجمالي المسودة المخزن — الشامي</div>
+          <div className="mt-1 text-xl font-black">{money(draftTotals?.shamy)} ج</div>
+        </div>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
