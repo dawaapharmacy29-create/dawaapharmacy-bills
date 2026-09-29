@@ -12,13 +12,11 @@ import {
   Upload,
 } from 'lucide-react';
 import { smartPurchaseUnifiedApi as purchaseApi } from '@/api/smartPurchaseUnifiedApi';
-import { smartPurchaseOrderManagementApi as orderManagementApi } from '@/api/smartPurchaseOrderManagementApi';
 import { normalizeDualBranchStockRows } from '@/lib/dualBranchStockMaster';
 import { orderMatchesPurchasePlan } from '@/lib/purchaseDraftRecovery';
 import CleanSupplierFinancialWorkspace from '@/components/purchases/CleanSupplierFinancialWorkspace';
 import {
   buildSingleSupplierScenarios,
-  buildSafeCurrentOfferPlan,
   buildSupplierFinancialRows,
   buildSupplierGroups,
   combineSingleSupplierScenarioSets,
@@ -942,35 +940,6 @@ export default function PurchaseCenterClean() {
     }
   }
 
-  async function applyCurrentOffersForBranch(branchKey) {
-    if (!draftResult || supplierWorkspace.loading || supplierWorkspace.applying) return;
-    const planToApply = supplierWorkspace.currentOfferPlans?.[branchKey];
-    if (!planToApply?.orderId || !planToApply?.items?.length) return;
-
-    setSupplierWorkspace((current) => ({
-      ...current,
-      applying: branchKey,
-      message: '',
-      error: '',
-    }));
-
-    try {
-      await orderManagementApi.applySupplierPlan(planToApply.orderId, planToApply.items);
-      await loadSupplierWorkspace(draftResult);
-      setSupplierWorkspace((current) => ({
-        ...current,
-        applying: '',
-        message: `تم تثبيت أفضل العروض الحالية الآمنة لـ ${planToApply.branch} بدون تغيير كميات V10.`,
-      }));
-    } catch (err) {
-      setSupplierWorkspace((current) => ({
-        ...current,
-        applying: '',
-        error: err?.message || `تعذر تثبيت عروض ${planToApply.branch}.`,
-      }));
-    }
-  }
-
   async function createDrafts() {
     if (runRef.current || !plan?.stock_sync_id || !plan?.plan_hash) return;
     runRef.current = true;
@@ -1681,9 +1650,7 @@ export default function PurchaseCenterClean() {
               error={supplierWorkspace.error}
               message={supplierWorkspace.message}
               applying={supplierWorkspace.applying}
-              currentOfferPlans={supplierWorkspace.currentOfferPlans}
               draftTotals={supplierWorkspace.draftTotals}
-              onApplyCurrentOffers={applyCurrentOffersForBranch}
               onRefresh={() => loadSupplierWorkspace(draftResult)}
             />
           )}
