@@ -70,7 +70,7 @@ This is intentionally treated as a release blocker for environment reproducibili
 
 The clean planner is a stock-mutating and draft-creating workflow.
 
-- Frontend route/navigation access is limited to `general_manager`, `branch_manager`, and `purchasing` / `purchases`.
+- Frontend route/navigation access is limited to `general_manager` and `purchasing` / `purchases`. The clean flow mutates and plans both branches atomically, so single-branch managers must not use this dual-branch entrypoint.
 - Backend authorization remains mandatory; the frontend guard is not a security boundary.
 - The four critical clean-path RPCs must independently reject mutation attempts from accountant, invoice reviewer, invoice entry, viewer, pharmacist, or other unrelated roles.
-- Branch managers must remain branch-scoped where a mutation can affect branch-specific data.
+- Backend clean-path RPCs must reject `branch_manager` because the clean flow touches both branches in one transaction. Branch managers remain on branch-scoped workflows.
