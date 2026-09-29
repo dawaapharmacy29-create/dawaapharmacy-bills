@@ -18,7 +18,6 @@ const qty = (value) =>
   new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(Number(value || 0));
 
 const sourceLabel = {
-  current_offer: 'عرض حالي',
   historical_average: 'متوسط مشتريات تاريخي',
   historical_last: 'آخر تكلفة تاريخية',
   draft_saved_cost: 'تكلفة محفوظة في المسودة',
@@ -27,7 +26,6 @@ const sourceLabel = {
 };
 
 const coverageLabel = {
-  current_offer: 'عرض حالي',
   historical_reference: 'مرجع تاريخي',
   missing: 'يحتاج سعر',
 };
@@ -129,25 +127,13 @@ export default function CleanSupplierFinancialWorkspace({
 
   const summary = useMemo(() => {
     const total = rows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
-    const currentRows = rows.filter((row) => row.cost_source === 'current_offer');
-    const appliedRows = rows.filter((row) => row.current_offer_applied === true);
     const historicalRows = rows.filter((row) => ['historical_average', 'historical_last'].includes(row.cost_source));
-    const draftRows = rows.filter((row) => row.cost_source === 'draft_saved_cost');
-    const currentTotal = currentRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
-    const appliedTotal = appliedRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     const historicalTotal = historicalRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
-    const draftTotal = draftRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     const missing = rows.filter((row) => Number(row.unit_cost || 0) <= 0).length;
     return {
       total,
-      current: currentRows.length,
-      applied: appliedRows.length,
       historical: historicalRows.length,
-      draft: draftRows.length,
-      currentTotal,
-      appliedTotal,
       historicalTotal,
-      draftTotal,
       missing,
     };
   }, [rows]);
@@ -378,11 +364,7 @@ export default function CleanSupplierFinancialWorkspace({
                 <div key={group.supplier_name} className="rounded-xl border bg-white p-3 shadow-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div className="truncate font-black text-indigo-950" title={group.supplier_name}>{group.supplier_name}</div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${
-                      group.current_offer_items > 0
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-amber-50 text-amber-700'
-                    }`}>
+                    <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
                       تاريخ مشتريات
                     </span>
                   </div>
@@ -449,7 +431,7 @@ export default function CleanSupplierFinancialWorkspace({
             <table className="min-w-[2100px] w-full text-sm">
               <thead className="bg-indigo-50/60">
                 <tr>
-                  {['الفرع','الصنف','الكمية','أفضل مورد تاريخي','مصدر التكلفة التاريخية','تكلفة نقدية/وحدة','فعالة بعد البونص','القيمة النقدية','خصم مسجل','خصم إضافي','وفر فعلي تقديري','بونص','سبب الاختيار المالي','بدائل حالية','المورد التاريخي'].map((head) => (
+                  {['الفرع','الصنف','الكمية','أفضل مورد تاريخي','مصدر التكلفة التاريخية','تكلفة نقدية/وحدة','فعالة بعد البونص','القيمة النقدية','خصم مسجل','خصم إضافي','وفر فعلي تقديري','بونص','سبب الاختيار المالي','بدائل تاريخية','المورد التاريخي'].map((head) => (
                     <th key={head} className="p-2 text-right">{head}</th>
                   ))}
                 </tr>
@@ -591,11 +573,9 @@ export default function CleanSupplierFinancialWorkspace({
                       <td className="p-2">{qty(row.quantity)}</td>
                       <td className="p-2">
                         <span className={`rounded-full px-2 py-1 text-xs font-bold ${
-                          row.coverage === 'current_offer'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : row.coverage === 'historical_reference'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-red-100 text-red-800'
+                          row.coverage === 'historical_reference'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-red-100 text-red-800'
                         }`}>
                           {coverageLabel[row.coverage]}
                         </span>
