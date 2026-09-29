@@ -286,3 +286,19 @@ test('parses decimal comma stock values without multiplying them by ten', () => 
   assert.equal(result.rows[0].shamy_stock, 1.5);
   assert.equal(result.rows[0].shokry_stock, 2.25);
 });
+
+
+test('does not guess ambiguous short branch headers', () => {
+  const rows = [{
+    'الكود': '1212',
+    'إسم الصنف': 'Ambiguous Header Item',
+    'الوحدة': 'علبة',
+    'الشامي': 1,
+    'شكري': 2,
+  }];
+
+  assert.throws(
+    () => normalizeDualBranchStockRows(rows, 'stock.xlsx'),
+    /ملف الرصيد لازم يحتوي/
+  );
+});
