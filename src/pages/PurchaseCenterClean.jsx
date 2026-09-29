@@ -267,6 +267,28 @@ export default function PurchaseCenterClean() {
     Number(plan?.execution_pending?.shokry?.units || 0)
     + Number(plan?.execution_pending?.shamy?.units || 0);
 
+  const financialReferenceTotal = useMemo(() => {
+    if (!plan) return 0;
+    return ['shokry', 'shamy'].reduce((total, branchKey) => (
+      total + (plan?.[branchKey]?.plan || []).reduce((sum, row) => (
+        sum + (Number(row.buy_quantity || 0) > 0
+          ? Number(row.planning_reference_total || row.buy_estimated_cost || 0)
+          : 0)
+      ), 0)
+    ), 0);
+  }, [plan]);
+
+  const financialHistoryCoverage = useMemo(() => {
+    if (!plan) return { history: 0, total: 0 };
+    const rows = ['shokry', 'shamy'].flatMap((branchKey) =>
+      (plan?.[branchKey]?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0)
+    );
+    return {
+      total: rows.length,
+      history: rows.filter((row) => ['historical_average', 'historical_last'].includes(row.planning_cost_source)).length,
+    };
+  }, [plan]);
+
   const hasNegativeStock =
     Number(parsed?.quality?.negative_shokry || 0) > 0
     || Number(parsed?.quality?.negative_shamy || 0) > 0;
@@ -663,8 +685,9 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-9">
-            <Metric label="إجمالي قيمة الشراء" value={`${money(plan.totals?.buy_value)} ج`} />
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-10">
+            <Metric label="الإجمالي المالي المرجعي" value={`${money(financialReferenceTotal)} ج`} />
+            <Metric label="قيمة V10 الأصلية" value={`${money(plan.totals?.buy_value)} ج`} />
             <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
             <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
             <Metric label="مراجعة سريعة" value={quickReviewRows.length} />
@@ -672,6 +695,10 @@ export default function PurchaseCenterClean() {
             <Metric label="Review بالحركة فقط" value={movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy} />
             <Metric label="في الطريق" value={`${qty(executionPendingUnits)} وحدة`} />
             <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
+            <Metric
+              label="تغطية تاريخ التكلفة"
+              value={financialHistoryCoverage.total ? `${financialHistoryCoverage.history}/${financialHistoryCoverage.total}` : '0/0'}
+            />
             <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
           </section>
 
