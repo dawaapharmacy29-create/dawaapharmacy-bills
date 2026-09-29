@@ -34,7 +34,7 @@ export function detectDualBranchStockColumns(headers = []) {
   const map = Object.fromEntries(
     Object.entries(ALIASES).map(([key, aliases]) => [key, exactHeader(headers, aliases)])
   );
-  return map.code && map.name && map.shamy && map.shokry ? map : null;
+  return map.code && map.name && map.unit && map.shamy && map.shokry ? map : null;
 }
 
 function inventoryEligible(name) {
@@ -46,7 +46,7 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
   const headers = Object.keys(rows[0] || {});
   const map = detectDualBranchStockColumns(headers);
   if (!map) {
-    throw new Error('ملف الرصيد لازم يحتوي على الكود، اسم الصنف، رصيد الشامي، ورصيد شكري.');
+    throw new Error('ملف الرصيد لازم يحتوي على الكود، اسم الصنف، الوحدة، رصيد الشامي، ورصيد شكري.');
   }
 
   const rowsOut = [];
@@ -63,6 +63,7 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     invalid_shamy: 0,
     invalid_shokry: 0,
     invalid_identity_rows: 0,
+    invalid_unit_rows: 0,
     ignored_blank_rows: 0,
   };
   const invalidRows = [];
@@ -90,13 +91,21 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
     }
     seen.add(dedupeKey);
 
+    const eligible = inventoryEligible(productName);
+    const stockUnit = map.unit ? String(row[map.unit] ?? '').trim() : '';
+    if (eligible && !stockUnit) {
+      quality.invalid_unit_rows += 1;
+      invalidRows.push(`صف ${index + 2}: وحدة الصنف المخزني غير موجودة`);
+      return;
+    }
+
     const common = {
       row_number: index + 2,
       product_code: productCode,
       product_name: productName,
-      stock_unit: map.unit ? String(row[map.unit] ?? '').trim() : '',
+      stock_unit: stockUnit,
       company_name: map.company ? String(row[map.company] ?? '').trim() : '',
-      inventory_eligible: inventoryEligible(productName),
+      inventory_eligible: eligible,
       snapshot_mode: 'stock_only',
       stock_source: fileName || 'dual-branch-stock-master',
     };
