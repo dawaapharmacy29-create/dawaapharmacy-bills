@@ -154,6 +154,10 @@ export default function CleanSupplierFinancialWorkspace({
     };
   }, [rows]);
 
+  const storedDraftTotal = Number(draftTotals?.shokry || 0) + Number(draftTotals?.shamy || 0);
+  const draftFinancialGap = storedDraftTotal - summary.total;
+  const draftFinancialGapPercent = summary.total > 0 ? (draftFinancialGap / summary.total) * 100 : 0;
+
   const singleSupplierComparison = useMemo(() => {
     if (!selectedScenario || selectedScenario.missing_items > 0 || summary.total <= 0) return null;
     const difference = Number(selectedScenario.estimated_total || 0) - summary.total;
@@ -291,7 +295,7 @@ export default function CleanSupplierFinancialWorkspace({
         <Metric icon={CheckCircle2} label="نسبة مثبتة" value={rows.length ? `${qty((summary.applied / rows.length) * 100)}%` : '0%'} />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
           <div className="text-xs font-bold text-teal-700">إجمالي المسودة المخزن — شكري</div>
           <div className="mt-1 text-xl font-black">{money(draftTotals?.shokry)} ج</div>
@@ -300,7 +304,28 @@ export default function CleanSupplierFinancialWorkspace({
           <div className="text-xs font-bold text-teal-700">إجمالي المسودة المخزن — الشامي</div>
           <div className="mt-1 text-xl font-black">{money(draftTotals?.shamy)} ج</div>
         </div>
+        <div className="rounded-xl border bg-white p-3 text-sm">
+          <div className="text-xs font-bold text-slate-500">إجمالي المسودتين المخزن</div>
+          <div className="mt-1 text-xl font-black text-slate-900">{money(storedDraftTotal)} ج</div>
+        </div>
+        <div className={`rounded-xl border p-3 text-sm ${
+          Math.abs(draftFinancialGapPercent) <= 1
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+            : 'border-amber-200 bg-amber-50 text-amber-900'
+        }`}>
+          <div className="text-xs font-bold">فرق المسودة عن الحساب المالي المرجعي</div>
+          <div className="mt-1 text-xl font-black">
+            {draftFinancialGap >= 0 ? '+' : ''}{money(draftFinancialGap)} ج
+          </div>
+          <div className="text-xs">{draftFinancialGapPercent >= 0 ? '+' : ''}{qty(draftFinancialGapPercent)}%</div>
+        </div>
       </div>
+
+      {Math.abs(draftFinancialGapPercent) > 1 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          إجمالي المسودة المخزن مختلف عن أفضل تقدير مالي الحالي. ثبّت العروض الحالية الآمنة أولًا؛ الأصناف المعتمدة على التاريخ تظل تقديرية حتى تأكيد السعر.
+        </div>
+      )}
 
       <div className="grid gap-3 lg:grid-cols-2">
         {[
