@@ -14,6 +14,7 @@ import {
 import { smartPurchaseUnifiedApi as purchaseApi } from '@/api/smartPurchaseUnifiedApi';
 import { smartPurchaseOrderManagementApi as orderManagementApi } from '@/api/smartPurchaseOrderManagementApi';
 import { normalizeDualBranchStockRows } from '@/lib/dualBranchStockMaster';
+import { orderMatchesPurchasePlan } from '@/lib/purchaseDraftRecovery';
 import CleanSupplierFinancialWorkspace from '@/components/purchases/CleanSupplierFinancialWorkspace';
 import {
   buildSingleSupplierScenarios,
@@ -320,6 +321,31 @@ export default function PurchaseCenterClean() {
     return normalizeDualBranchStockRows(rows, file.name);
   }
 
+  async function recoverMatchingOpenDrafts(currentPlan) {
+    const guard = currentPlan?.creation_guard || {};
+    const isDraft = (order) => ['draft', 'مسودة'].includes(String(order?.status || '').trim());
+    const shokryCandidates = (guard.shokry_open_orders || []).filter(isDraft);
+    const shamyCandidates = (guard.shamy_open_orders || []).filter(isDraft);
+    if (shokryCandidates.length !== 1 || shamyCandidates.length !== 1) return null;
+
+    const [shokryOrder, shamyOrder] = await Promise.all([
+      purchaseApi.getOrder(shokryCandidates[0].id),
+      purchaseApi.getOrder(shamyCandidates[0].id),
+    ]);
+
+    const shokryMatches = orderMatchesPurchasePlan(shokryOrder, currentPlan?.shokry?.plan || []);
+    const shamyMatches = orderMatchesPurchasePlan(shamyOrder, currentPlan?.shamy?.plan || []);
+    if (!shokryMatches || !shamyMatches) return null;
+
+    return {
+      already_created: true,
+      recovered_existing: true,
+      content_verified: true,
+      shokry_order_id: shokryCandidates[0].id,
+      shamy_order_id: shamyCandidates[0].id,
+    };
+  }
+
   async function runPlannerOnly(expectedSyncId = saveResult?.stock_sync_id) {
     setPhase('planning');
     const startedAt = performance.now();
@@ -358,8 +384,21 @@ export default function PurchaseCenterClean() {
       },
     };
 
+    let recoveredDrafts = null;
+    if (result?.creation_guard?.can_create_dual === false) {
+      try {
+        recoveredDrafts = await recoverMatchingOpenDrafts(result);
+      } catch {
+        recoveredDrafts = null;
+      }
+    }
+
     setHistoryByBranch(history);
     setPlan(financialPlan);
+    if (recoveredDrafts) {
+      setDraftResult(recoveredDrafts);
+      void loadSupplierWorkspace(recoveredDrafts);
+    }
     setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
     return result;
@@ -1069,7 +1108,7 @@ export default function PurchaseCenterClean() {
                     ? 'المسودتان محفوظتان ومطابقتان للخطة. راجع الموردين والأسعار فقط؛ لا يوجد اعتماد أو إرسال للمورد تلقائيًا.'
                     : 'المسودتان ستُنشآن من نفس plan_hash بدون إعادة حساب الكميات. لا يوجد اعتماد أو إرسال للمورد في هذه الخطوة.'}
                 </div>
-                {plan.creation_guard?.can_create_dual === false && (
+                {plan.creation_guard?.can_create_dual === false && !draftResult && (
                   <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                     <div className="font-black">إنشاء المسودتين متوقف مؤقتًا.</div>
                     {(!plan.creation_guard?.shokry_data_ready || !plan.creation_guard?.shamy_data_ready) && (
@@ -1098,7 +1137,11 @@ export default function PurchaseCenterClean() {
                 )}
                 {draftResult && (
                   <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">
-                    {draftResult.already_created ? 'المسودتان كانتا منشأتين بالفعل من نفس الخطة.' : 'تم إنشاء المسودتين بنجاح من نفس الخطة.'}
+                    {draftResult.recovered_existing
+                      ? 'تم استعادة مسودتي شكري والشامي الموجودتين لأن محتواهما يطابق الخطة الحالية بندًا بندًا.'
+                      : draftResult.already_created
+                        ? 'المسودتان كانتا منشأتين بالفعل من نفس الخطة.'
+                        : 'تم إنشاء المسودتين بنجاح من نفس الخطة.'}
                     {draftResult.content_verified && (
                       <div className="mt-1 font-bold">✓ تم التحقق حسابيًا أن محتوى المسودتين يطابق خطة V10 بدون أي اختلاف.</div>
                     )}
