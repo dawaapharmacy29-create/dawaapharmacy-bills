@@ -82,12 +82,12 @@ function splitExportRow(row) {
     'سبب اختيار المورد المالي': row.financial_supplier_reason || '',
     'المورد الموصى به تشغيليًا': row.operational_recommended_supplier || '',
     'سبب التوصية التشغيلية': row.operational_recommendation_reason || '',
-    'بدائل حالية': (row.alternatives || [])
+    'بدائل مسجلة': (row.alternatives || [])
       .filter((alt) => String(alt.supplier_name || '').trim() !== String(row.supplier_name || '').trim())
       .map((alt) => `${alt.supplier_name || '—'} (${Number(alt.effective_unit_cost || 0).toFixed(2)})`)
       .join(' | '),
-    'يوجد عرض حالي': row.current_offer ? 'نعم' : 'لا',
-    'مثبت في المسودة': row.current_offer_applied ? 'نعم' : 'لا',
+    'مصدر الاختيار': 'فواتير المشتريات التاريخية',
+    'المورد التاريخي المعتمد': row.historical_supplier || row.supplier_name || '',
   };
 }
 
@@ -201,8 +201,8 @@ export default function CleanSupplierFinancialWorkspace({
       'عدد الأصناف': group.items_count,
       الوحدات: Number(group.units || 0),
       'قيمة تقديرية': Number(group.estimated_cash_total || 0),
-      'بعرض حالي': group.current_offer_items,
-      'بمرجع تاريخي': group.historical_reference_items,
+      'تغطية تاريخية': group.historical_reference_items,
+      'من فواتير الشراء': group.historical_reference_items,
       'بدون تكلفة': group.missing_cost_items,
       'وفر/خصم فعلي %': group.weighted_saving_percent == null ? '' : Number(group.weighted_saving_percent.toFixed(2)),
     }));
@@ -257,7 +257,7 @@ export default function CleanSupplierFinancialWorkspace({
   if (loading) {
     return (
       <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm font-bold text-blue-800">
-        جاري حساب أفضل مورد والتكلفة الحقيقية لكل صنف من العروض الحالية وتاريخ المشتريات...
+        جاري تحليل فواتير المشتريات واختيار أفضل مورد تاريخي لكل صنف...
       </section>
     );
   }
@@ -285,12 +285,10 @@ export default function CleanSupplierFinancialWorkspace({
         <div>
           <h2 className="flex items-center gap-2 text-xl font-black text-indigo-950">
             <WalletCards className="h-5 w-5" />
-            الموردون والأسعار
+            تحليل الموردين من فواتير المشتريات
           </h2>
           <p className="mt-1 text-sm text-indigo-800">
-            {summary.current > 0
-              ? 'اختر أفضل مورد لكل صنف من العروض الحالية والمراجع المتاحة.'
-              : 'لا توجد عروض حالية؛ التوزيع المعروض مبني على تاريخ المشتريات فقط للمراجعة.'}
+            يعتمد الاختيار الحالي على فواتير المشتريات التاريخية فقط: المورد، متوسط التكلفة، وتكرار التعامل السابق.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -301,7 +299,7 @@ export default function CleanSupplierFinancialWorkspace({
             className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-40"
           >
             <RefreshCw className="h-4 w-4" />
-            تحديث الأسعار والموردين
+            إعادة تحليل تاريخ المشتريات
           </button>
           <div className="flex rounded-xl border bg-white p-1 text-sm font-bold">
           <button
@@ -309,14 +307,14 @@ export default function CleanSupplierFinancialWorkspace({
             onClick={() => setMode('split')}
             className={`rounded-lg px-3 py-2 ${mode === 'split' ? 'bg-indigo-700 text-white' : 'text-slate-600'}`}
           >
-            {summary.current > 0 ? 'أفضل مورد لكل صنف' : 'أفضل مورد تاريخي لكل صنف'}
+            أفضل مورد تاريخي لكل صنف
           </button>
           <button
             type="button"
             onClick={() => setMode('single')}
             className={`rounded-lg px-3 py-2 ${mode === 'single' ? 'bg-indigo-700 text-white' : 'text-slate-600'}`}
           >
-            {summary.current > 0 ? 'مخزن واحد للطلبية' : 'محاكاة مخزن واحد'}
+            محاكاة مخزن واحد تاريخيًا
           </button>
           </div>
         </div>
@@ -324,26 +322,28 @@ export default function CleanSupplierFinancialWorkspace({
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
         <Metric icon={WalletCards} label="إجمالي المسودتين" value={`${money(storedDraftTotal)} ج`} />
-        <Metric icon={WalletCards} label="مرجع التكلفة الحالي" value={`${money(summary.total)} ج`} />
+        <Metric icon={WalletCards} label="القيمة حسب تاريخ المشتريات" value={`${money(summary.total)} ج`} />
         <Metric
           icon={AlertTriangle}
-          label={draftFinancialGap >= 0 ? 'المسودتان أعلى من المرجع' : 'المسودتان أقل من المرجع'}
+          label={draftFinancialGap >= 0 ? 'المسودتان أعلى من التاريخي' : 'المسودتان أقل من التاريخي'}
           value={`${money(Math.abs(draftFinancialGap))} ج • ${qty(Math.abs(draftFinancialGapPercent))}%`}
         />
-        <Metric icon={CheckCircle2} label="عروض حالية مؤكدة" value={`${summary.current}/${rows.length}`} />
-        <Metric icon={Store} label="مرجع تاريخي" value={summary.historical} />
-        <Metric icon={AlertTriangle} label="بدون تكلفة" value={summary.missing} />
+        <Metric icon={CheckCircle2} label="تغطية تاريخية" value={`${summary.historical}/${rows.length}`} />
+        <Metric icon={Store} label="موردون تاريخيون" value={groups.filter((group) => group.supplier_name !== 'غير محدد').length} />
+        <Metric icon={AlertTriangle} label="بدون تكلفة تاريخية" value={summary.missing} />
       </div>
 
-      {(summary.current === 0 || Math.abs(draftFinancialGapPercent) > 1) && (
+      {summary.historical === rows.length && summary.missing === 0 ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900">
+          ✓ التحليل التاريخي مكتمل لكل أصناف الطلبية. الاختيار الحالي مبني على فواتير المشتريات السابقة فقط.
+        </div>
+      ) : (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
-          {summary.current === 0
-            ? 'لا توجد عروض حالية مؤكدة؛ الموردون والأسعار المعروضة مرجع تاريخي فقط.'
-            : 'يوجد فرق بين قيمة المسودتين وأفضل تقدير مالي حالي؛ راجع الأسعار قبل أي اعتماد.'}
+          التحليل التاريخي يغطي {summary.historical} من {rows.length} صنف؛ راجع الأصناف غير المغطاة قبل إنهاء الطلبية.
         </div>
       )}
 
-      {hasCurrentOfferActions && (
+      {false && hasCurrentOfferActions && (
       <div className="grid gap-3 lg:grid-cols-2">
         {[
           ['shokry', 'دواء شكري'],
@@ -397,7 +397,7 @@ export default function CleanSupplierFinancialWorkspace({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-sm font-black text-slate-800">
-                {summary.current > 0 ? 'التقسيم المقترح حسب أفضل مورد لكل صنف' : 'التقسيم المرجعي حسب أفضل مورد تاريخي لكل صنف'}
+                التقسيم المقترح حسب أفضل مورد تاريخي لكل صنف
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
                 {[
@@ -441,20 +441,15 @@ export default function CleanSupplierFinancialWorkspace({
                         ? 'bg-emerald-50 text-emerald-700'
                         : 'bg-amber-50 text-amber-700'
                     }`}>
-                      {group.current_offer_items > 0 ? 'عرض حالي' : 'مرجع تاريخي'}
+                      تاريخ مشتريات
                     </span>
                   </div>
                   <div className="mt-2 text-xl font-black text-slate-900">{money(group.estimated_cash_total)} ج</div>
                   <div className="mt-2 text-xs text-slate-600">{group.items_count} صنف • {qty(group.units)} وحدة</div>
                   <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold">
-                    {group.current_offer_items > 0 && (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
-                        حالي {group.current_offer_items}
-                      </span>
-                    )}
                     {group.historical_reference_items > 0 && (
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
-                        تاريخي {group.historical_reference_items}
+                        {group.historical_reference_items} صنف تاريخي
                       </span>
                     )}
                     {group.missing_cost_items > 0 && (
@@ -479,8 +474,8 @@ export default function CleanSupplierFinancialWorkspace({
                     <th className="p-2 text-right">المورد</th>
                     <th className="p-2 text-right">الأصناف</th>
                     <th className="p-2 text-right">الوحدات</th>
-                    <th className="p-2 text-right">بعرض حالي</th>
-                    <th className="p-2 text-right">مرجع تاريخي</th>
+                    <th className="p-2 text-right">تغطية تاريخية</th>
+                    <th className="p-2 text-right">من فواتير الشراء</th>
                     <th className="p-2 text-right">بدون تكلفة</th>
                     <th className="p-2 text-right">القيمة</th>
                     <th className="p-2 text-right">وفر/خصم فعلي</th>
@@ -492,7 +487,7 @@ export default function CleanSupplierFinancialWorkspace({
                       <td className="p-2 font-black text-indigo-900">{group.supplier_name}</td>
                       <td className="p-2">{group.items_count}</td>
                       <td className="p-2">{qty(group.units)}</td>
-                      <td className="p-2 text-emerald-700">{group.current_offer_items}</td>
+                      <td className="p-2 text-emerald-700">{group.historical_reference_items}</td>
                       <td className="p-2 text-amber-700">{group.historical_reference_items}</td>
                       <td className="p-2 text-red-700">{group.missing_cost_items}</td>
                       <td className="p-2 font-bold">{money(group.estimated_cash_total)} ج</td>
@@ -512,7 +507,7 @@ export default function CleanSupplierFinancialWorkspace({
             <table className="min-w-[2100px] w-full text-sm">
               <thead className="bg-indigo-50/60">
                 <tr>
-                  {['الفرع','الصنف','الكمية','أفضل مورد مالي','مصدر التكلفة','تكلفة نقدية/وحدة','فعالة بعد البونص','القيمة النقدية','خصم مسجل','خصم إضافي','وفر فعلي تقديري','بونص','سبب الاختيار المالي','بدائل حالية','المورد التاريخي'].map((head) => (
+                  {['الفرع','الصنف','الكمية','أفضل مورد تاريخي','مصدر التكلفة التاريخية','تكلفة نقدية/وحدة','فعالة بعد البونص','القيمة النقدية','خصم مسجل','خصم إضافي','وفر فعلي تقديري','بونص','سبب الاختيار المالي','بدائل حالية','المورد التاريخي'].map((head) => (
                     <th key={head} className="p-2 text-right">{head}</th>
                   ))}
                 </tr>
