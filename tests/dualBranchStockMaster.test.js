@@ -209,3 +209,43 @@ test('reports original source row count without counting blank rows as products'
   assert.equal(result.rows_count, 1);
   assert.equal(result.quality.ignored_blank_rows, 1);
 });
+
+
+test('rejects a file missing the unit column', () => {
+  const rows = [{
+    'الكود': '7007',
+    'إسم الصنف': 'No Unit Header',
+    'الفرعية الشامي': 1,
+    'الادارة فرع شكري': 2,
+  }];
+  assert.throws(
+    () => normalizeDualBranchStockRows(rows, 'stock.xlsx'),
+    /الوحدة/
+  );
+});
+
+test('rejects an inventory row with an empty unit', () => {
+  const rows = [{
+    'الكود': '8008',
+    'إسم الصنف': 'Inventory Without Unit',
+    'الوحدة': '',
+    'الفرعية الشامي': 1,
+    'الادارة فرع شكري': 2,
+  }];
+  assert.throws(
+    () => normalizeDualBranchStockRows(rows, 'stock.xlsx'),
+    /وحدة الصنف المخزني غير موجودة/
+  );
+});
+
+test('allows a non-inventory service row to have an empty unit', () => {
+  const result = normalizeDualBranchStockRows([{
+    'الكود': '9009',
+    'إسم الصنف': 'توصيل منزلي',
+    'الوحدة': '',
+    'الفرعية الشامي': 0,
+    'الادارة فرع شكري': 0,
+  }], 'stock.xlsx');
+
+  assert.equal(result.rows[0].inventory_eligible, false);
+});
