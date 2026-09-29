@@ -290,3 +290,47 @@ export function combineSingleSupplierScenarioSets(scenarioSets = []) {
       || a.estimated_total - b.estimated_total
     );
 }
+
+
+export function buildSafeCurrentOfferPlan(decision = null) {
+  const items = Array.isArray(decision?.items) ? decision.items : [];
+  const applied = [];
+  const skipped = [];
+
+  for (const item of items) {
+    const offer = item?.recommended || {};
+    const neededQty = number(item?.needed_qty);
+    const purchaseQty = number(offer?.purchase_qty || neededQty);
+    const fullyAvailable = offer?.quantity_fully_available !== false;
+    const quantityPreserved = Math.abs(purchaseQty - neededQty) <= 0.0001;
+    const hasOffer = Boolean(offer?.offer_id);
+
+    if (hasOffer && fullyAvailable && quantityPreserved && neededQty > 0) {
+      applied.push({
+        item_id: item.item_id,
+        offer_id: offer.offer_id,
+      });
+    } else if (neededQty > 0) {
+      skipped.push({
+        item_id: item.item_id,
+        product_code: item.product_code,
+        product_name: item.product_name,
+        reason: !hasOffer
+          ? 'no_current_offer'
+          : !fullyAvailable
+            ? 'insufficient_availability'
+            : !quantityPreserved
+              ? 'offer_changes_v10_quantity'
+              : 'not_safe_to_apply',
+      });
+    }
+  }
+
+  return {
+    items: applied,
+    skipped,
+    safe_items: applied.length,
+    skipped_items: skipped.length,
+    total_items: items.filter((item) => number(item?.needed_qty) > 0).length,
+  };
+}
