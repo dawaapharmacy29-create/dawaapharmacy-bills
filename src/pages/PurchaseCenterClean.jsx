@@ -289,10 +289,6 @@ export default function PurchaseCenterClean() {
     };
   }, [plan]);
 
-  const hasNegativeStock =
-    Number(parsed?.quality?.negative_shokry || 0) > 0
-    || Number(parsed?.quality?.negative_shamy || 0) > 0;
-
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -548,10 +544,6 @@ export default function PurchaseCenterClean() {
 
   async function createDrafts() {
     if (runRef.current || !plan?.stock_sync_id || !plan?.plan_hash) return;
-    if (hasNegativeStock) {
-      setError('إنشاء المسودتين متوقف لأن ملف الرصيد يحتوي على أرصدة سالبة. راجعها في B-Connect وارفع الملف المصحح.');
-      return;
-    }
     runRef.current = true;
     setError('');
     setPhase('creating');
@@ -639,7 +631,7 @@ export default function PurchaseCenterClean() {
             {(parsed.quality?.negative_shokry > 0 || parsed.quality?.negative_shamy > 0) && (
               <div className="mt-3 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertTriangle className="h-5 w-5 shrink-0" />
-                <span>تمت معاملة الأرصدة السالبة كصفر لعرض التحليل فقط. إنشاء المسودتين مقفول حتى مراجعة الحالات في B-Connect ورفع ملف مصحح.</span>
+                <span>تمت معاملة الأرصدة السالبة كصفر في الفرع المتأثر فقط، وسيستمر التحليل وإنشاء المسودتين. الحالات محفوظة بعلامة للمراجعة في B-Connect.</span>
               </div>
             )}
           </>
@@ -1010,7 +1002,7 @@ export default function PurchaseCenterClean() {
                 </button>
                 <button
                   type="button"
-                  disabled={busy || hasNegativeStock || !plan.creation_guard?.can_create_dual || Boolean(draftResult)}
+                  disabled={busy || !plan.creation_guard?.can_create_dual || Boolean(draftResult)}
                   onClick={createDrafts}
                   className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40"
                 >
