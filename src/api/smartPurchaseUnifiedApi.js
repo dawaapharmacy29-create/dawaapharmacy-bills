@@ -149,8 +149,8 @@ export const smartPurchaseUnifiedApi = {
     }));
     let staged = 0;
     const chunks = [];
-    for (let offset = 0; offset < compactRows.length; offset += chunkSize) {
-      chunks.push(compactRows.slice(offset, offset + chunkSize));
+    for (let offset = 0; offset < compactRows.length; offset += safeChunkSize) {
+      chunks.push(compactRows.slice(offset, offset + safeChunkSize));
     }
     const totalChunks = chunks.length;
     await runBoundedChunkPool(
@@ -164,7 +164,7 @@ export const smartPurchaseUnifiedApi = {
         return Number.isFinite(reported) ? Math.max(0, Math.min(chunk.length, reported)) : chunk.length;
       },
       {
-        concurrency: stageConcurrency,
+        concurrency: safeConcurrency,
         onComplete: ({ completed, result }) => {
           staged += Number(result || 0);
           if (typeof onProgress === 'function') {
@@ -199,7 +199,7 @@ export const smartPurchaseUnifiedApi = {
     const syncId = `stock-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const saveBranch = async (branch, rows) => {
       let staged = 0;
-      for (let offset = 0; offset < rows.length; offset += chunkSize) {
+      for (let offset = 0; offset < rows.length; offset += safeChunkSize) {
         const chunk = rows.slice(offset, offset + chunkSize);
         const result = await standaloneRpc('smart_purchase_stage_stock_snapshot_v1', {
           p_branch: branch,
