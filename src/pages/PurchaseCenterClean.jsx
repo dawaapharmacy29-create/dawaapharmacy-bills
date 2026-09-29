@@ -239,6 +239,85 @@ function CurrentStepGuide({ step }) {
   );
 }
 
+function JourneyActionBar({
+  step,
+  busy,
+  plan,
+  saveResult,
+  draftResult,
+  supplierReady,
+  onStepChange,
+  onReplan,
+  onCreateDrafts,
+}) {
+  if (step === 1) return null;
+
+  return (
+    <div className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-[1100px] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:inset-x-auto md:left-1/2 md:w-[min(1100px,calc(100vw-3rem))] md:-translate-x-1/2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-bold text-slate-500">
+          الخطوة {step} من 5
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {step === 2 && (
+            <button
+              type="button"
+              disabled={!plan || busy}
+              onClick={() => onStepChange(3)}
+              className="rounded-xl bg-teal-700 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
+            >
+              التالي: إنشاء المسودتين
+            </button>
+          )}
+
+          {step === 3 && !draftResult && (
+            <>
+              <button
+                type="button"
+                disabled={busy || !saveResult || Boolean(draftResult)}
+                onClick={onReplan}
+                className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 font-bold text-amber-900 disabled:opacity-40"
+              >
+                إعادة التحليل
+              </button>
+              <button
+                type="button"
+                disabled={busy || !plan?.creation_guard?.can_create_dual || Boolean(draftResult)}
+                onClick={onCreateDrafts}
+                className="rounded-xl bg-teal-700 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
+              >
+                إنشاء مسودتي شكري والشامي
+              </button>
+            </>
+          )}
+
+          {step === 4 && (
+            <button
+              type="button"
+              disabled={!supplierReady}
+              onClick={() => onStepChange(5)}
+              className="rounded-xl bg-slate-900 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
+            >
+              التالي: المراجعة النهائية
+            </button>
+          )}
+
+          {step === 5 && (
+            <button
+              type="button"
+              onClick={() => onStepChange(4)}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700"
+            >
+              رجوع للموردين والأسعار
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PurchaseCenterClean() {
   const [fileName, setFileName] = useState('');
   const [fileModifiedAt, setFileModifiedAt] = useState(null);
@@ -750,7 +829,7 @@ export default function PurchaseCenterClean() {
   }, [supplierWorkspace.groups, supplierWorkspace.rows]);
 
   return (
-    <div dir="rtl" className="mx-auto max-w-[1600px] space-y-5 p-3 md:p-5">
+    <div dir="rtl" className="mx-auto max-w-[1600px] space-y-5 p-3 pb-28 md:p-5 md:pb-28">
       <header className="rounded-3xl border bg-gradient-to-l from-white to-teal-50/70 p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -1213,19 +1292,6 @@ export default function PurchaseCenterClean() {
             </section>
           </details>
 
-          {activeStep === 2 && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={!plan || busy}
-                onClick={() => setActiveStep(3)}
-                className="rounded-xl bg-teal-700 px-5 py-3 font-black text-white shadow-sm disabled:opacity-40"
-              >
-                التالي: إنشاء المسودتين
-              </button>
-            </div>
-          )}
-
           <section className={`rounded-2xl border p-4 ${activeStep === 3 ? '' : 'hidden'} ${draftResult ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -1277,28 +1343,6 @@ export default function PurchaseCenterClean() {
                   </div>
                 )}
               </div>
-              {!draftResult && (
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy || !saveResult || Boolean(draftResult)}
-                    onClick={replan}
-                    className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    إعادة التحليل
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || !plan.creation_guard?.can_create_dual || Boolean(draftResult)}
-                    onClick={createDrafts}
-                    className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40"
-                  >
-                    <ShoppingCart className="h-4 w-4" />
-                    إنشاء مسودتي شكري والشامي
-                  </button>
-                </div>
-              )}
             </div>
           </section>
 
@@ -1316,19 +1360,6 @@ export default function PurchaseCenterClean() {
               onApplyCurrentOffers={applyCurrentOffersForBranch}
               onRefresh={() => loadSupplierWorkspace(draftResult)}
             />
-          )}
-
-          {activeStep === 4 && draftResult && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={!supplierReady}
-                onClick={() => setActiveStep(5)}
-                className="rounded-xl bg-slate-900 px-5 py-3 font-black text-white shadow-sm disabled:opacity-40"
-              >
-                التالي: المراجعة النهائية
-              </button>
-            </div>
           )}
 
           {activeStep === 5 && draftResult && (
@@ -1420,13 +1451,6 @@ export default function PurchaseCenterClean() {
               )}
 
               <div className="flex flex-wrap justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveStep(4)}
-                  className="rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700"
-                >
-                  رجوع للموردين والأسعار
-                </button>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-600">
                   الخطوة التالية لاحقًا: اعتماد مقصود ثم إرسال المورد — غير تلقائي
                 </div>
@@ -1442,6 +1466,18 @@ export default function PurchaseCenterClean() {
           ارفع ملف الرصيد لبدء الرحلة الجديدة.
         </section>
       )}
+
+      <JourneyActionBar
+        step={activeStep}
+        busy={busy}
+        plan={plan}
+        saveResult={saveResult}
+        draftResult={draftResult}
+        supplierReady={supplierReady}
+        onStepChange={setActiveStep}
+        onReplan={replan}
+        onCreateDrafts={createDrafts}
+      />
     </div>
   );
 }
