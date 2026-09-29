@@ -286,7 +286,7 @@ export default function PurchaseCenterClean() {
   }
 
   async function replan() {
-    if (runRef.current || !saveResult) return;
+    if (runRef.current || !saveResult || draftResult) return;
     runRef.current = true;
     setError('');
     try {
@@ -772,7 +772,7 @@ export default function PurchaseCenterClean() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  disabled={busy || !saveResult}
+                  disabled={busy || !saveResult || Boolean(draftResult)}
                   onClick={replan}
                   className="flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 font-bold text-amber-900 disabled:opacity-40"
                 >
