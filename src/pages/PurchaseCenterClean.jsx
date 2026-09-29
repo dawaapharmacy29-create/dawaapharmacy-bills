@@ -12,10 +12,12 @@ import {
   Upload,
 } from 'lucide-react';
 import { smartPurchaseUnifiedApi as purchaseApi } from '@/api/smartPurchaseUnifiedApi';
+import { smartPurchaseOrderManagementApi as orderManagementApi } from '@/api/smartPurchaseOrderManagementApi';
 import { normalizeDualBranchStockRows } from '@/lib/dualBranchStockMaster';
 import CleanSupplierFinancialWorkspace from '@/components/purchases/CleanSupplierFinancialWorkspace';
 import {
   buildSingleSupplierScenarios,
+  buildSafeCurrentOfferPlan,
   buildSupplierFinancialRows,
   buildSupplierGroups,
   combineSingleSupplierScenarioSets,
@@ -175,7 +177,16 @@ export default function PurchaseCenterClean() {
   const [plan, setPlan] = useState(null);
   const [draftResult, setDraftResult] = useState(null);
   const [historyByBranch, setHistoryByBranch] = useState({ shokry: [], shamy: [] });
-  const [supplierWorkspace, setSupplierWorkspace] = useState({ loading: false, error: '', rows: [], groups: [], scenarios: [] });
+  const [supplierWorkspace, setSupplierWorkspace] = useState({
+    loading: false,
+    applying: '',
+    message: '',
+    error: '',
+    rows: [],
+    groups: [],
+    scenarios: [],
+    currentOfferPlans: {},
+  });
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
   const [phase, setPhase] = useState('idle');
@@ -320,7 +331,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, error: '', rows: [], groups: [], scenarios: [] });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {} });
 
     try {
       setPhase('saving');
@@ -369,7 +380,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, error: '', rows: [], groups: [], scenarios: [] });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {} });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -393,7 +404,17 @@ export default function PurchaseCenterClean() {
     const shamyOrderId = result?.shamy_order_id;
     if (!shokryOrderId || !shamyOrderId) return;
 
-    setSupplierWorkspace({ loading: true, error: '', rows: [], groups: [], scenarios: [] });
+    setSupplierWorkspace((current) => ({
+      ...current,
+      loading: true,
+      applying: '',
+      message: '',
+      error: '',
+      rows: [],
+      groups: [],
+      scenarios: [],
+      currentOfferPlans: {},
+    }));
     try {
       const [shokryDecision, shamyDecision, shokryOrder, shamyOrder] = await Promise.all([
         purchaseApi.supplierDecision(shokryOrderId),
@@ -430,21 +451,69 @@ export default function PurchaseCenterClean() {
         }),
       ]);
 
+      const currentOfferPlans = {
+        shokry: {
+          orderId: shokryOrderId,
+          branch: 'دواء شكري',
+          ...buildSafeCurrentOfferPlan(shokryDecision),
+        },
+        shamy: {
+          orderId: shamyOrderId,
+          branch: 'دواء الشامي',
+          ...buildSafeCurrentOfferPlan(shamyDecision),
+        },
+      };
+
       setSupplierWorkspace({
         loading: false,
+        applying: '',
+        message: '',
         error: '',
         rows,
         groups: buildSupplierGroups(rows),
         scenarios,
+        currentOfferPlans,
       });
     } catch (err) {
       setSupplierWorkspace({
         loading: false,
+        applying: '',
+        message: '',
         error: err?.message || 'تعذر حساب أفضل الموردين.',
         rows: [],
         groups: [],
         scenarios: [],
+        currentOfferPlans: {},
       });
+    }
+  }
+
+  async function applyCurrentOffersForBranch(branchKey) {
+    if (!draftResult || supplierWorkspace.loading || supplierWorkspace.applying) return;
+    const planToApply = supplierWorkspace.currentOfferPlans?.[branchKey];
+    if (!planToApply?.orderId || !planToApply?.items?.length) return;
+
+    setSupplierWorkspace((current) => ({
+      ...current,
+      applying: branchKey,
+      message: '',
+      error: '',
+    }));
+
+    try {
+      await orderManagementApi.applySupplierPlan(planToApply.orderId, planToApply.items);
+      await loadSupplierWorkspace(draftResult);
+      setSupplierWorkspace((current) => ({
+        ...current,
+        applying: '',
+        message: `تم تثبيت أفضل العروض الحالية الآمنة لـ ${planToApply.branch} بدون تغيير كميات V10.`,
+      }));
+    } catch (err) {
+      setSupplierWorkspace((current) => ({
+        ...current,
+        applying: '',
+        error: err?.message || `تعذر تثبيت عروض ${planToApply.branch}.`,
+      }));
     }
   }
 
@@ -925,6 +994,10 @@ export default function PurchaseCenterClean() {
               scenarios={supplierWorkspace.scenarios}
               loading={supplierWorkspace.loading}
               error={supplierWorkspace.error}
+              message={supplierWorkspace.message}
+              applying={supplierWorkspace.applying}
+              currentOfferPlans={supplierWorkspace.currentOfferPlans}
+              onApplyCurrentOffers={applyCurrentOffersForBranch}
             />
           )}
         </>
