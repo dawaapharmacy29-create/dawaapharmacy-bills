@@ -171,6 +171,11 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       best_financial_offer: financialOffer,
       operational_recommended_supplier: recommended.supplier_name || '',
       operational_recommendation_reason: recommended.reason || '',
+      financial_supplier_reason: hasCurrentOffer
+        ? 'أقل تكلفة فعالة بين العروض الحالية المتاحة'
+        : hist.historical_supplier
+          ? 'أفضل مورد تاريخيًا حسب متوسط التكلفة الفعلية المتاح'
+          : 'لا يوجد مورد مالي موثوق بعد',
     };
   });
 }
@@ -335,38 +340,44 @@ export function buildSafeCurrentOfferPlan(decision = null, orderItems = []) {
 
   for (const item of items) {
     const neededQty = number(item?.needed_qty);
-    const offer = bestFinancialCurrentOffer(item, { preserveQuantity: true }) || {};
-    const purchaseQty = number(offer?.purchase_qty || neededQty);
-    const fullyAvailable = offer?.quantity_fully_available !== false;
-    const quantityPreserved = Math.abs(purchaseQty - neededQty) <= 0.0001;
-    const hasOffer = Boolean(offer?.offer_id);
+    if (neededQty <= 0) continue;
+
+    const allOffers = currentOfferCandidates(item);
+    const availableOffers = allOffers.filter((candidate) => candidate.quantity_fully_available !== false);
+    const quantityPreservingOffers = availableOffers.filter((candidate) =>
+      Math.abs(number(candidate.purchase_qty || neededQty) - neededQty) <= 0.0001
+    );
+    const offer = [...quantityPreservingOffers].sort((a, b) =>
+      number(a.effective_unit_cost || a.net_unit_cost) - number(b.effective_unit_cost || b.net_unit_cost)
+      || number(a.cash_cost) - number(b.cash_cost)
+    )[0] || null;
+
     const orderItem = orderItemMap.get(String(item.item_id || '')) || {};
     const alreadyApplied =
-      hasOffer
+      Boolean(offer?.offer_id)
       && String(orderItem.supplier_offer_id || '') === String(offer.offer_id || '')
       && orderItem.cost_source === 'supplier_offer';
 
-    if (hasOffer && fullyAvailable && quantityPreserved && neededQty > 0 && !alreadyApplied) {
+    if (offer?.offer_id && !alreadyApplied) {
       applied.push({
         item_id: item.item_id,
         offer_id: offer.offer_id,
       });
-    } else if (neededQty > 0) {
-      skipped.push({
-        item_id: item.item_id,
-        product_code: item.product_code,
-        product_name: item.product_name,
-        reason: alreadyApplied
-          ? 'already_applied'
-          : !hasOffer
-            ? 'no_current_offer'
-            : !fullyAvailable
-              ? 'insufficient_availability'
-              : !quantityPreserved
-                ? 'offer_changes_v10_quantity'
-                : 'not_safe_to_apply',
-      });
+      continue;
     }
+
+    let reason = 'not_safe_to_apply';
+    if (alreadyApplied) reason = 'already_applied';
+    else if (allOffers.length === 0) reason = 'no_current_offer';
+    else if (availableOffers.length === 0) reason = 'insufficient_availability';
+    else if (quantityPreservingOffers.length === 0) reason = 'offer_changes_v10_quantity';
+
+    skipped.push({
+      item_id: item.item_id,
+      product_code: item.product_code,
+      product_name: item.product_name,
+      reason,
+    });
   }
 
   return {
