@@ -83,7 +83,7 @@ export function normalizeDualBranchStockRows(rows = [], fileName = '') {
   const invalidRows = [];
 
   rows.forEach((row, index) => {
-    const productCode = String(row[map.code] ?? '').trim().replace(/\.0+$/, '');
+    const productCode = normalizeDigits(row[map.code]).trim().replace(/\.0+$/, '');
     const productName = String(row[map.name] ?? '').trim();
     const meaningful = [map.code, map.name, map.unit, map.company, map.shamy, map.shokry]
       .filter(Boolean)
