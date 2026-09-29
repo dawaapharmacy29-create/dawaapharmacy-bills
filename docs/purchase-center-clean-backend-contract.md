@@ -64,3 +64,13 @@ The current repository history does not contain migration files that define the 
 Before merging this branch to `main`, export the exact live definitions from the purchase Supabase project and commit them as additive migrations. Do not recreate them from memory or from frontend assumptions.
 
 This is intentionally treated as a release blocker for environment reproducibility, not as a runtime blocker for the current live database.
+
+
+## Mutation authorization
+
+The clean planner is a stock-mutating and draft-creating workflow.
+
+- Frontend route/navigation access is limited to `general_manager`, `branch_manager`, and `purchasing` / `purchases`.
+- Backend authorization remains mandatory; the frontend guard is not a security boundary.
+- The four critical clean-path RPCs must independently reject mutation attempts from accountant, invoice reviewer, invoice entry, viewer, pharmacist, or other unrelated roles.
+- Branch managers must remain branch-scoped where a mutation can affect branch-specific data.
