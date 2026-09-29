@@ -208,13 +208,82 @@ function Metric({ label, value }) {
   );
 }
 
-function PurchaseJourneyTabs({ activeStep, onStepChange, plan, draftResult, supplierReady }) {
+function PurchaseJourneyTabs({
+  activeStep,
+  onStepChange,
+  plan,
+  draftResult,
+  supplierReady,
+  quickReviewCount,
+  supplierLoading,
+  supplierError,
+  supplierDecision,
+}) {
+  const planBlocked = Boolean(plan) && !draftResult && plan?.creation_guard?.can_create_dual === false;
   const steps = [
-    { id: 1, label: 'رفع الرصيد', ready: true, done: Boolean(plan) },
-    { id: 2, label: 'مراجعة الخطة', ready: Boolean(plan), done: Boolean(draftResult) },
-    { id: 3, label: 'إنشاء المسودتين', ready: Boolean(plan), done: Boolean(draftResult) },
-    { id: 4, label: 'الموردون والأسعار', ready: Boolean(draftResult), done: Boolean(supplierReady) },
-    { id: 5, label: 'المراجعة النهائية', ready: Boolean(draftResult && supplierReady), done: false },
+    {
+      id: 1,
+      label: 'رفع الرصيد',
+      ready: true,
+      done: Boolean(plan),
+      status: plan ? 'تم' : 'ابدأ هنا',
+    },
+    {
+      id: 2,
+      label: 'مراجعة الخطة',
+      ready: Boolean(plan),
+      done: Boolean(draftResult),
+      status: draftResult
+        ? 'تم'
+        : planBlocked
+          ? 'تحتاج حل'
+          : quickReviewCount > 0
+            ? `${quickReviewCount} مراجعة`
+            : plan
+              ? 'جاهزة'
+              : 'مقفلة',
+    },
+    {
+      id: 3,
+      label: 'إنشاء المسودتين',
+      ready: Boolean(plan),
+      done: Boolean(draftResult),
+      status: draftResult
+        ? 'تم'
+        : planBlocked
+          ? 'متوقفة'
+          : plan
+            ? 'جاهزة'
+            : 'مقفلة',
+    },
+    {
+      id: 4,
+      label: 'الموردون والأسعار',
+      ready: Boolean(draftResult),
+      done: Boolean(supplierReady),
+      status: supplierLoading
+        ? 'جاري التحميل'
+        : supplierError
+          ? 'تحتاج مراجعة'
+          : supplierReady
+            ? supplierDecision?.currentOfferItems > 0
+              ? `${supplierDecision.currentOfferItems} عرض حالي`
+              : 'مرجع تاريخي'
+            : draftResult
+              ? 'جاهزة'
+              : 'مقفلة',
+    },
+    {
+      id: 5,
+      label: 'المراجعة النهائية',
+      ready: Boolean(draftResult && supplierReady),
+      done: false,
+      status: supplierReady
+        ? supplierDecision?.readyForSupplierConfirmation
+          ? 'جاهزة'
+          : 'تحتاج تأكيد'
+        : 'مقفلة',
+    },
   ];
 
   return (
@@ -250,6 +319,19 @@ function PurchaseJourneyTabs({ activeStep, onStepChange, plan, draftResult, supp
               <span className="min-w-0">
                 <span className="block text-[10px] font-bold opacity-70">الخطوة {step.id}</span>
                 <span className="block truncate text-sm font-black">{step.label}</span>
+                <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${
+                  active
+                    ? 'bg-white/15 text-white'
+                    : step.done
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : /متوقفة|تحتاج حل/.test(step.status)
+                        ? 'bg-red-50 text-red-700'
+                        : /مراجعة|تأكيد/.test(step.status)
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {step.status}
+                </span>
               </span>
             </button>
           );
@@ -975,6 +1057,10 @@ export default function PurchaseCenterClean() {
         plan={plan}
         draftResult={draftResult}
         supplierReady={supplierReady}
+        quickReviewCount={quickReviewRows.length}
+        supplierLoading={supplierWorkspace.loading}
+        supplierError={supplierWorkspace.error}
+        supplierDecision={supplierDecision}
       />
 
       <CurrentStepGuide step={activeStep} />
