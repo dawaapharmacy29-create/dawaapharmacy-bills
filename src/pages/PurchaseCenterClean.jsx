@@ -455,12 +455,12 @@ export default function PurchaseCenterClean() {
         shokry: {
           orderId: shokryOrderId,
           branch: 'دواء شكري',
-          ...buildSafeCurrentOfferPlan(shokryDecision),
+          ...buildSafeCurrentOfferPlan(shokryDecision, shokryOrder?.items || []),
         },
         shamy: {
           orderId: shamyOrderId,
           branch: 'دواء الشامي',
-          ...buildSafeCurrentOfferPlan(shamyDecision),
+          ...buildSafeCurrentOfferPlan(shamyDecision, shamyOrder?.items || []),
         },
       };
 
