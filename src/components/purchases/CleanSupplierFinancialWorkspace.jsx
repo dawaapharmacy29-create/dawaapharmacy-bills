@@ -19,6 +19,7 @@ const sourceLabel = {
   current_offer: 'عرض حالي',
   historical_average: 'متوسط مشتريات تاريخي',
   historical_last: 'آخر تكلفة تاريخية',
+  draft_saved_cost: 'تكلفة محفوظة في المسودة',
   planner_reference: 'مرجع الخطة',
   missing: 'بدون تكلفة',
 };
