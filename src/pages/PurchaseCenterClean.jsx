@@ -289,6 +289,28 @@ export default function PurchaseCenterClean() {
     };
   }, [plan]);
 
+  const draftOrderTotal = useMemo(() => {
+    const persisted =
+      Number(supplierWorkspace.draftTotals?.shokry || 0)
+      + Number(supplierWorkspace.draftTotals?.shamy || 0);
+    return persisted > 0 ? persisted : Number(plan?.totals?.buy_value || 0);
+  }, [plan, supplierWorkspace.draftTotals]);
+
+  const liveReferenceTotal = useMemo(() => {
+    if (supplierWorkspace.rows?.length) {
+      return supplierWorkspace.rows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
+    }
+    return financialReferenceTotal;
+  }, [financialReferenceTotal, supplierWorkspace.rows]);
+
+  const estimatedPurchaseGap = Math.max(0, draftOrderTotal - liveReferenceTotal);
+  const reviewAlertsTotal =
+    quickReviewRows.length
+    + reviewWatchlistCounts.shokry
+    + reviewWatchlistCounts.shamy
+    + movementOnlyWatchlistCounts.shokry
+    + movementOnlyWatchlistCounts.shamy;
+
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -688,30 +710,55 @@ export default function PurchaseCenterClean() {
 
       {plan && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-10">
-            <Metric label="الإجمالي المالي المرجعي" value={`${money(financialReferenceTotal)} ج`} />
-            <Metric label="قيمة V10 الأصلية" value={`${money(plan.totals?.buy_value)} ج`} />
-            <Metric label="إجمالي أصناف الشراء" value={plan.totals?.buy_items || 0} />
-            <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
-            <Metric label="مراجعة سريعة" value={quickReviewRows.length} />
-            <Metric label="Review بالعملاء" value={reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy} />
-            <Metric label="Review بالحركة فقط" value={movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy} />
-            <Metric label="في الطريق" value={`${qty(executionPendingUnits)} وحدة`} />
-            <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
-            <Metric
-              label="تغطية تاريخ التكلفة"
-              value={financialHistoryCoverage.total ? `${financialHistoryCoverage.history}/${financialHistoryCoverage.total}` : '0/0'}
-            />
-            <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
+          <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black text-slate-900">ملخص الطلبية الآن</h2>
+                <p className="mt-1 text-sm text-slate-500">الأرقام المهمة للقرار فقط. باقي التفاصيل موجودة بالأسفل عند الحاجة.</p>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-xs font-bold ${draftResult ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                {draftResult ? 'المسودتان جاهزتان للمراجعة' : 'الخطة جاهزة للمراجعة'}
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
+              <Metric label="شكري" value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`} />
+              <Metric label="الشامي" value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`} />
+              <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} />
+              <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
+              <Metric label="أصناف الشراء" value={plan.totals?.buy_items || 0} />
+            </div>
           </section>
 
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric label="قراءة الملف" value={`${timings.readMs} ms`} />
-            <Metric label="حفظ الفرعين" value={`${timings.saveMs} ms`} />
-            <Metric label="بناء الخطة" value={`${timings.planMs} ms`} />
-            <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
-          </section>
+          <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
+              تفاصيل تقنية وتشغيلية
+            </summary>
+            <div className="border-t p-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
+                <Metric label="في الطريق" value={`${qty(executionPendingUnits)} وحدة`} />
+                <Metric
+                  label="تغطية تاريخ التكلفة"
+                  value={financialHistoryCoverage.total ? `${financialHistoryCoverage.history}/${financialHistoryCoverage.total}` : '0/0'}
+                />
+                <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
+                <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Metric label="قراءة الملف" value={`${timings.readMs} ms`} />
+                <Metric label="حفظ الفرعين" value={`${timings.saveMs} ms`} />
+                <Metric label="بناء الخطة" value={`${timings.planMs} ms`} />
+                <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
+              </div>
+            </div>
+          </details>
 
+          <details className="rounded-2xl border border-amber-200 bg-white shadow-sm">
+            <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
+              المراجعات والتنبيهات • ${reviewAlertsTotal} حالة للمراجعة
+            </summary>
+            <div className="space-y-4 border-t p-4">
           {(Number(plan.execution_pending?.shokry?.items || 0) > 0 || Number(plan.execution_pending?.shamy?.items || 0) > 0) && (
             <section className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -882,13 +929,25 @@ export default function PurchaseCenterClean() {
             </section>
           )}
 
-          <div className="grid gap-5 xl:grid-cols-2">
-            <BranchPlanCard branchKey="shokry" data={plan.shokry} mode={plan.modes?.['دواء شكري']} />
-            <BranchPlanCard branchKey="shamy" data={plan.shamy} mode={plan.modes?.['دواء الشامي']} />
-          </div>
+            </div>
+          </details>
+
+          <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
+              تفاصيل خطة شكري والشامي
+            </summary>
+            <div className="grid gap-5 border-t p-4 xl:grid-cols-2">
+              <BranchPlanCard branchKey="shokry" data={plan.shokry} mode={plan.modes?.['دواء شكري']} />
+              <BranchPlanCard branchKey="shamy" data={plan.shamy} mode={plan.modes?.['دواء الشامي']} />
+            </div>
+          </details>
 
           {(plan.creation_guard?.legacy_stale_orders || []).length > 0 && (
-            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
+                طلبيات قديمة للمراجعة • {(plan.creation_guard?.legacy_stale_orders || []).length}
+              </summary>
+              <section className="border-t bg-slate-50 p-4">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
                 <div className="min-w-0 flex-1">
@@ -910,14 +969,19 @@ export default function PurchaseCenterClean() {
                   </div>
                 </div>
               </div>
-            </section>
+              </section>
+            </details>
           )}
 
-          <section className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <ArrowLeftRight className="h-5 w-5 text-indigo-600" />
-                <h2 className="text-lg font-black">التحويلات قبل الشراء الخارجي</h2>
+          <details className="rounded-2xl border border-indigo-200 bg-white shadow-sm">
+            <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
+              التحويلات بين الفروع • {transfers.length} حركة
+            </summary>
+            <section className="border-t p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <ArrowLeftRight className="h-5 w-5 text-indigo-600" />
+                  <h2 className="text-lg font-black">التحويلات قبل الشراء الخارجي</h2>
               </div>
               <span className="text-sm text-slate-500">{transfers.length} حركة مقترحة</span>
             </div>
@@ -953,7 +1017,8 @@ export default function PurchaseCenterClean() {
                 </tbody>
               </table>
             </div>
-          </section>
+            </section>
+          </details>
 
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
