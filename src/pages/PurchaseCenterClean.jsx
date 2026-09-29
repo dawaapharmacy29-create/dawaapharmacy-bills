@@ -199,11 +199,20 @@ function BranchPlanCard({ branchKey, data, mode }) {
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, tone = 'slate', emphasis = false, helper = '' }) {
+  const tones = {
+    slate: 'border-slate-200 bg-slate-50/70 text-slate-900',
+    teal: 'border-teal-200 bg-teal-50/70 text-teal-950',
+    emerald: 'border-emerald-200 bg-emerald-50/70 text-emerald-950',
+    amber: 'border-amber-200 bg-amber-50/70 text-amber-950',
+    indigo: 'border-indigo-200 bg-indigo-50/70 text-indigo-950',
+    red: 'border-red-200 bg-red-50/70 text-red-950',
+  };
   return (
-    <div className="rounded-xl border bg-slate-50/60 p-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 text-lg font-black text-slate-800">{value}</div>
+    <div className={`rounded-xl border p-3 ${tones[tone] || tones.slate} ${emphasis ? 'shadow-sm' : ''}`}>
+      <div className="text-xs font-bold opacity-60">{label}</div>
+      <div className={`mt-1 font-black ${emphasis ? 'text-2xl' : 'text-lg'}`}>{value}</div>
+      {helper ? <div className="mt-1 text-[11px] opacity-60">{helper}</div> : null}
     </div>
   );
 }
@@ -288,7 +297,7 @@ function PurchaseJourneyTabs({
 
   return (
     <nav className="sticky top-2 z-30 rounded-2xl border bg-white/95 p-2 shadow-md backdrop-blur" aria-label="رحلة تجهيز الطلبية">
-      <div className="grid gap-2 md:grid-cols-5">
+      <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-5 md:overflow-visible md:pb-0">
         {steps.map((step) => {
           const active = step.id === activeStep;
           return (
@@ -297,7 +306,7 @@ function PurchaseJourneyTabs({
               type="button"
               disabled={!step.ready}
               onClick={() => step.ready && onStepChange(step.id)}
-              className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-right transition ${
+              className={`min-w-[180px] snap-start flex items-center gap-3 rounded-xl border px-3 py-3 text-right transition md:min-w-0 ${
                 active
                   ? 'border-teal-600 bg-teal-700 text-white shadow-sm'
                   : step.done
@@ -1253,13 +1262,51 @@ export default function PurchaseCenterClean() {
                 {draftResult ? 'المسودتان جاهزتان للمراجعة' : 'الخطة جاهزة للمراجعة'}
               </span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-              <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
-              <Metric label="شكري" value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`} />
-              <Metric label="الشامي" value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`} />
-              <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} />
-              <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
-              <Metric label="أصناف الشراء" value={plan.totals?.buy_items || 0} />
+            <div className="grid gap-3 lg:grid-cols-12">
+              <div className="lg:col-span-4">
+                <Metric
+                  label="إجمالي الطلبية"
+                  value={`${money(draftOrderTotal)} ج`}
+                  tone="teal"
+                  emphasis
+                  helper={`${plan.totals?.buy_items || 0} صنف شراء`}
+                />
+              </div>
+              <div className="lg:col-span-4">
+                <Metric
+                  label="شكري"
+                  value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`}
+                  tone="indigo"
+                  emphasis
+                  helper={`${(plan.shokry?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0).length} صنف`}
+                />
+              </div>
+              <div className="lg:col-span-4">
+                <Metric
+                  label="الشامي"
+                  value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`}
+                  tone="indigo"
+                  emphasis
+                  helper={`${(plan.shamy?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0).length} صنف`}
+                />
+              </div>
+              <div className="lg:col-span-4">
+                <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} tone="slate" />
+              </div>
+              <div className="lg:col-span-4">
+                <Metric
+                  label="فرق تقديري"
+                  value={`${money(estimatedPurchaseGap)} ج`}
+                  tone={estimatedPurchaseGap > 0 ? 'amber' : 'emerald'}
+                />
+              </div>
+              <div className="lg:col-span-4">
+                <Metric
+                  label="مراجعات داخل الطلبية"
+                  value={quickReviewRows.length}
+                  tone={quickReviewRows.length ? 'amber' : 'emerald'}
+                />
+              </div>
             </div>
             {plan.creation_guard?.can_create_dual === true && quickReviewRows.length === 0 && (
               <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
@@ -1580,10 +1627,10 @@ export default function PurchaseCenterClean() {
                   نفس كميات الخطة بدون إعادة حساب، وبدون اعتماد أو إرسال للمورد.
                 </p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
-                  <Metric label="شكري" value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`} />
-                  <Metric label="الشامي" value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`} />
-                  <Metric label="أصناف الشراء" value={plan.totals?.buy_items || 0} />
+                  <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} tone="teal" />
+                  <Metric label="شكري" value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`} tone="indigo" />
+                  <Metric label="الشامي" value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`} tone="indigo" />
+                  <Metric label="أصناف الشراء" value={plan.totals?.buy_items || 0} tone="slate" />
                 </div>
                 {plan.creation_guard?.can_create_dual === false && !draftResult && (
                   <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -1729,6 +1776,58 @@ export default function PurchaseCenterClean() {
                   </div>
                 )}
               </div>
+
+              <section className="rounded-2xl border bg-white p-4 shadow-sm">
+                <div className="mb-3 font-black text-slate-900">Checklist الجاهزية</div>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    {
+                      label: 'مطابقة المسودتين للخطة',
+                      ok: Boolean(draftResult.content_verified),
+                      note: draftResult.content_verified ? 'مطابقة مؤكدة' : 'تحتاج مراجعة',
+                    },
+                    {
+                      label: 'التكلفة مكتملة',
+                      ok: supplierDecision.missingCostItems === 0,
+                      note: supplierDecision.missingCostItems === 0 ? 'لا توجد تكلفة مفقودة' : `${supplierDecision.missingCostItems} صنف ناقص تكلفة`,
+                    },
+                    {
+                      label: 'الموردون محددون',
+                      ok: supplierDecision.missingSupplierItems === 0,
+                      note: supplierDecision.missingSupplierItems === 0 ? 'كل الأصناف لها مورد' : `${supplierDecision.missingSupplierItems} صنف بدون مورد`,
+                    },
+                    {
+                      label: 'الأسعار الحالية',
+                      ok: supplierDecision.currentOfferItems > 0,
+                      warn: supplierDecision.currentOfferItems === 0,
+                      note: supplierDecision.currentOfferItems > 0
+                        ? `${supplierDecision.currentOfferItems} عرض حالي`
+                        : 'الاعتماد الحالي على التاريخ فقط',
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className={`rounded-xl border p-3 ${
+                        item.ok
+                          ? 'border-emerald-200 bg-emerald-50'
+                          : item.warn
+                            ? 'border-amber-200 bg-amber-50'
+                            : 'border-red-200 bg-red-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-black text-slate-900">{item.label}</span>
+                        <span className={`text-lg font-black ${
+                          item.ok ? 'text-emerald-700' : item.warn ? 'text-amber-700' : 'text-red-700'
+                        }`}>
+                          {item.ok ? '✓' : item.warn ? '!' : '×'}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-600">{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
 
               {supplierDecision.topGroups.length > 0 && (
                 <section className="rounded-2xl border bg-white p-4 shadow-sm">
