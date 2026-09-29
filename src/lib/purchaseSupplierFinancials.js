@@ -171,8 +171,23 @@ export function buildSupplierFinancialRows({ decision = null, historyRows = [], 
       best_financial_offer: financialOffer,
       operational_recommended_supplier: recommended.supplier_name || '',
       operational_recommendation_reason: recommended.reason || '',
+      financial_selection_scope: hasCurrentOffer
+        ? (
+            String(recommended.reason || '').includes('أفضل تكلفة فعالة')
+            && String(recommended.offer_id || '') === String(financialOffer.offer_id || '')
+              ? 'all_current_offers'
+              : 'advisor_visible_candidates'
+          )
+        : hist.historical_supplier
+          ? 'historical_best'
+          : 'none',
       financial_supplier_reason: hasCurrentOffer
-        ? 'أقل تكلفة فعالة بين العروض الحالية المتاحة'
+        ? (
+            String(recommended.reason || '').includes('أفضل تكلفة فعالة')
+            && String(recommended.offer_id || '') === String(financialOffer.offer_id || '')
+              ? 'أفضل تكلفة فعالة بين كل العروض الحالية التي فحصها المحرك'
+              : 'أقل تكلفة فعالة بين العروض المرشحة التي أعادها المحرك للواجهة'
+          )
         : hist.historical_supplier
           ? 'أفضل مورد تاريخيًا حسب متوسط التكلفة الفعلية المتاح'
           : 'لا يوجد مورد مالي موثوق بعد',
