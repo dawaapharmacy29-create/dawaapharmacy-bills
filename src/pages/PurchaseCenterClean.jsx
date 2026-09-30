@@ -558,6 +558,23 @@ export default function PurchaseCenterClean() {
     return normalizeDualBranchStockRows(rows, file.name);
   }
 
+  function persistDraftJourneyResume(currentPlan, drafts) {
+    if (!currentPlan?.stock_sync_id || !currentPlan?.plan_hash || !drafts) return;
+    const current = readJourneyResume() || {};
+    writeJourneyResume({
+      ...current,
+      stock_sync_id: currentPlan.stock_sync_id,
+      plan_hash: currentPlan.plan_hash,
+      shokry_order_id: drafts.shokry_order_id || current.shokry_order_id || null,
+      shamy_order_id: drafts.shamy_order_id || current.shamy_order_id || null,
+      save_result: current.save_result || {
+        stock_sync_id: currentPlan.stock_sync_id,
+        dual_atomic_finalize: true,
+        row_count_verified: true,
+      },
+    });
+  }
+
   async function recoverMatchingOpenDrafts(currentPlan) {
     const guard = currentPlan?.creation_guard || {};
     const isDraft = (order) => ['draft', 'مسودة'].includes(String(order?.status || '').trim());
@@ -634,6 +651,7 @@ export default function PurchaseCenterClean() {
 
     setPlan(financialPlan);
     if (recoveredDrafts) {
+      persistDraftJourneyResume(result, recoveredDrafts);
       setDraftResult(recoveredDrafts);
       setActiveStep(5);
       void loadSupplierWorkspace(recoveredDrafts);
@@ -1004,6 +1022,7 @@ export default function PurchaseCenterClean() {
         stockSyncId: plan.stock_sync_id,
         planHash: plan.plan_hash,
       });
+      persistDraftJourneyResume(plan, result);
       setDraftResult(result);
       setActiveStep(5);
       setPhase('ready');
@@ -1011,6 +1030,7 @@ export default function PurchaseCenterClean() {
     } catch (err) {
       const recovered = await recoverDraftsAfterCreateError(plan.stock_sync_id);
       if (recovered) {
+        persistDraftJourneyResume(plan, recovered);
         setDraftResult(recovered);
         setActiveStep(5);
         setPhase('ready');

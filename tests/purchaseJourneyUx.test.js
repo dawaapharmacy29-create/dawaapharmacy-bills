@@ -199,3 +199,12 @@ test('simplified purchase page keeps no dead timing or review aggregate state', 
   assert.doesNotMatch(source, /reviewAlertsTotal/);
   assert.doesNotMatch(source, /countPlanQuickReviews/);
 });
+
+
+test('draft identity is persisted locally after create or exact recovery', () => {
+  assert.ok(source.includes("function persistDraftJourneyResume"));
+  assert.ok(source.includes("plan_hash: currentPlan.plan_hash"));
+  assert.ok(source.includes("shokry_order_id: drafts.shokry_order_id"));
+  assert.ok(source.includes("shamy_order_id: drafts.shamy_order_id"));
+  assert.ok((source.match(/persistDraftJourneyResume\(/g) || []).length >= 4);
+});
