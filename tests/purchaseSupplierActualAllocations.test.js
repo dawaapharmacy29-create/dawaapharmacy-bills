@@ -103,3 +103,13 @@ test('an old historical response can be deliberately restored after a later corr
   assert.match(sql, /and coalesce\(v_existing_response_type,''\)=coalesce\(v_response_type,''\)/);
   assert.match(sql, /and v_existing_details=v_details then/);
 });
+
+test('all supplier responses for one order are serialized before capacity checks', () => {
+  const saveFn = sql.slice(
+    sql.indexOf('create or replace function public.smart_purchase_save_supplier_response_v1'),
+    sql.indexOf('create or replace function public.smart_purchase_receiving_read_v3')
+  );
+  assert.match(saveFn, /pg_advisory_xact_lock\(hashtext\(v_order_id::text\|\|':supplier-response'\)\)/);
+  assert.doesNotMatch(saveFn, /:supplier-response:'\|\|v_supplier_key/);
+  assert.ok(saveFn.indexOf('pg_advisory_xact_lock') < saveFn.indexOf('v_other_allocated'));
+});

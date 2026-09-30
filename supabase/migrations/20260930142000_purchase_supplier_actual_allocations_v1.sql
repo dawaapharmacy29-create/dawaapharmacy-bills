@@ -129,7 +129,7 @@ begin
     return jsonb_build_object('ok',false,'error','supplier_allocation_requires_pre_receiving');
   end if;
 
-  perform pg_advisory_xact_lock(hashtext(v_order_id::text||':supplier-response:'||v_supplier_key));
+  perform pg_advisory_xact_lock(hashtext(v_order_id::text||':supplier-response'));
 
   select ws.id,ws.response_type,ws.details
   into v_existing_snapshot,v_existing_response_type,v_existing_details
