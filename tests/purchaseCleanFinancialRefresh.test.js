@@ -15,5 +15,5 @@ test('clean planning refreshes financial readiness before the planner', () => {
 
 test('negative stock is review-only in the clean UI', () => {
   assert.ok(!cleanPageSource.includes('hasNegativeStock'));
-  assert.ok(cleanPageSource.includes('تمت معاملة الأرصدة السالبة كصفر في الفرع المتأثر فقط'));
+  assert.ok(cleanPageSource.includes('يوجد رصيد سالب في الملف؛ تم التعامل معه كصفر في الفرع المتأثر فقط وسيستمر التحليل.'));
 });
