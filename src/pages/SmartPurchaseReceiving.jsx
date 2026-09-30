@@ -20,6 +20,30 @@ function editDistance(a, b) { const left = cleanName(a); const right = cleanName
 function nameSimilarity(a, b) { const left = cleanName(a); const right = cleanName(b); if (!left || !right) return 0; if (left === right) return 1; const chars = 1 - (editDistance(left, right) / Math.max(left.length, right.length)); const leftTokens = new Set(left.split(' ')); const rightTokens = new Set(right.split(' ')); const shared = [...leftTokens].filter((token) => rightTokens.has(token)).length; const tokenScore = shared / Math.max(leftTokens.size, rightTokens.size, 1); return Math.max(0, (chars * 0.65) + (tokenScore * 0.35)); }
 function activeQuantity(item) { return Math.max(0, num(item.approved_quantity || item.requested_quantity)); }
 function remainingQuantity(item) { return Math.max(0, activeQuantity(item) - Math.max(0, num(item.received_quantity))); }
+function itemIdentity(item = {}) {
+  const id = String(item.id || '').trim();
+  if (id) return `id:${id}`;
+  const code = String(item.product_code || '').trim().replace(/\.0+$/, '');
+  if (code) return `code:${code.toLowerCase()}`;
+  const name = cleanName(item.product_name || '');
+  return name ? `name:${name}` : '';
+}
+function committedQuantityForItem(item, commitmentsBySupplier, excludedSupplierKey = '') {
+  const key = itemIdentity(item);
+  if (!key) return 0;
+  let total = 0;
+  for (const [supplierKey, byItem] of commitmentsBySupplier.entries()) {
+    if (excludedSupplierKey && supplierKey === excludedSupplierKey) continue;
+    total += Math.max(0, num(byItem.get(key)));
+  }
+  return Math.min(activeQuantity(item), total);
+}
+function sourcingRemainingQuantity(item, commitmentsBySupplier, excludedSupplierKey = '') {
+  const active = activeQuantity(item);
+  const received = Math.min(active, Math.max(0, num(item.received_quantity)));
+  const committed = committedQuantityForItem(item, commitmentsBySupplier, excludedSupplierKey);
+  return Math.max(0, active - Math.max(received, committed));
+}
 function expectedCost(item) { return Math.max(0, num(item.expected_unit_cost || item.last_purchase_price)); }
 function orderTitle(order = {}) { return order.title || order.name || order.order_name || order.order_number || 'طلبية'; }
 function parseWorkbook(file) { return file.arrayBuffer().then((buffer) => { const workbook = XLSX.read(buffer, { type: 'array' }); const sheet = workbook.Sheets[workbook.SheetNames[0]]; const raw = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true }); return raw.map((row, index) => ({ row_number: index + 2, product_code: String(findValue(row, 'product_code') || '').trim(), product_name: String(findValue(row, 'product_name') || '').trim(), quantity: Math.max(0, num(findValue(row, 'quantity'))), price: Math.max(0, num(findValue(row, 'price'))), source: row })).filter((row) => row.product_code || row.product_name); }); }
@@ -191,8 +215,33 @@ export default function SmartPurchaseReceiving() {
     .filter((item) => activeQuantity(item) > 0)
     .map((item) => String(item.supplier_name || '').trim())
     .filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')), [selected]);
+  const supplierResponseHistory = useMemo(
+    () => (Array.isArray(selected?.supplier_responses) ? selected.supplier_responses : []),
+    [selected]
+  );
+  const supplierCommitmentsBySupplier = useMemo(() => {
+    const result = new Map();
+    for (const snapshot of supplierResponseHistory) {
+      const supplierKey = cleanName(snapshot?.supplier_name || '');
+      if (!supplierKey) continue;
+      const rows = Array.isArray(snapshot?.details?.details) ? snapshot.details.details : [];
+      const byItem = new Map();
+      for (const detail of rows) {
+        const key = itemIdentity(detail?.item || detail || {});
+        if (!key) continue;
+        byItem.set(key, Math.max(0, num(detail?.confirmed)));
+      }
+      result.set(supplierKey, byItem);
+    }
+    return result;
+  }, [supplierResponseHistory]);
+  const currentSupplierKey = cleanName(supplierName);
   const branchRemainingItems = useMemo(() => (selected?.items || [])
-    .filter((item) => activeQuantity(item) > 0 && remainingQuantity(item) > 0), [selected]);
+    .filter((item) => activeQuantity(item) > 0
+      && sourcingRemainingQuantity(item, supplierCommitmentsBySupplier) > 0), [selected, supplierCommitmentsBySupplier]);
+  const responseOrderItems = useMemo(() => (selected?.items || [])
+    .filter((item) => activeQuantity(item) > 0
+      && sourcingRemainingQuantity(item, supplierCommitmentsBySupplier, currentSupplierKey) > 0), [selected, supplierCommitmentsBySupplier, currentSupplierKey]);
   const supplierAllItems = useMemo(() => {
     const supplierKey = String(supplierName || '').trim().toLowerCase();
     if (!supplierKey) return [];
@@ -200,7 +249,21 @@ export default function SmartPurchaseReceiving() {
       && String(item.supplier_name || '').trim().toLowerCase() === supplierKey);
   }, [selected, supplierName]);
   const supplierRemainingItems = useMemo(() => supplierAllItems.filter((item) => remainingQuantity(item) > 0), [supplierAllItems]);
-  const orderItems = mode === 'supplier_response' ? branchRemainingItems : supplierRemainingItems;
+  const orderItems = mode === 'supplier_response' ? responseOrderItems : supplierRemainingItems;
+  const sourcingStats = useMemo(() => {
+    const items = (selected?.items || []).filter((item) => activeQuantity(item) > 0);
+    const ordered = items.reduce((sum, item) => sum + activeQuantity(item), 0);
+    const remaining = items.reduce(
+      (sum, item) => sum + sourcingRemainingQuantity(item, supplierCommitmentsBySupplier),
+      0
+    );
+    return {
+      ordered,
+      covered: Math.max(0, ordered - remaining),
+      remaining,
+      suppliers: supplierResponseHistory.length,
+    };
+  }, [selected, supplierCommitmentsBySupplier, supplierResponseHistory]);
   const supplierProgress = useMemo(() => {
     const ordered = supplierAllItems.reduce((sum, item) => sum + activeQuantity(item), 0);
     const received = supplierAllItems.reduce((sum, item) => sum + Math.min(activeQuantity(item), Math.max(0, num(item.received_quantity))), 0);
@@ -209,7 +272,7 @@ export default function SmartPurchaseReceiving() {
     return { ordered, received, remaining, completion };
   }, [supplierAllItems]);
   const matching = useMemo(() => matchRows(orderItems, rows), [orderItems, rows]);
-  const supplierResult = useMemo(() => { if (!selected || !rows.length) return null; const details = matching.matches.map(({ item, row, confidence, method }) => { const ordered = remainingQuantity(item); let confirmed = 0; let remaining = 0; if (responseType === 'missing') { remaining = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; confirmed = ordered - remaining; } else { confirmed = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; remaining = Math.max(0, ordered - confirmed); } return { item, row, ordered, confirmed, remaining, confidence, method, status: remaining <= 0 ? 'متاح بالكامل' : confirmed > 0 ? 'متاح جزئيًا' : 'غير متاح' }; }); return { details, remaining: details.filter((row) => row.remaining > 0), confirmed: details.filter((row) => row.confirmed > 0), unexpected: matching.unexpected }; }, [selected, rows, matching, responseType]);
+  const supplierResult = useMemo(() => { if (!selected || !rows.length) return null; const details = matching.matches.map(({ item, row, confidence, method }) => { const ordered = sourcingRemainingQuantity(item, supplierCommitmentsBySupplier, currentSupplierKey); let confirmed = 0; let remaining = 0; if (responseType === 'missing') { remaining = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; confirmed = ordered - remaining; } else { confirmed = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; remaining = Math.max(0, ordered - confirmed); } return { item, row, ordered, confirmed, remaining, confidence, method, status: remaining <= 0 ? 'متاح بالكامل' : confirmed > 0 ? 'متاح جزئيًا' : 'غير متاح' }; }); return { details, remaining: details.filter((row) => row.remaining > 0), confirmed: details.filter((row) => row.confirmed > 0), unexpected: matching.unexpected }; }, [selected, rows, matching, responseType]);
   const receiptResult = useMemo(() => { if (!selected || !rows.length) return null; const details = matching.matches.map(({ item, row, confidence, method }) => { const ordered = remainingQuantity(item); const received = row ? row.quantity : 0; const expectedPrice = expectedCost(item); const actualPrice = row ? row.price : 0; let status = 'سليم'; if (!row) status = 'لم يصل'; else if (received < ordered) status = 'كمية ناقصة'; else if (received > ordered) status = 'كمية زائدة'; else if (method === 'fuzzy' && confidence < 0.9) status = 'اسم مختلف يحتاج مراجعة'; if (row && received > 0 && actualPrice <= 0) status = status === 'سليم' ? 'السعر غير موجود' : `${status} + السعر غير موجود`;
     else if (row && actualPrice > 0 && expectedPrice > 0 && Math.abs(actualPrice - expectedPrice) > 0.01) status = status === 'سليم' ? 'فرق سعر' : `${status} + فرق سعر`; return { item, row, ordered, received, difference: received - ordered, expectedPrice, actualPrice, valueDifference: (received * actualPrice) - (ordered * expectedPrice), confidence, method, status }; }); const unexpected = matching.unexpected.map((row) => ({ ...row, status: row.similarity >= 0.45 ? 'صنف مختلف محتمل' : 'صنف غير مطلوب' })); return { details, unexpected }; }, [selected, rows, matching]);
   const currentResult = mode === 'supplier_response' ? supplierResult : receiptResult;
@@ -280,19 +343,34 @@ export default function SmartPurchaseReceiving() {
         supplier_name: supplierName,
         file_name: fileName,
         summary: mode === 'supplier_response'
-          ? { confirmed_items: supplierResult.confirmed.length, remaining_items: supplierResult.remaining.length, unexpected_items: supplierResult.unexpected.length }
+          ? {
+              scope: 'branch_remaining_v1',
+              accumulation: 'latest_per_supplier_v1',
+              confirmed_items: supplierResult.confirmed.length,
+              confirmed_quantity: supplierResult.confirmed.reduce((sum, row) => sum + num(row.confirmed), 0),
+              remaining_items: supplierResult.remaining.length,
+              remaining_quantity: supplierResult.remaining.reduce((sum, row) => sum + num(row.remaining), 0),
+              unexpected_items: supplierResult.unexpected.length,
+            }
           : { matched_items: receiptResult.details.length, issue_items: receiptResult.details.filter((row) => row.status !== 'سليم').length, unexpected_items: receiptResult.unexpected.length, expected_total: receiptExpectedTotal, actual_total: receiptActualTotal },
         details: currentResult,
       });
 
-      setMessage(mode === 'receipt' ? 'تم تسجيل الاستلام فعليًا وتحديث الطلبية وحفظ نتيجة المطابقة.' : 'تم حفظ نتيجة رد المورد داخل سجل الطلبية.');
       if (mode === 'receipt') {
+        setMessage('تم تسجيل الاستلام فعليًا وتحديث الطلبية وحفظ نتيجة المطابقة.');
         const detail = await api.getOrder(selected.order.id);
         setSelected(detail);
         await Promise.all([
           refresh(),
           refreshCloseReadiness(selected.order.id),
         ]);
+      } else {
+        const detail = await api.getOrder(selected.order.id);
+        setSelected(detail);
+        setRows([]);
+        setFileName('');
+        setSupplierName('');
+        setMessage('تم حفظ رد المورد وتحديث المتبقي التراكمي. الملف التالي هيبدأ من النواقص فقط.');
       }
     } catch (err) {
       setError(actualReceiptSaved
@@ -302,7 +380,7 @@ export default function SmartPurchaseReceiving() {
       setLoading(false);
     }
   }
-  function exportBranchRequest() { if (!selected?.order || !branchRemainingItems.length) return; const exportRows = branchRemainingItems.map((item) => ({ 'كود الصنف': item.product_code || '', 'اسم الصنف': item.product_name || '', 'الكمية المطلوبة': remainingQuantity(item) })); downloadWorkbook({ 'طلبية الفرع': exportRows }, `${safeFileName(orderTitle(selected.order))}_طلبية_الفرع_للمورد.xlsx`); }
+  function exportBranchRequest() { const requestItems = supplierName.trim() ? responseOrderItems : branchRemainingItems; if (!selected?.order || !requestItems.length) return; const exportRows = requestItems.map((item) => ({ 'كود الصنف': item.product_code || '', 'اسم الصنف': item.product_name || '', 'الكمية المطلوبة': sourcingRemainingQuantity(item, supplierCommitmentsBySupplier, currentSupplierKey) })); downloadWorkbook({ 'طلبية الفرع': exportRows }, `${safeFileName(orderTitle(selected.order))}_طلبية_الفرع_للمورد.xlsx`); }
   function exportRemaining() { if (!supplierResult) return; const exportRows = supplierResult.remaining.map(({ item, remaining }) => ({ 'كود الصنف': item.product_code || '', 'اسم الصنف': item.product_name || '', 'الكمية المطلوبة': remaining })); downloadWorkbook({ 'المتبقي لمورد آخر': exportRows }, `${safeFileName(orderTitle(selected.order))}_المتبقي_لمورد_آخر.xlsx`); }
   function exportReceiptReport() { if (!receiptResult) return; const summary = [{ 'البيان': 'اسم الطلبية', 'القيمة': orderTitle(selected.order) }, { 'البيان': 'الكود المرجعي', 'القيمة': selected.order.order_number || '' }, { 'البيان': 'عدد الأصناف المطلوبة', 'القيمة': receiptResult.details.length }, { 'البيان': 'القيمة المتوقعة', 'القيمة': receiptExpectedTotal }, { 'البيان': 'قيمة الفاتورة الفعلية', 'القيمة': receiptActualTotal }, { 'البيان': 'فرق القيمة', 'القيمة': Number((receiptActualTotal - receiptExpectedTotal).toFixed(2)) }, { 'البيان': 'حالة التحكم المالي', 'القيمة': invoiceGuard.status }, { 'البيان': 'أصناف سليمة', 'القيمة': receiptResult.details.filter((row) => row.status === 'سليم').length }, { 'البيان': 'أصناف بها ملاحظات', 'القيمة': receiptResult.details.filter((row) => row.status !== 'سليم').length }, { 'البيان': 'أصناف غير متوقعة', 'القيمة': receiptResult.unexpected.length }]; const details = receiptResult.details.map((row) => ({ 'الصنف المطلوب': row.item.product_name || '', 'الكود': row.item.product_code || '', 'الكمية المطلوبة': row.ordered, 'الصنف الموجود بالملف': row.row?.product_name || '', 'الكمية المستلمة': row.received, 'فرق الكمية': row.difference, 'السعر المتوقع': row.expectedPrice, 'السعر الفعلي': row.actualPrice, 'فرق القيمة': Number(row.valueDifference.toFixed(2)), 'طريقة المطابقة': row.method, 'نسبة الثقة %': Number((row.confidence * 100).toFixed(1)), 'النتيجة': row.status })); const unexpected = receiptResult.unexpected.map((row) => ({ 'الصنف الموجود بالملف': row.product_name, 'الكود': row.product_code, 'الكمية': row.quantity, 'السعر': row.price, 'أقرب صنف مطلوب': row.closest_item?.product_name || '', 'نسبة التشابه %': Number((row.similarity * 100).toFixed(1)), 'النتيجة': row.status })); downloadWorkbook({ 'الملخص': summary, 'مطابقة الأصناف': details, 'أصناف غير متوقعة': unexpected }, `${safeFileName(orderTitle(selected.order))}_تقرير_الاستلام_والمطابقة.xlsx`); }
   const supplierStats = supplierResult ? { confirmed: supplierResult.confirmed.length, remaining: supplierResult.remaining.length, unexpected: supplierResult.unexpected.length } : null;
@@ -470,7 +548,7 @@ export default function SmartPurchaseReceiving() {
             ].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
           </div>
         </section>}
-        <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-4">{mode === 'supplier_response' && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-200 bg-teal-50 p-3"><div><div className="font-black text-teal-950">طلبية الفرع مجمعة</div><div className="text-xs text-teal-800">الملف يحتوي على كل الأصناف والكميات المتبقية في الفرع، بدون تقسيم حسب المورد التاريخي.</div></div><button type="button" disabled={!branchRemainingItems.length} onClick={exportBranchRequest} className="rounded-lg bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40 flex items-center gap-2"><Download className="w-4 h-4" />تنزيل طلبية الفرع للمورد</button></div>}<div className="grid md:grid-cols-5 gap-3">{mode === 'supplier_response' && <label className="text-sm">نوع ملف رد المورد<select value={responseType} onChange={(event) => setResponseType(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="available">الأصناف المتاحة فقط</option><option value="missing">الأصناف غير المتاحة فقط</option><option value="modified">نسخة الطلبية بعد حذف النواقص</option></select></label>}<label className="text-sm">المورد *{mode === 'supplier_response' ? <><input list="supplier-response-options" value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2" placeholder="اكتب أو اختر اسم المورد" /><datalist id="supplier-response-options">{orderSuppliers.map((supplier) => <option key={supplier} value={supplier} />)}</datalist><span className="text-[11px] text-slate-500">رد المورد هيتطابق مع كل الأصناف المتبقية في طلبية الفرع، بغض النظر عن المورد التاريخي.</span></> : <><select value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2"><option value="">اختر المورد</option>{orderSuppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}</select><span className="text-[11px] text-slate-500">الاستلام الفعلي يظل مقيدًا بالأصناف المسندة للمورد داخل الطلبية.</span></>}</label>{mode === 'receipt' && <><label className="text-sm">رقم فاتورة المورد<input value={supplierInvoiceNumber} onChange={(event) => setSupplierInvoiceNumber(event.target.value)} className="mt-1 w-full rounded-lg border p-2" placeholder="اختياري لكن يفضل إدخاله" /></label><label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label></>}<label className="text-sm md:col-span-2">ملف Excel أو CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-1 block w-full text-sm" /></label></div><div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">{mode === 'supplier_response' ? 'في رد المورد، المطابقة تتم على طلبية الفرع كاملة حتى تقدر تبعت نفس الاحتياج لمورد واحد ثم تصدر النواقص للمورد التالي. اسم المورد هنا للتوثيق ويمكن كتابة مورد غير موجود في التوزيع التاريخي.' : 'في الاستلام الفعلي، اختيار المورد إلزامي والمطابقة تظل على الأصناف المسندة له داخل الطلبية لحماية الكميات والقيمة ومنع الخلط بين الموردين.'}</div></section>
+        <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-4">{mode === 'supplier_response' && <div className="space-y-3 rounded-xl border border-teal-200 bg-teal-50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-black text-teal-950">طلبية الفرع مجمعة</div><div className="text-xs text-teal-800">الملف يبدأ من المتبقي الحقيقي بعد آخر رد محفوظ لكل مورد، بدون تقسيم حسب المورد التاريخي.</div></div><button type="button" disabled={!(supplierName.trim() ? responseOrderItems.length : branchRemainingItems.length)} onClick={exportBranchRequest} className="rounded-lg bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40 flex items-center gap-2"><Download className="w-4 h-4" />تنزيل طلبية الفرع للمورد</button></div><div className="grid grid-cols-2 gap-2 md:grid-cols-4">{[['إجمالي الكمية', sourcingStats.ordered], ['مغطى حتى الآن', sourcingStats.covered], ['المتبقي للمورد التالي', sourcingStats.remaining], ['ردود موردين محفوظة', sourcingStats.suppliers]].map(([label, value]) => <div key={label} className="rounded-lg border border-teal-100 bg-white p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="mt-1 font-black text-teal-900">{value}</div></div>)}</div></div>}<div className="grid md:grid-cols-5 gap-3">{mode === 'supplier_response' && <label className="text-sm">نوع ملف رد المورد<select value={responseType} onChange={(event) => setResponseType(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="available">الأصناف المتاحة فقط</option><option value="missing">الأصناف غير المتاحة فقط</option><option value="modified">نسخة الطلبية بعد حذف النواقص</option></select></label>}<label className="text-sm">المورد *{mode === 'supplier_response' ? <><input list="supplier-response-options" value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2" placeholder="اكتب أو اختر اسم المورد" /><datalist id="supplier-response-options">{orderSuppliers.map((supplier) => <option key={supplier} value={supplier} />)}</datalist><span className="text-[11px] text-slate-500">رد المورد هيتطابق مع المتبقي التراكمي في طلبية الفرع، بغض النظر عن المورد التاريخي. ولو رفعت ردًا جديدًا لنفس المورد فآخر رد محفوظ له هو اللي يدخل في الحساب.</span></> : <><select value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2"><option value="">اختر المورد</option>{orderSuppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}</select><span className="text-[11px] text-slate-500">الاستلام الفعلي يظل مقيدًا بالأصناف المسندة للمورد داخل الطلبية.</span></>}</label>{mode === 'receipt' && <><label className="text-sm">رقم فاتورة المورد<input value={supplierInvoiceNumber} onChange={(event) => setSupplierInvoiceNumber(event.target.value)} className="mt-1 w-full rounded-lg border p-2" placeholder="اختياري لكن يفضل إدخاله" /></label><label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label></>}<label className="text-sm md:col-span-2">ملف Excel أو CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-1 block w-full text-sm" /></label></div><div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">{mode === 'supplier_response' ? 'في رد المورد، المطابقة تتم على طلبية الفرع كاملة حتى تقدر تبعت نفس الاحتياج لمورد واحد ثم تصدر النواقص للمورد التالي. اسم المورد هنا للتوثيق ويمكن كتابة مورد غير موجود في التوزيع التاريخي.' : 'في الاستلام الفعلي، اختيار المورد إلزامي والمطابقة تظل على الأصناف المسندة له داخل الطلبية لحماية الكميات والقيمة ومنع الخلط بين الموردين.'}</div></section>
         {mode === 'supplier_response' && supplierResult && <><div className="grid sm:grid-cols-3 gap-3">{[['تم تأكيده', supplierStats.confirmed], ['متبقي لمورد آخر', supplierStats.remaining], ['صفوف غير معروفة', supplierStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap gap-2"><button onClick={exportRemaining} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-bold flex items-center gap-2"><Download className="w-4 h-4" />ملف المتبقي لمورد آخر</button><button disabled={loading} onClick={saveSnapshot} className="rounded-lg border bg-white px-4 py-2 font-bold flex items-center gap-2"><Save className="w-4 h-4" />حفظ النتيجة</button></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'المطلوب', 'المؤكد', 'المتبقي', 'المطابقة', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{supplierResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.ordered}</td><td className="p-3">{row.confirmed}</td><td className="p-3 font-bold">{row.remaining}</td><td className="p-3">{row.method === 'code' ? 'بالكود' : row.method === 'name' ? 'بالاسم' : row.method === 'fuzzy' ? `تشابه ${Math.round(row.confidence * 100)}%` : 'غير موجود'}</td><td className="p-3">{row.status}</td></tr>)}</tbody></table></div></>}
         {mode === 'receipt' && receiptResult && <><div className="grid sm:grid-cols-3 gap-3">{[['سليم', receiptStats.ok], ['يحتاج مراجعة', receiptStats.issues], ['أصناف غير متوقعة', receiptStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap gap-2"><button onClick={exportReceiptReport} className="rounded-lg bg-slate-900 text-white px-4 py-2 font-bold flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />تصدير تقرير المطابقة</button><button disabled={loading || receiptMissingPrices > 0 || invoiceGuard.blocked} onClick={saveSnapshot} className="rounded-lg bg-teal-700 text-white px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />تسجيل الاستلام فعليًا</button></div>
         {receiptMissingPrices > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {receiptMissingPrices} صف بدون سعر فعلي؛ تم إيقاف التسجيل المالي حتى استكمال السعر.</div>}

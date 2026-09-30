@@ -27,3 +27,18 @@ test('supplier response may document any supplier while actual receipt remains a
   assert.match(source, /String\(item\.supplier_name \|\| ''\)\.trim\(\)\.toLowerCase\(\) === supplierKey/);
   assert.match(source, /الاستلام الفعلي يظل مقيدًا بالأصناف المسندة للمورد داخل الطلبية/);
 });
+
+test('saved supplier responses become cumulative and latest response per supplier wins', () => {
+  assert.match(source, /supplierResponseHistory/);
+  assert.match(source, /supplierCommitmentsBySupplier/);
+  assert.match(source, /sourcingRemainingQuantity/);
+  assert.match(source, /scope: 'branch_remaining_v1'/);
+  assert.match(source, /accumulation: 'latest_per_supplier_v1'/);
+  assert.match(source, /تم حفظ رد المورد وتحديث المتبقي التراكمي/);
+});
+
+test('correcting the same supplier excludes its previous commitment before recalculation', () => {
+  assert.match(source, /excludedSupplierKey/);
+  assert.match(source, /supplierKey === excludedSupplierKey/);
+  assert.match(source, /sourcingRemainingQuantity\(item, supplierCommitmentsBySupplier, currentSupplierKey\)/);
+});
