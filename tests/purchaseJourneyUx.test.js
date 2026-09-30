@@ -261,6 +261,14 @@ test('receiving handoff appears only after all supplier sends are recorded and c
 });
 
 
+test('scoped receiving journey ends with a clear completion state after both orders close', () => {
+  assert.ok(receivingSource.includes('scopedJourneyComplete'));
+  assert.ok(receivingSource.includes('تم إغلاق طلبيتي شكري والشامي ✓'));
+  assert.ok(receivingSource.includes('تم إنهاء استلام طلبيتي شكري والشامي ✓'));
+  assert.ok(receivingSource.includes('to="/purchase-center"'));
+});
+
+
 test('authoritative server resume clears stale local execution after receiving starts or journey closes', () => {
   assert.ok(source.includes('serverResumeResolved = true'));
   assert.ok(source.includes("serverResumeResolved && serverResume?.found === false"));
