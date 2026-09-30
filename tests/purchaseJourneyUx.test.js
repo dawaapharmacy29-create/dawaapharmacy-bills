@@ -261,6 +261,15 @@ test('receiving handoff appears only after all supplier sends are recorded and c
 });
 
 
+test('receiving auto-open attempts each scoped order once and manual refresh can retry', () => {
+  assert.ok(receivingSource.includes("const autoOpenAttemptRef = useRef('')"));
+  assert.ok(receivingSource.includes('autoOpenAttemptRef.current === preferredOrderId'));
+  assert.ok(receivingSource.includes('autoOpenAttemptRef.current = preferredOrderId'));
+  assert.ok(receivingSource.includes("autoOpenAttemptRef.current = '';"));
+  assert.ok(receivingSource.includes('onClick={refreshManually}'));
+});
+
+
 test('scoped receiving journey ends with a clear completion state after both orders close', () => {
   assert.ok(receivingSource.includes('scopedJourneyComplete'));
   assert.ok(receivingSource.includes('تم إغلاق طلبيتي شكري والشامي ✓'));
