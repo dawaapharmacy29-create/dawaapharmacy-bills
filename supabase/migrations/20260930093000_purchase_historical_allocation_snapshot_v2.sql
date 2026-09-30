@@ -111,6 +111,7 @@ begin
       h.selected_unit_cost unit_cost,
       round((i.approved_quantity*h.selected_unit_cost)::numeric,2) line_total,
       h.historical_confidence,
+      h.historical_cost_source,
       h.purchase_events,
       h.last_purchase_date
     from public.smart_purchase_order_items i
@@ -150,6 +151,7 @@ begin
       h.selected_unit_cost unit_cost,
       round((i.approved_quantity*h.selected_unit_cost)::numeric,2) line_total,
       h.historical_confidence,
+      h.historical_cost_source,
       h.purchase_events,
       h.last_purchase_date
     from public.smart_purchase_order_items i
@@ -179,14 +181,14 @@ begin
         'historical_confidence',historical_confidence,
         'historical_purchase_events',purchase_events,
         'historical_last_purchase_date',last_purchase_date,
-        'cost_source','historical_owner'
+        'cost_source',historical_cost_source
       )
       order by branch,product_name,item_id
     ),'[]'::jsonb),
     encode(
       extensions.digest(
         string_agg(
-          item_id::text||'|'||supplier_name||'|'||unit_cost::text||'|'||historical_confidence,
+          item_id::text||'|'||supplier_name||'|'||unit_cost::text||'|'||historical_confidence||'|'||historical_cost_source,
           E'\n' order by item_id
         ),
         'sha256'

@@ -22,6 +22,11 @@ with ranked as (
     s.updated_at,
     coalesce(nullif(s.avg_effective_unit_cost,0),nullif(s.last_unit_cost,0),0) as selected_unit_cost,
     case
+      when nullif(s.avg_effective_unit_cost,0) is not null then 'historical_average'
+      when nullif(s.last_unit_cost,0) is not null then 'historical_last'
+      else 'missing'
+    end as historical_cost_source,
+    case
       when coalesce(s.purchase_events,0)>=2
         and s.last_purchase_date >= (current_date - interval '90 days')::date then 'high'
       when (
@@ -59,7 +64,7 @@ with ranked as (
 select
   branch,product_key,product_code,product_name,supplier_name,purchase_events,
   purchased_qty,bonus_qty,net_cost_total,avg_effective_unit_cost,min_effective_unit_cost,
-  last_purchase_date,last_unit_cost,source_file,updated_at,selected_unit_cost,historical_confidence
+  last_purchase_date,last_unit_cost,source_file,updated_at,selected_unit_cost,historical_cost_source,historical_confidence
 from ranked
 where rn=1;
 
