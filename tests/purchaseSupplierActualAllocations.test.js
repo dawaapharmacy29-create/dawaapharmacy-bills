@@ -1,0 +1,61 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const sql = await readFile(
+  new URL('../supabase/migrations/20260930142000_purchase_supplier_actual_allocations_v1.sql', import.meta.url),
+  'utf8'
+);
+const page = await readFile(new URL('../src/pages/SmartPurchaseReceiving.jsx', import.meta.url), 'utf8');
+const api = await readFile(new URL('../src/api/smartPurchaseReceivingApi.js', import.meta.url), 'utf8');
+
+test('actual supplier allocation is additive and does not overwrite historical supplier_name', () => {
+  assert.match(sql, /create table if not exists public\.purchase_order_supplier_allocations/);
+  assert.match(sql, /order_item_id uuid not null references public\.smart_purchase_order_items/);
+  assert.match(sql, /allocated_quantity numeric not null/);
+  assert.match(sql, /received_quantity numeric not null/);
+  assert.doesNotMatch(sql, /update public\.smart_purchase_order_items[\s\S]{0,300}supplier_name=/);
+});
+
+test('supplier response atomically replaces unreceived allocations for the same supplier', () => {
+  assert.match(sql, /smart_purchase_save_supplier_response_v1/);
+  assert.match(sql, /supplier_allocation_above_order/);
+  assert.match(sql, /supplier_allocation_below_received/);
+  assert.match(sql, /delete from public\.purchase_order_supplier_allocations/);
+  assert.match(sql, /coalesce\(x\.received_quantity,0\)=0/);
+  assert.match(sql, /Confirmed by branch-wide supplier response/);
+});
+
+test('new receiving read exposes actual allocations while preserving latest supplier responses', () => {
+  assert.match(sql, /'supplier_allocations'/);
+  assert.match(sql, /'supplier_responses'/);
+  assert.match(sql, /distinct on \(lower\(trim\(ws\.supplier_name\)\)\)/);
+});
+
+test('receipt v5 is allocation-aware and falls back for legacy orders', () => {
+  assert.match(sql, /smart_purchase_import_receipt_v5/);
+  assert.match(sql, /return public\.smart_purchase_import_receipt_v4\(p_session_token,p_payload\)/);
+  assert.match(sql, /supplier_has_no_allocation/);
+  assert.match(sql, /receipt_rows_not_allocated/);
+  assert.match(sql, /receipt_quantity_above_allocation/);
+  assert.match(sql, /allocated_quantity-x\.received_quantity/);
+});
+
+test('frontend uses actual allocation suppliers for receipt but keeps branch-wide response sourcing', () => {
+  assert.match(page, /selected\?\.supplier_allocations/);
+  assert.match(page, /allocationMode/);
+  assert.match(page, /allocationRemainingQuantity/);
+  assert.match(page, /mode === 'supplier_response' \? responseOrderItems : supplierRemainingItems/);
+  assert.match(page, /api\.saveSupplierResponse\(workflowPayload\)/);
+  assert.match(api, /smart_purchase_save_supplier_response_v1/);
+  assert.match(api, /smart_purchase_import_receipt_v5/);
+});
+
+test('security remains session and branch guarded with no direct table grants', () => {
+  assert.match(sql, /staff_sessions/);
+  assert.match(sql, /smart_purchase_branch_allowed_v2/);
+  assert.match(sql, /alter table public\.purchase_order_supplier_allocations enable row level security/);
+  assert.match(sql, /revoke all on table public\.purchase_order_supplier_allocations from public, anon, authenticated/);
+  assert.match(sql, /revoke all on function public\.smart_purchase_save_supplier_response_v1\(text,jsonb\) from public/);
+  assert.match(sql, /revoke all on function public\.smart_purchase_import_receipt_v5\(text,jsonb\) from public/);
+});
