@@ -766,7 +766,7 @@ export default function PurchaseCenterClean() {
       const saveMs = Math.round(performance.now() - saveStartedAt);
       setTimings((current) => ({ ...current, saveMs }));
       if (!saved?.dual_atomic_finalize || !saved?.row_count_verified) {
-        throw new Error('تم إيقاف التحليل لأن حفظ الرصيد الموحد لم يكتمل Transactionally للفرعين.');
+        throw new Error('تم إيقاف التحليل لأن حفظ الرصيد الموحد لم يكتمل بشكل ذري وآمن للفرعين.');
       }
       setSaveResult(saved);
       writeJourneyResume({
@@ -1167,7 +1167,7 @@ export default function PurchaseCenterClean() {
               <>
                 <h1 className="mt-2 text-2xl font-black text-slate-900 md:text-3xl">ارفع الرصيد مرة واحدة — استلم خطتي الفرعين فورًا</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
-                  نفس عقل Min / Reorder / Max المعتمد، مع التحويل بين الفرعين والوضع المالي، بدون إعادة حساب الكميات بعد التحليل.
+                  نفس منطق الحد الأدنى وإعادة الطلب والحد الأقصى المعتمد، مع التحويل بين الفرعين والوضع المالي، بدون إعادة حساب الكميات بعد التحليل.
                 </p>
               </>
             ) : (
@@ -1439,7 +1439,7 @@ export default function PurchaseCenterClean() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="font-black text-cyan-900">كميات مرسلة للمورد وما زالت في الطريق</h2>
-                  <p className="mt-1 text-sm text-cyan-700">تم خصمها تلقائيًا من الاحتياج والـMin / Reorder / Max حتى لا نكرر شراء نفس الصنف.</p>
+                  <p className="mt-1 text-sm text-cyan-700">تم خصمها تلقائيًا من الاحتياج وحدود المخزون حتى لا نكرر شراء نفس الصنف.</p>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs font-bold">
                   <span className="rounded-full border border-cyan-200 bg-white px-3 py-1">
@@ -1772,7 +1772,7 @@ export default function PurchaseCenterClean() {
                         ? 'المسودتان كانتا منشأتين بالفعل من نفس الخطة.'
                         : 'تم إنشاء المسودتين بنجاح من نفس الخطة.'}
                     {draftResult.content_verified && (
-                      <div className="mt-1 font-bold">✓ تم التحقق حسابيًا أن محتوى المسودتين يطابق خطة V10 بدون أي اختلاف.</div>
+                      <div className="mt-1 font-bold">✓ تم التحقق حسابيًا أن محتوى المسودتين يطابق الخطة المعتمدة بدون أي اختلاف.</div>
                     )}
                   </div>
                 )}
@@ -1906,7 +1906,7 @@ export default function PurchaseCenterClean() {
               </div>
 
               <section className="rounded-2xl border bg-white p-4 shadow-sm">
-                <div className="mb-3 font-black text-slate-900">Checklist الجاهزية</div>
+                <div className="mb-3 font-black text-slate-900">قائمة الجاهزية</div>
                 <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                   {[
                     {
