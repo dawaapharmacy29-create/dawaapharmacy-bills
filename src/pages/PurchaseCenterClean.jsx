@@ -237,9 +237,11 @@ function PurchaseJourneyTabs({
       note: 'راجع ثم ثبّت التحليل التاريخي',
       ready: Boolean(draftResult),
       done: Boolean(approved),
-      status: supplierLoading
-        ? 'جاري التحليل'
-        : supplierError
+      status: approved
+        ? 'تم الاعتماد'
+        : supplierLoading
+          ? 'جاري التحليل'
+          : supplierError
           ? 'تحتاج مراجعة'
           : supplierReady
             ? supplierDecision?.readyForHistoricalReview
@@ -370,7 +372,11 @@ function JourneyActionBar({
 
           {step === 5 && (
             <>
-              {!historicalApplied ? (
+              {approved ? (
+                <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-800">
+                  تم اعتماد المسودتين ✓
+                </span>
+              ) : !historicalApplied ? (
                 <button
                   type="button"
                   disabled={!historicalReady || !hasHistoricalSnapshot || Boolean(applying)}
@@ -390,10 +396,6 @@ function JourneyActionBar({
                 >
                   {approvalBusy ? 'جاري اعتماد المسودتين...' : 'اعتماد مسودتي شكري والشامي'}
                 </button>
-              ) : (
-                <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-800">
-                  تم اعتماد المسودتين ✓
-                </span>
               )}
               <button
                 type="button"
@@ -422,6 +424,13 @@ export default function PurchaseCenterClean() {
     approved: false,
     message: '',
     error: '',
+  });
+  const [dispatchState, setDispatchState] = useState({
+    loading: false,
+    error: '',
+    sendingKey: '',
+    orders: { shokry: null, shamy: null },
+    suppliers: { shokry: [], shamy: [] },
   });
   const [supplierWorkspace, setSupplierWorkspace] = useState({
     loading: false,
@@ -596,6 +605,21 @@ export default function PurchaseCenterClean() {
     });
   }
 
+  function persistDispatchJourneyResume(currentPlan, drafts) {
+    const current = readJourneyResume() || {};
+    const stockSyncId = currentPlan?.stock_sync_id || current.stock_sync_id;
+    const planHash = currentPlan?.plan_hash || current.plan_hash;
+    if (!stockSyncId || !planHash || !drafts?.shokry_order_id || !drafts?.shamy_order_id) return;
+    writeJourneyResume({
+      ...current,
+      stage: 'dispatch',
+      stock_sync_id: stockSyncId,
+      plan_hash: planHash,
+      shokry_order_id: drafts.shokry_order_id,
+      shamy_order_id: drafts.shamy_order_id,
+    });
+  }
+
   async function recoverMatchingOpenDrafts(currentPlan) {
     const guard = currentPlan?.creation_guard || {};
     const isDraft = (order) => ['draft', 'مسودة'].includes(String(order?.status || '').trim());
@@ -714,6 +738,13 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setApprovalState({ loading: false, approved: false, message: '', error: '' });
+    setDispatchState({
+      loading: false,
+      error: '',
+      sendingKey: '',
+      orders: { shokry: null, shamy: null },
+      suppliers: { shokry: [], shamy: [] },
+    });
         setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
 
     try {
@@ -760,6 +791,13 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setApprovalState({ loading: false, approved: false, message: '', error: '' });
+    setDispatchState({
+      loading: false,
+      error: '',
+      sendingKey: '',
+      orders: { shokry: null, shamy: null },
+      suppliers: { shokry: [], shamy: [] },
+    });
         setSupplierWorkspace({
       loading: false,
       applying: '',
@@ -782,28 +820,23 @@ export default function PurchaseCenterClean() {
     resumeAttemptedRef.current = true;
 
     async function resumeJourney() {
-      let resume = readJourneyResume();
-      let fromServer = false;
+      const localResume = readJourneyResume();
+      let serverResume = null;
 
-      if (!resume?.stock_sync_id) {
-        const serverResume = await purchaseApi.resumeCleanJourney();
-        if (!serverResume?.found) return;
-        fromServer = true;
-        resume = {
-          ...serverResume,
-          file_name: 'آخر طلبية مفتوحة محفوظة على السيرفر',
-          save_result: {
-            stock_sync_id: serverResume.stock_sync_id,
-            dual_atomic_finalize: true,
-            row_count_verified: true,
-          },
-        };
+      try {
+        serverResume = await purchaseApi.resumeCleanJourney();
+      } catch {
+        serverResume = null;
       }
+
+      let resume = serverResume?.found
+        ? { ...(localResume || {}), ...serverResume }
+        : localResume;
 
       if (!resume?.stock_sync_id || runRef.current) return;
       runRef.current = true;
 
-      setFileName(resume.file_name || 'آخر رصيد محفوظ');
+      setFileName(resume.file_name || (resume.stage === 'dispatch' ? 'الطلبية المعتمدة الحالية' : 'آخر رصيد محفوظ'));
       setFileModifiedAt(resume.file_modified_at ? new Date(resume.file_modified_at) : null);
       setParsed({
         rows_count: Number(resume.rows_count || 0),
@@ -819,9 +852,35 @@ export default function PurchaseCenterClean() {
       setError('');
 
       try {
+        if (
+          resume.stage === 'dispatch'
+          && resume.shokry_order_id
+          && resume.shamy_order_id
+        ) {
+          const resumedDrafts = {
+            already_created: true,
+            recovered_existing: true,
+            content_verified: true,
+            shokry_order_id: resume.shokry_order_id,
+            shamy_order_id: resume.shamy_order_id,
+          };
+          setDraftResult(resumedDrafts);
+          setApprovalState({
+            loading: false,
+            approved: true,
+            message: 'تم استكمال الطلبية المعتمدة من السيرفر.',
+            error: '',
+          });
+          setActiveStep(5);
+          setPhase('ready');
+          persistDispatchJourneyResume(resume, resumedDrafts);
+          await loadDispatchWorkspace(resumedDrafts);
+          return;
+        }
+
         await runPlannerOnly(resume.stock_sync_id, resume.plan_hash || '');
       } catch (err) {
-        if (!fromServer) clearJourneyResume();
+        if (!serverResume?.found) clearJourneyResume();
         setError(err?.message || 'تعذر استكمال آخر رحلة شراء محفوظة.');
         setPhase('error');
         setActiveStep(1);
@@ -857,6 +916,13 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setApprovalState({ loading: false, approved: false, message: '', error: '' });
+    setDispatchState({
+      loading: false,
+      error: '',
+      sendingKey: '',
+      orders: { shokry: null, shamy: null },
+      suppliers: { shokry: [], shamy: [] },
+    });
         setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
@@ -869,6 +935,43 @@ export default function PurchaseCenterClean() {
     } catch (err) {
       setError(err?.message || 'تعذر قراءة ملف الرصيد.');
       setPhase('error');
+    }
+  }
+
+  async function loadDispatchWorkspace(result) {
+    const shokryOrderId = result?.shokry_order_id;
+    const shamyOrderId = result?.shamy_order_id;
+    if (!shokryOrderId || !shamyOrderId) return;
+
+    setDispatchState((current) => ({ ...current, loading: true, error: '' }));
+
+    try {
+      const [shokryOrder, shamyOrder, shokryDispatch, shamyDispatch] = await Promise.all([
+        purchaseApi.getOrder(shokryOrderId),
+        purchaseApi.getOrder(shamyOrderId),
+        purchaseApi.supplierDispatches(shokryOrderId),
+        purchaseApi.supplierDispatches(shamyOrderId),
+      ]);
+
+      setDispatchState({
+        loading: false,
+        error: '',
+        sendingKey: '',
+        orders: {
+          shokry: shokryOrder,
+          shamy: shamyOrder,
+        },
+        suppliers: {
+          shokry: shokryDispatch?.suppliers || [],
+          shamy: shamyDispatch?.suppliers || [],
+        },
+      });
+    } catch (err) {
+      setDispatchState((current) => ({
+        ...current,
+        loading: false,
+        error: err?.message || 'تعذر تحميل حالة إرسال الموردين.',
+      }));
     }
   }
 
@@ -1060,7 +1163,8 @@ export default function PurchaseCenterClean() {
         message: 'تم اعتماد مسودتي شكري والشامي معًا. لم يتم إرسال أي طلبية للمورد.',
         error: '',
       });
-      clearJourneyResume();
+      persistDispatchJourneyResume(plan, draftResult);
+      void loadDispatchWorkspace(draftResult);
     } catch (err) {
       if (
         err?.code === 'historical_allocation_changed'

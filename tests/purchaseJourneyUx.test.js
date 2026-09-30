@@ -217,3 +217,12 @@ test('clean final step approves both reviewed drafts explicitly without auto-sen
   assert.ok(source.includes("تم اعتماد المسودتين ✓"));
   assert.ok(source.includes("clearJourneyResume()"));
 });
+
+
+test('approved journey resumes directly into supplier dispatch without replanning', () => {
+  assert.ok(source.includes("async function loadDispatchWorkspace"));
+  assert.ok(source.includes("resume.stage === 'dispatch'"));
+  assert.ok(source.includes("await loadDispatchWorkspace(resumedDrafts)"));
+  assert.ok(source.includes("persistDispatchJourneyResume"));
+  assert.ok(source.includes("تم استكمال الطلبية المعتمدة من السيرفر"));
+});
