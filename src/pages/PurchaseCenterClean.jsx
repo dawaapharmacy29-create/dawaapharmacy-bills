@@ -448,6 +448,7 @@ export default function PurchaseCenterClean() {
     scenarios: [],
     currentOfferPlans: {},
     draftTotals: {},
+    historicalApplied: false,
   });
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
@@ -604,8 +605,8 @@ export default function PurchaseCenterClean() {
       purchaseApi.getOrder(shamyCandidates[0].id),
     ]);
 
-    const shokryMatches = orderMatchesPurchasePlan(shokryOrder, currentPlan?.shokry?.plan || []);
-    const shamyMatches = orderMatchesPurchasePlan(shamyOrder, currentPlan?.shamy?.plan || []);
+    const shokryMatches = orderMatchesPurchasePlan(shokryOrder, currentPlan?.shokry?.plan || [], { compareCost: false });
+    const shamyMatches = orderMatchesPurchasePlan(shamyOrder, currentPlan?.shamy?.plan || [], { compareCost: false });
     if (!shokryMatches || !shamyMatches) return null;
 
     return {
@@ -711,7 +712,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {} });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {}, historicalApplied: false });
 
     try {
       setPhase('saving');
@@ -767,6 +768,7 @@ export default function PurchaseCenterClean() {
       scenarios: [],
       currentOfferPlans: {},
       draftTotals: {},
+      historicalApplied: false,
     });
     setTimings({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
@@ -832,7 +834,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {} });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {}, historicalApplied: false });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -919,6 +921,14 @@ export default function PurchaseCenterClean() {
       ]);
 
       const currentOfferPlans = {};
+      const historicalApplied = [shokryOrder, shamyOrder].every((order) => {
+        const activeItems = (order?.items || []).filter((item) => Number(item.approved_quantity || 0) > 0);
+        return activeItems.length > 0 && activeItems.every((item) =>
+          String(item.supplier_reason || '').startsWith('historical_purchase_v1:')
+          && String(item.supplier_name || '').trim()
+          && Number(item.expected_unit_cost || 0) > 0
+        );
+      });
 
       setSupplierWorkspace({
         loading: false,
@@ -933,6 +943,7 @@ export default function PurchaseCenterClean() {
           shokry: Number(shokryOrder?.order?.approved_total || shokryOrder?.order?.expected_total || 0),
           shamy: Number(shamyOrder?.order?.approved_total || shamyOrder?.order?.expected_total || 0),
         },
+        historicalApplied,
       });
     } catch (err) {
       setSupplierWorkspace({
@@ -946,6 +957,29 @@ export default function PurchaseCenterClean() {
         currentOfferPlans: {},
         draftTotals: {},
       });
+    }
+  }
+
+  async function applyHistoricalAllocationToDrafts() {
+    if (!draftResult?.shokry_order_id || !draftResult?.shamy_order_id || supplierWorkspace.applying) return;
+    setSupplierWorkspace((current) => ({ ...current, applying: 'historical-allocation', message: '', error: '' }));
+    try {
+      await purchaseApi.applyHistoricalAllocation([
+        draftResult.shokry_order_id,
+        draftResult.shamy_order_id,
+      ]);
+      await loadSupplierWorkspace(draftResult);
+      setSupplierWorkspace((current) => ({
+        ...current,
+        message: 'تم تثبيت المورد والتكلفة التاريخية على المسودتين فقط — بدون اعتماد أو إرسال.',
+        historicalApplied: true,
+      }));
+    } catch (err) {
+      setSupplierWorkspace((current) => ({
+        ...current,
+        applying: '',
+        error: err?.message || 'تعذر تثبيت التحليل التاريخي على المسودتين.',
+      }));
     }
   }
 
@@ -1795,9 +1829,11 @@ export default function PurchaseCenterClean() {
                       note: supplierDecision.missingCostItems === 0 ? 'لا توجد تكلفة مفقودة' : `${supplierDecision.missingCostItems} صنف ناقص تكلفة`,
                     },
                     {
-                      label: 'الموردون محددون',
+                      label: supplierWorkspace.historicalApplied ? 'الموردون مثبتون' : 'الموردون مقترحون',
                       ok: supplierDecision.missingSupplierItems === 0,
-                      note: supplierDecision.missingSupplierItems === 0 ? 'كل الأصناف لها مورد' : `${supplierDecision.missingSupplierItems} صنف بدون مورد`,
+                      note: supplierDecision.missingSupplierItems === 0
+                        ? (supplierWorkspace.historicalApplied ? 'تم تثبيت الموردين على المسودتين' : 'كل الأصناف لها مورد تاريخي مقترح')
+                        : `${supplierDecision.missingSupplierItems} صنف بدون مورد`,
                     },
                     {
                       label: 'التحليل التاريخي',
@@ -1838,6 +1874,37 @@ export default function PurchaseCenterClean() {
                     </div>
                   ))}
                 </div>
+              </section>
+
+              <section className={`rounded-2xl border p-4 shadow-sm ${
+                supplierWorkspace.historicalApplied
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : 'border-amber-200 bg-amber-50'
+              }`}>
+                {supplierWorkspace.historicalApplied ? (
+                  <div className="font-black text-emerald-900">
+                    ✓ تم تثبيت أفضل مورد وتكلفة تاريخية على المسودتين. لم يتم اعتماد أو إرسال أي طلبية.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-black text-amber-950">التحليل التاريخي ما زال اقتراحًا ولم يُكتب داخل المسودتين بعد.</div>
+                      <div className="mt-1 text-sm text-amber-900">
+                        التثبيت سيغيّر المورد والتكلفة المتوقعة فقط إلى القيم التاريخية المعروضة، مع الحفاظ على نفس 130 صنف ونفس الكميات. لا يوجد اعتماد أو إرسال تلقائي.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!supplierDecision.readyForHistoricalReview || Boolean(supplierWorkspace.applying)}
+                      onClick={applyHistoricalAllocationToDrafts}
+                      className="rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:opacity-40"
+                    >
+                      {supplierWorkspace.applying === 'historical-allocation'
+                        ? 'جاري التثبيت...'
+                        : 'تثبيت المورد والتكلفة التاريخية على المسودتين'}
+                    </button>
+                  </div>
+                )}
               </section>
 
               {lowConfidenceHistoryRows.length > 0 && (
