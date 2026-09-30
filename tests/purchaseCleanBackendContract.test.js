@@ -8,6 +8,10 @@ const cleanPageSource = await readFile(new URL('../src/pages/PurchaseCenterClean
 const appSource = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const layoutSource = await readFile(new URL('../src/components/layout/AppLayout.jsx', import.meta.url), 'utf8');
 const roleSource = await readFile(new URL('../src/lib/useUserRole.js', import.meta.url), 'utf8');
+const allocationMigrationSource = await readFile(
+  new URL('../supabase/migrations/20260930142000_purchase_supplier_actual_allocations_v1.sql', import.meta.url),
+  'utf8'
+);
 
 test('clean purchase path keeps the four critical backend RPC contracts explicit', () => {
   for (const rpc of [
@@ -31,9 +35,11 @@ test('clean stock flow stages before one finalize and uses bounded concurrency',
   assert.match(unifiedApiSource, /stageConcurrency\s*=\s*2/);
 });
 
-test('execution pending contract remains tied to supplier dispatch snapshot and cumulative receipt v4', () => {
+test('execution pending contract remains tied to supplier dispatch snapshot and allocation-aware receipt with legacy v4 fallback', () => {
   assert.match(unifiedApiSource, /smart_purchase_supplier_dispatch_guarded_v3/);
-  assert.match(receivingApiSource, /smart_purchase_import_receipt_v4/);
+  assert.match(receivingApiSource, /smart_purchase_import_receipt_v5/);
+  assert.match(allocationMigrationSource, /smart_purchase_import_receipt_v5/);
+  assert.match(allocationMigrationSource, /return public\.smart_purchase_import_receipt_v4\(p_session_token,p_payload\)/);
 });
 
 test('clean page only creates drafts from returned stock_sync_id and plan_hash', () => {

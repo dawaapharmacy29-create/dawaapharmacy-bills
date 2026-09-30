@@ -111,5 +111,7 @@ test('all supplier responses for one order are serialized before capacity checks
   );
   assert.match(saveFn, /pg_advisory_xact_lock\(hashtext\(v_order_id::text\|\|':supplier-response'\)\)/);
   assert.doesNotMatch(saveFn, /:supplier-response:'\|\|v_supplier_key/);
-  assert.ok(saveFn.indexOf('pg_advisory_xact_lock') < saveFn.indexOf('v_other_allocated'));
+  const capacityRead = saveFn.indexOf('into v_other_allocated');
+  assert.ok(capacityRead > 0);
+  assert.ok(saveFn.indexOf('pg_advisory_xact_lock') < capacityRead);
 });
