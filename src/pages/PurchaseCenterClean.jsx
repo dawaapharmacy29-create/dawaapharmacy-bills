@@ -447,7 +447,6 @@ export default function PurchaseCenterClean() {
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
   const [draftResult, setDraftResult] = useState(null);
-  const [historyByBranch, setHistoryByBranch] = useState({ shokry: [], shamy: [] });
   const [supplierWorkspace, setSupplierWorkspace] = useState({
     loading: false,
     applying: '',
@@ -455,8 +454,7 @@ export default function PurchaseCenterClean() {
     error: '',
     rows: [],
     groups: [],
-    scenarios: [],
-        draftTotals: {},
+            draftTotals: {},
     draftMeta: {},
     allocationHash: '',
     historicalApplied: false,
@@ -692,7 +690,6 @@ export default function PurchaseCenterClean() {
       }
     }
 
-    setHistoryByBranch(history);
     setPlan(financialPlan);
     if (recoveredDrafts) {
       setDraftResult(recoveredDrafts);
@@ -736,8 +733,7 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
-    setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
+        setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
 
     try {
       setPhase('saving');
@@ -786,16 +782,14 @@ export default function PurchaseCenterClean() {
     setSaveResult(null);
     setPlan(null);
     setDraftResult(null);
-    setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({
+        setSupplierWorkspace({
       loading: false,
       applying: '',
       message: '',
       error: '',
       rows: [],
       groups: [],
-      scenarios: [],
-            draftTotals: {},
+                  draftTotals: {},
       draftMeta: {},
       allocationHash: '',
       historicalApplied: false,
@@ -863,8 +857,7 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
-    setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
+        setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -897,8 +890,7 @@ export default function PurchaseCenterClean() {
       error: '',
       rows: [],
       groups: [],
-      scenarios: [],
-      allocationHash: '',
+            allocationHash: '',
     }));
 
     try {
@@ -950,8 +942,7 @@ export default function PurchaseCenterClean() {
         error: '',
         rows,
         groups: buildSupplierGroups(rows),
-        scenarios: [],
-        draftTotals: {
+                draftTotals: {
           shokry: Number(shokryOrder?.order?.approved_total || shokryOrder?.order?.expected_total || 0),
           shamy: Number(shamyOrder?.order?.approved_total || shamyOrder?.order?.expected_total || 0),
         },
@@ -976,8 +967,7 @@ export default function PurchaseCenterClean() {
         error: err?.message || 'تعذر حساب أفضل الموردين.',
         rows: [],
         groups: [],
-        scenarios: [],
-        draftTotals: {},
+                draftTotals: {},
         draftMeta: {},
         allocationHash: '',
         historicalApplied: false,

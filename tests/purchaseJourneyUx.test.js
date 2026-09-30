@@ -112,3 +112,10 @@ test('historical supplier details contain only decision-useful columns', async (
   assert.doesNotMatch(workspace, /بونص متوقع/);
   assert.doesNotMatch(workspace, /بدائل مسجلة/);
 });
+
+
+test('clean purchase page keeps no dead history/scenario state after canonical snapshot refactor', () => {
+  assert.doesNotMatch(source, /historyByBranch/);
+  assert.doesNotMatch(source, /setHistoryByBranch/);
+  assert.doesNotMatch(source, /scenarios:\s*\[\]/);
+});
