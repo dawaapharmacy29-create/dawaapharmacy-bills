@@ -192,9 +192,7 @@ begin
       'supplier_history','historical supplier selection prioritizes confidence (repeat purchases + recency within 90 days), then effective cost'
     )
   ));
-end $function$
-
-
+end $function$;
 
 create or replace function public.smart_purchase_apply_historical_allocation_v1(
   p_session_token text,
