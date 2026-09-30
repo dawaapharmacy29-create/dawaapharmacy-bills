@@ -119,3 +119,10 @@ test('clean purchase page keeps no dead history/scenario state after canonical s
   assert.doesNotMatch(source, /setHistoryByBranch/);
   assert.doesNotMatch(source, /scenarios:\s*\[\]/);
 });
+
+
+test('stale historical snapshot refreshes automatically and cannot be applied silently', () => {
+  assert.ok(source.includes("hasHistoricalSnapshot"));
+  assert.ok(source.includes("err?.code === 'historical_allocation_changed'"));
+  assert.ok(source.includes("راجع القيم الجديدة ثم اضغط التثبيت مرة أخرى"));
+});

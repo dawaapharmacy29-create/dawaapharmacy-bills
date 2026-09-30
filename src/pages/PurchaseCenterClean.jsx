@@ -359,6 +359,7 @@ function JourneyActionBar({
   supplierReady,
   historicalApplied,
   historicalReady,
+  hasHistoricalSnapshot,
   applying,
   onStepChange,
   onReplan,
@@ -412,7 +413,7 @@ function JourneyActionBar({
               {!historicalApplied ? (
                 <button
                   type="button"
-                  disabled={!historicalReady || Boolean(applying)}
+                  disabled={!historicalReady || !hasHistoricalSnapshot || Boolean(applying)}
                   onClick={onApplyHistorical}
                   className="rounded-xl bg-amber-700 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
                 >
@@ -454,7 +455,7 @@ export default function PurchaseCenterClean() {
     error: '',
     rows: [],
     groups: [],
-            draftTotals: {},
+    draftTotals: {},
     draftMeta: {},
     allocationHash: '',
     historicalApplied: false,
@@ -1011,6 +1012,16 @@ export default function PurchaseCenterClean() {
         message: 'تم تثبيت نفس المورد والتكلفة التاريخية التي تمت مراجعتها — بدون اعتماد أو إرسال.',
       }));
     } catch (err) {
+      if (err?.code === 'historical_allocation_changed') {
+        await loadSupplierWorkspace(draftResult);
+        setSupplierWorkspace((current) => ({
+          ...current,
+          applying: '',
+          error: '',
+          message: 'تم تحديث تاريخ المورد أو التكلفة أثناء المراجعة. راجع القيم الجديدة ثم اضغط التثبيت مرة أخرى.',
+        }));
+        return;
+      }
       setSupplierWorkspace((current) => ({
         ...current,
         applying: '',
@@ -2052,6 +2063,7 @@ export default function PurchaseCenterClean() {
         supplierReady={supplierReady}
         historicalApplied={supplierWorkspace.historicalApplied}
         historicalReady={supplierDecision.readyForHistoricalReview}
+        hasHistoricalSnapshot={Boolean(supplierWorkspace.allocationHash)}
         applying={supplierWorkspace.applying}
         onStepChange={setActiveStep}
         onReplan={replan}

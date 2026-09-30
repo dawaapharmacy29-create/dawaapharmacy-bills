@@ -69,7 +69,9 @@ async function standaloneRpc(functionName, body) {
 
     };
     const code = data?.error || data?.message;
-    throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+    const error = new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+    error.code = code;
+    throw error;
   }
   return Object.prototype.hasOwnProperty.call(data || {}, 'data') ? data.data : data;
 }
