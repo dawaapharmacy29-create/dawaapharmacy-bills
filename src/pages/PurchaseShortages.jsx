@@ -8,6 +8,12 @@ const num = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+function canContinueOrder(row) {
+  if (!row?.last_order_id) return false;
+  const status = String(row.last_order_status || '').trim().toLowerCase();
+  return !['مغلقة', 'closed', 'ملغاة', 'cancelled', 'canceled'].includes(status);
+}
+
 function statusBadge(row) {
   if (row.current_status === 'unavailable') return ['غير متوفر', 'bg-red-100 text-red-800'];
   if (row.current_status === 'limited_supply') return ['توريد محدود', 'bg-amber-100 text-amber-800'];
@@ -137,7 +143,7 @@ export default function PurchaseShortages() {
                 <td className="p-3">{num(row.unavailable_occurrences)}</td>
                 <td className="p-3">{num(row.limited_supply_occurrences)}</td>
                 <td className="p-3"><div className="font-bold">{num(row.supply_coverage_pct)}%</div><div className="text-xs text-slate-400">استلام فعلي {num(row.received_coverage_pct)}%</div></td>
-                <td className="p-3">{row.last_order_id && num(row.open_shortage_quantity) > 0 ? <Link to={`/smart-purchase-receiving?orderIds=${encodeURIComponent(row.last_order_id)}&selectedOrderId=${encodeURIComponent(row.last_order_id)}`} className="inline-flex rounded-lg bg-teal-700 px-3 py-2 text-xs font-black text-white">متابعة التوفير</Link> : <span className="text-xs text-slate-400">للمراقبة التاريخية</span>}</td>
+                <td className="p-3">{num(row.open_shortage_quantity) > 0 ? (canContinueOrder(row) ? <Link to={`/smart-purchase-receiving?orderIds=${encodeURIComponent(row.last_order_id)}&selectedOrderId=${encodeURIComponent(row.last_order_id)}`} className="inline-flex rounded-lg bg-teal-700 px-3 py-2 text-xs font-black text-white">متابعة التوفير</Link> : <div className="space-y-1"><Link to="/purchase-center" className="inline-flex rounded-lg bg-amber-700 px-3 py-2 text-xs font-black text-white">متابعة في الطلبية القادمة</Link>{row.last_order_status ? <div className="text-[11px] text-slate-400">آخر طلبية: {row.last_order_status}</div> : null}</div>) : <span className="text-xs text-slate-400">للمراقبة التاريخية</span>}</td>
               </tr>;
             })}
             {!filtered.length && !loading && <tr><td colSpan={12} className="p-10 text-center text-slate-400">لا توجد أصناف مطابقة للفلاتر الحالية.</td></tr>}

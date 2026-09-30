@@ -516,6 +516,11 @@ begin
         'first_shortage_at',g.first_shortage_at,
         'last_shortage_at',g.last_shortage_at,
         'last_order_id',latest.order_id,
+        'last_order_status',(
+          select lo.status
+          from public.smart_purchase_orders lo
+          where lo.id=latest.order_id
+        ),
         'last_order_item_id',latest.order_item_id,
         'last_requested_quantity',latest.requested_quantity,
         'last_allocated_quantity',latest.current_allocated_quantity,

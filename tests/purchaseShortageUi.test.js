@@ -47,3 +47,11 @@ test('shortage client uses only guarded RPC', () => {
   assert.match(api, /register_order/);
   assert.match(api, /supplier_response_required/);
 });
+
+test('closed shortage orders do not send follow-up back to a dead receiving journey', () => {
+  assert.match(page, /function canContinueOrder/);
+  assert.match(page, /last_order_status/);
+  assert.match(page, /متابعة في الطلبية القادمة/);
+  assert.match(page, /to="\/purchase-center"/);
+  assert.match(page, /متابعة التوفير/);
+});
