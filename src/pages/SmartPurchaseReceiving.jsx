@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Download, FileSpreadsheet, PackageCheck, RefreshCw, Save, WandSparkles } from 'lucide-react';
 import { smartPurchaseReceivingApi as api } from '@/api/smartPurchaseReceivingApi';
+import { purchaseShortageApi } from '@/api/purchaseShortageApi';
 import { invoiceValueGuard } from '@/lib/purchaseFinancialControl';
 
 const num = (value) => { const parsed = Number(String(value ?? '').replace(/[,٪%جنيه]/g, '').trim()); return Number.isFinite(parsed) ? parsed : 0; };
@@ -84,6 +85,7 @@ export default function SmartPurchaseReceiving() {
     .map((id) => id.trim())
     .filter(Boolean))], [scopedOrderIdsParam]);
   const [orders, setOrders] = useState([]); const [selected, setSelected] = useState(null); const [mode, setMode] = useState('supplier_response'); const [responseType, setResponseType] = useState('available'); const [supplierName, setSupplierName] = useState(''); const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState(''); const [receiptDate, setReceiptDate] = useState(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())); const [fileName, setFileName] = useState(''); const [rows, setRows] = useState([]); const [loading, setLoading] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [invoiceLimit, setInvoiceLimit] = useState(0); const [invoiceTolerancePct] = useState(2); const [invoiceToleranceValue] = useState(100);
+  const [shortageRegistration, setShortageRegistration] = useState({ loading: false, result: null });
   const autoOpenAttemptRef = useRef('');
   const [scopedOrderState, setScopedOrderState] = useState({
     resolved: false,
@@ -222,7 +224,7 @@ export default function SmartPurchaseReceiving() {
       setLoading(false);
     }
   }
-  async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); setSupplierInvoiceNumber(''); try { const detail = await api.getOrder(id); setSelected(detail); setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0)); const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))]; setSupplierName(suppliers.length === 1 ? suppliers[0] : ''); await refreshCloseReadiness(id); } catch (err) { setError(err.message); } finally { setLoading(false); } }
+  async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); setSupplierInvoiceNumber(''); setShortageRegistration({ loading: false, result: null }); try { const detail = await api.getOrder(id); setSelected(detail); setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0)); const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))]; setSupplierName(suppliers.length === 1 ? suppliers[0] : ''); await refreshCloseReadiness(id); } catch (err) { setError(err.message); } finally { setLoading(false); } }
   async function readFile(file) { setError(''); setMessage(''); setFileName(file.name); try { const parsed = await parseWorkbook(file); if (!parsed.length) throw new Error('لم يتم التعرف على أصناف داخل الملف.'); setRows(parsed); setMessage(mode === 'supplier_response' ? `تمت قراءة ${parsed.length} صنف من الملف. المطابقة هتتم على كل الأصناف المتبقية في طلبية الفرع.` : `تمت قراءة ${parsed.length} صنف من الملف. المطابقة هتتم على الكميات المتبقية للمورد المختار.`); } catch (err) { setRows([]); setError(`تعذر قراءة الملف: ${err.message}`); } }
   const supplierAllocations = useMemo(
     () => (Array.isArray(selected?.supplier_allocations) ? selected.supplier_allocations : []),
@@ -461,6 +463,26 @@ export default function SmartPurchaseReceiving() {
       setLoading(false);
     }
   }
+  async function registerCurrentShortages() {
+    if (!selected?.order?.id || sourcingComplete || shortageRegistration.loading) return;
+    const confirmed = window.confirm(
+      `تسجيل المتبقي الحالي (${sourcingStats.remaining}) في قائمة الأصناف الناقصة؟\n\nسيظل الصنف قابلًا للمتابعة والتوفير لاحقًا، ولن يتم حذف تاريخ النقص.`
+    );
+    if (!confirmed) return;
+
+    setShortageRegistration({ loading: true, result: null });
+    setError('');
+    setMessage('');
+    try {
+      const result = await purchaseShortageApi.registerOrder(selected.order.id);
+      setShortageRegistration({ loading: false, result });
+      setMessage(`تم تسجيل ${result?.shortage_items || 0} صنف في قائمة النواقص بكمية متبقية إجمالية ${result?.shortage_quantity || 0}. يمكنك الاستمرار في محاولة توفيرها لاحقًا.`);
+    } catch (err) {
+      setShortageRegistration({ loading: false, result: null });
+      setError(err?.message || 'تعذر تسجيل النواقص.');
+    }
+  }
+
   function exportBranchRequest() {
     const requestItems = supplierName.trim() ? responseOrderItems : branchRemainingItems;
     if (!selected?.order || !requestItems.length) return;
@@ -704,6 +726,9 @@ export default function SmartPurchaseReceiving() {
             {supplierResponseHistory.length > 0 && <button type="button" onClick={startNextSupplierRound} className="rounded-lg border border-teal-300 bg-white px-4 py-2 font-bold text-teal-800">
               بدء المورد التالي
             </button>}
+            {supplierResponseHistory.length > 0 && <button type="button" disabled={shortageRegistration.loading} onClick={registerCurrentShortages} className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 font-bold text-amber-900 disabled:opacity-50">
+              {shortageRegistration.loading ? 'جاري تسجيل النواقص...' : 'تسجيل المتبقي في قائمة النواقص'}
+            </button>}
           </div>}
 
           {sourcingComplete && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
@@ -724,6 +749,10 @@ export default function SmartPurchaseReceiving() {
                 <div className="text-xs text-slate-600">أكد {round.confirmedQuantity} • المتبقي بعده {round.remainingQuantity}</div>
               </div>)}
             </div>
+          </div>}
+          {shortageRegistration.result && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+            <div><div className="font-black">تمت إضافة المتبقي لسجل النواقص ✓</div><div className="mt-1 text-xs">سيظل تاريخ النقص محفوظًا، وأي كمية إضافية يتم تخصيصها أو استلامها ستحدث المتبقي الحالي تلقائيًا.</div></div>
+            <Link to="/purchase-shortages" className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-black text-white">فتح الأصناف الناقصة</Link>
           </div>}
         </div>}<div className="grid md:grid-cols-5 gap-3">{mode === 'supplier_response' && <label className="text-sm">نوع ملف رد المورد<select value={responseType} onChange={(event) => setResponseType(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="available">الأصناف المتاحة فقط</option><option value="missing">الأصناف غير المتاحة فقط</option><option value="modified">نسخة الطلبية بعد حذف النواقص</option></select></label>}<label className="text-sm">المورد *{mode === 'supplier_response' ? <><input list="supplier-response-options" value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2" placeholder="اكتب أو اختر اسم المورد" /><datalist id="supplier-response-options">{orderSuppliers.map((supplier) => <option key={supplier} value={supplier} />)}</datalist><span className="text-[11px] text-slate-500">رد المورد هيتطابق مع المتبقي التراكمي في طلبية الفرع، بغض النظر عن المورد التاريخي. ولو رفعت ردًا جديدًا لنفس المورد فآخر رد محفوظ له هو اللي يدخل في الحساب.</span></> : <><select value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2"><option value="">اختر المورد</option>{orderSuppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}</select><span className="text-[11px] text-slate-500">الاستلام الفعلي يتقيد بالكميات المخصصة فعليًا للمورد في الرحلة الحالية، ويعود للتوزيع التاريخي فقط للطلبيات القديمة التي لا يوجد لها تخصيص فعلي.</span></>}</label>{mode === 'receipt' && <><label className="text-sm">رقم فاتورة المورد<input value={supplierInvoiceNumber} onChange={(event) => setSupplierInvoiceNumber(event.target.value)} className="mt-1 w-full rounded-lg border p-2" placeholder="اختياري لكن يفضل إدخاله" /></label><label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label></>}<label className="text-sm md:col-span-2">ملف Excel أو CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-1 block w-full text-sm" /></label></div><div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">{mode === 'supplier_response' ? 'في رد المورد، المطابقة تتم على طلبية الفرع كاملة حتى تقدر تبعت نفس الاحتياج لمورد واحد ثم تصدر النواقص للمورد التالي. اسم المورد هنا للتوثيق ويمكن كتابة مورد غير موجود في التوزيع التاريخي.' : 'في الاستلام الفعلي، اختيار المورد إلزامي والمطابقة تظل على الأصناف المسندة له داخل الطلبية لحماية الكميات والقيمة ومنع الخلط بين الموردين.'}</div></section>
         {mode === 'supplier_response' && supplierResult && <><div className="grid sm:grid-cols-3 gap-3">{[['تم تأكيده', supplierStats.confirmed], ['متبقي لمورد آخر', supplierStats.remaining], ['صفوف غير معروفة', supplierStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap items-center gap-2"><button disabled={loading} onClick={saveSnapshot} className="rounded-lg bg-teal-700 text-white px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />حفظ رد المورد وتثبيت المتاح</button><span className="text-xs text-slate-500">بعد الحفظ سيتحدث المتبقي من السيرفر، ومنه يتم تنزيل ملف المورد التالي.</span></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'المطلوب', 'المؤكد', 'المتبقي', 'المطابقة', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{supplierResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.ordered}</td><td className="p-3">{row.confirmed}</td><td className="p-3 font-bold">{row.remaining}</td><td className="p-3">{row.method === 'code' ? 'بالكود' : row.method === 'name' ? 'بالاسم' : row.method === 'fuzzy' ? `تشابه ${Math.round(row.confidence * 100)}%` : 'غير موجود'}</td><td className="p-3">{row.status}</td></tr>)}</tbody></table></div></>}
