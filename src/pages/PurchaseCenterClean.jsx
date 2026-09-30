@@ -901,14 +901,21 @@ export default function PurchaseCenterClean() {
     async function resumeJourney() {
       const localResume = readJourneyResume();
       let serverResume = null;
+      let serverResumeResolved = false;
 
       try {
         serverResume = await purchaseApi.resumeCleanJourney();
+        serverResumeResolved = true;
       } catch {
         serverResume = null;
       }
 
-      let resume = serverResume?.found
+      if (serverResumeResolved && serverResume?.found === false) {
+        clearJourneyResume();
+        return;
+      }
+
+      const resume = serverResume?.found
         ? { ...(localResume || {}), ...serverResume }
         : localResume;
 

@@ -244,3 +244,11 @@ test('receiving handoff appears only after all supplier sends are recorded', () 
   assert.ok(source.includes('dispatchState.suppliers.shokry.every((supplier) => supplier.sent)'));
   assert.ok(source.includes('dispatchState.suppliers.shamy.every((supplier) => supplier.sent)'));
 });
+
+
+test('authoritative server resume clears stale local execution after receiving starts or journey closes', () => {
+  assert.ok(source.includes('serverResumeResolved = true'));
+  assert.ok(source.includes("serverResumeResolved && serverResume?.found === false"));
+  assert.ok(source.includes('clearJourneyResume();'));
+  assert.ok(source.includes('return;'));
+});
