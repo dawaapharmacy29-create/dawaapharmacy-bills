@@ -208,3 +208,12 @@ test('draft identity is persisted locally after create or exact recovery', () =>
   assert.ok(source.includes("shamy_order_id: drafts.shamy_order_id"));
   assert.ok((source.match(/persistDraftJourneyResume\(/g) || []).length >= 4);
 });
+
+
+test('clean final step approves both reviewed drafts explicitly without auto-send', () => {
+  assert.ok(source.includes("approveReviewedDual"));
+  assert.ok(source.includes("اعتماد مسودتي شكري والشامي"));
+  assert.ok(source.includes("الاعتماد لن يرسل أي طلبية للمورد تلقائيًا"));
+  assert.ok(source.includes("تم اعتماد المسودتين ✓"));
+  assert.ok(source.includes("clearJourneyResume()"));
+});

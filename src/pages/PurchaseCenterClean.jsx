@@ -198,6 +198,7 @@ function PurchaseJourneyTabs({
   supplierError,
   supplierDecision,
   historicalApplied,
+  approved,
 }) {
   const stage = activeStep === 1 ? 1 : activeStep <= 3 ? 2 : 3;
   const planBlocked = Boolean(plan) && !draftResult && plan?.creation_guard?.can_create_dual === false;
@@ -235,16 +236,18 @@ function PurchaseJourneyTabs({
       label: 'الموردين والتكلفة',
       note: 'راجع ثم ثبّت التحليل التاريخي',
       ready: Boolean(draftResult),
-      done: Boolean(supplierReady && supplierDecision?.readyForHistoricalReview && historicalApplied),
+      done: Boolean(approved),
       status: supplierLoading
         ? 'جاري التحليل'
         : supplierError
           ? 'تحتاج مراجعة'
           : supplierReady
             ? supplierDecision?.readyForHistoricalReview
-              ? historicalApplied
-                ? 'تم التثبيت'
-                : 'جاهزة للتثبيت'
+              ? approved
+                ? 'تم الاعتماد'
+                : historicalApplied
+                  ? 'جاهزة للاعتماد'
+                  : 'جاهزة للتثبيت'
               : 'تاريخ ناقص'
             : draftResult
               ? 'جاهزة'
@@ -319,10 +322,13 @@ function JourneyActionBar({
   historicalReady,
   hasHistoricalSnapshot,
   applying,
+  approved,
+  approvalBusy,
   onStepChange,
   onReplan,
   onCreateDrafts,
   onApplyHistorical,
+  onApproveDual,
 }) {
   if (step === 1) return null;
 
@@ -375,9 +381,18 @@ function JourneyActionBar({
                     ? 'جاري تثبيت التحليل التاريخي...'
                     : 'تثبيت المورد والتكلفة التاريخية'}
                 </button>
+              ) : !approved ? (
+                <button
+                  type="button"
+                  disabled={!historicalReady || !hasHistoricalSnapshot || Boolean(applying) || approvalBusy}
+                  onClick={onApproveDual}
+                  className="rounded-xl bg-emerald-700 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
+                >
+                  {approvalBusy ? 'جاري اعتماد المسودتين...' : 'اعتماد مسودتي شكري والشامي'}
+                </button>
               ) : (
                 <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-800">
-                  تم التثبيت ✓
+                  تم اعتماد المسودتين ✓
                 </span>
               )}
               <button
@@ -402,6 +417,12 @@ export default function PurchaseCenterClean() {
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
   const [draftResult, setDraftResult] = useState(null);
+  const [approvalState, setApprovalState] = useState({
+    loading: false,
+    approved: false,
+    message: '',
+    error: '',
+  });
   const [supplierWorkspace, setSupplierWorkspace] = useState({
     loading: false,
     applying: '',
@@ -692,6 +713,7 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
+    setApprovalState({ loading: false, approved: false, message: '', error: '' });
         setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
 
     try {
@@ -725,7 +747,7 @@ export default function PurchaseCenterClean() {
 
   function startNewJourney() {
     if (runRef.current) return;
-    if (draftResult) {
+    if (draftResult && !approvalState.approved) {
       setError('يوجد مسودتان مفتوحتان للطلبية الحالية. أكمل أو ألغِ المسودتين قبل بدء طلبية جديدة حتى لا يحدث تكرار.');
       return;
     }
@@ -737,6 +759,7 @@ export default function PurchaseCenterClean() {
     setSaveResult(null);
     setPlan(null);
     setDraftResult(null);
+    setApprovalState({ loading: false, approved: false, message: '', error: '' });
         setSupplierWorkspace({
       loading: false,
       applying: '',
@@ -833,6 +856,7 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setSaveResult(null);
+    setApprovalState({ loading: false, approved: false, message: '', error: '' });
         setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
@@ -998,6 +1022,59 @@ export default function PurchaseCenterClean() {
         applying: '',
         error: err?.message || 'تعذر تثبيت التحليل التاريخي على المسودتين.',
       }));
+    }
+  }
+
+  async function approveReviewedDrafts() {
+    if (
+      !finalReviewReady
+      || approvalState.loading
+      || !supplierWorkspace.allocationHash
+      || !draftResult?.shokry_order_id
+      || !draftResult?.shamy_order_id
+    ) return;
+
+    const confirmed = window.confirm(
+      'اعتماد مسودتي شكري والشامي الآن؟\n\nالاعتماد لن يرسل أي طلبية للمورد تلقائيًا.'
+    );
+    if (!confirmed) return;
+
+    setApprovalState({ loading: true, approved: false, message: '', error: '' });
+
+    try {
+      await purchaseApi.approveReviewedDual(
+        [draftResult.shokry_order_id, draftResult.shamy_order_id],
+        supplierWorkspace.allocationHash
+      );
+
+      setSupplierWorkspace((current) => ({
+        ...current,
+        draftMeta: {
+          shokry: { ...(current.draftMeta?.shokry || {}), status: 'معتمدة' },
+          shamy: { ...(current.draftMeta?.shamy || {}), status: 'معتمدة' },
+        },
+      }));
+      setApprovalState({
+        loading: false,
+        approved: true,
+        message: 'تم اعتماد مسودتي شكري والشامي معًا. لم يتم إرسال أي طلبية للمورد.',
+        error: '',
+      });
+      clearJourneyResume();
+    } catch (err) {
+      if (
+        err?.code === 'historical_allocation_changed'
+        || err?.code === 'reviewed_allocation_not_persisted'
+        || err?.code === 'reviewed_total_mismatch'
+      ) {
+        await loadSupplierWorkspace(draftResult);
+      }
+      setApprovalState({
+        loading: false,
+        approved: false,
+        message: '',
+        error: err?.message || 'تعذر اعتماد المسودتين. لم يتم إرسال أي طلبية للمورد.',
+      });
     }
   }
 
@@ -1167,7 +1244,13 @@ export default function PurchaseCenterClean() {
                 <span className="text-slate-500">شكري {money(displayedBranchTotals.shokry)} ج</span>
                 <span className="text-slate-500">الشامي {money(displayedBranchTotals.shamy)} ج</span>
                 {draftResult && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">مسودتان مفتوحتان</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                    approvalState.approved
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {approvalState.approved ? 'تم اعتماد المسودتين' : 'مسودتان مفتوحتان'}
+                  </span>
                 )}
               </div>
             )}
@@ -1175,9 +1258,9 @@ export default function PurchaseCenterClean() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={busy || Boolean(draftResult)}
+              disabled={busy || Boolean(draftResult && !approvalState.approved)}
               onClick={startNewJourney}
-              title={draftResult ? 'أكمل أو ألغِ المسودتين الحاليتين أولًا' : 'بدء طلبية جديدة'}
+              title={draftResult && !approvalState.approved ? 'أكمل أو ألغِ المسودتين الحاليتين أولًا' : 'بدء طلبية جديدة'}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:border-teal-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               بدء طلبية جديدة
@@ -1197,6 +1280,7 @@ export default function PurchaseCenterClean() {
         supplierError={supplierWorkspace.error}
         supplierDecision={supplierDecision}
         historicalApplied={supplierWorkspace.historicalApplied}
+        approved={approvalState.approved}
       />
 
       {activeStep === 1 && (
@@ -1995,10 +2079,22 @@ export default function PurchaseCenterClean() {
                     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                     : 'border-amber-200 bg-amber-50 text-amber-900'
                 }`}>
-                  {finalReviewReady
-                    ? 'المسودتان جاهزتان لقرار اعتماد يدوي لاحقًا. لا يوجد إرسال تلقائي.'
-                    : 'أكمل تثبيت التحليل التاريخي أولًا؛ لا يوجد اعتماد أو إرسال تلقائي.'}
+                  {approvalState.approved
+                    ? 'تم اعتماد المسودتين. لم يتم إرسال أي طلبية للمورد.'
+                    : finalReviewReady
+                      ? 'المسودتان جاهزتان للاعتماد. الاعتماد لا يرسل أي طلبية للمورد.'
+                      : 'أكمل تثبيت التحليل التاريخي أولًا؛ لا يوجد اعتماد أو إرسال تلقائي.'}
                 </div>
+                {approvalState.message && (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
+                    {approvalState.message}
+                  </div>
+                )}
+                {approvalState.error && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700">
+                    {approvalState.error}
+                  </div>
+                )}
               </div>
                 </>
               )}
@@ -2025,10 +2121,13 @@ export default function PurchaseCenterClean() {
         historicalReady={supplierDecision.readyForHistoricalReview}
         hasHistoricalSnapshot={Boolean(supplierWorkspace.allocationHash)}
         applying={supplierWorkspace.applying}
+        approved={approvalState.approved}
+        approvalBusy={approvalState.loading}
         onStepChange={setActiveStep}
         onReplan={replan}
         onCreateDrafts={createDrafts}
         onApplyHistorical={applyHistoricalAllocationToDrafts}
+        onApproveDual={approveReviewedDrafts}
       />
     </div>
   );
