@@ -341,8 +341,8 @@ function CurrentStepGuide({ step }) {
     1: ['ارفع ملف الرصيد', 'ملف واحد يحتوي رصيد شكري والشامي؛ الحفظ والتحليل يبدأان تلقائيًا.'],
     2: ['راجع الخطة', 'راجع الإجمالي وشكري والشامي فقط. افتح التفاصيل أو التنبيهات عند الحاجة ثم اضغط التالي.'],
     3: ['أنشئ المسودتين', 'ضغطة واحدة تنشئ مسودتي الفرعين من نفس الخطة بدون اعتماد أو إرسال.'],
-    4: ['راجع تحليل تاريخ المشتريات', 'راجع أفضل الموردين والتكلفة المستنتجة من فواتير المشتريات السابقة، ثم انتقل للمراجعة النهائية.'],
-    5: ['راجع القرار النهائي', 'راجع القيمة والموردين والنواقص في شاشة واحدة قبل أي اعتماد أو إرسال لاحقًا.'],
+    4: ['راجع المورد والتكلفة', 'شوف أفضل مورد تاريخي لكل صنف والقيمة المتوقعة. التفاصيل الإضافية اختيارية.'],
+    5: ['راجع النتيجة النهائية', 'تأكد من القيمة والموردين والثقة، ثم ثبّت التحليل التاريخي فقط عند الموافقة. لا يوجد اعتماد أو إرسال تلقائي.'],
   };
   const [title, description] = guides[step] || guides[1];
 
@@ -460,6 +460,7 @@ export default function PurchaseCenterClean() {
   const [cancellingOrderId, setCancellingOrderId] = useState('');
   const [activeStep, setActiveStep] = useState(1);
   const runRef = useRef(false);
+  const supplierLoadRef = useRef(false);
   const resumeAttemptedRef = useRef(false);
 
   const transfers = useMemo(() => {
@@ -878,7 +879,8 @@ export default function PurchaseCenterClean() {
   async function loadSupplierWorkspace(result) {
     const shokryOrderId = result?.shokry_order_id;
     const shamyOrderId = result?.shamy_order_id;
-    if (!shokryOrderId || !shamyOrderId) return;
+    if (!shokryOrderId || !shamyOrderId || supplierLoadRef.current) return;
+    supplierLoadRef.current = true;
 
     setSupplierWorkspace((current) => ({
       ...current,
@@ -985,6 +987,8 @@ export default function PurchaseCenterClean() {
         scenarios: [],
                 draftTotals: {},
       });
+    } finally {
+      supplierLoadRef.current = false;
     }
   }
 
@@ -1049,7 +1053,6 @@ export default function PurchaseCenterClean() {
 
   const supplierDecision = useMemo(() => {
     const rows = supplierWorkspace.rows || [];
-    const currentOfferItems = 0;
     const historicalItems = rows.filter((row) =>
       row.cost_source === 'historical_average' || row.cost_source === 'historical_last'
     ).length;
@@ -1065,7 +1068,6 @@ export default function PurchaseCenterClean() {
       .slice(0, 6);
 
     return {
-      currentOfferItems,
       historicalItems,
       historicalCoverageComplete,
       totalItems: rows.length,
