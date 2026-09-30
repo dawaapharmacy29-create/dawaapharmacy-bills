@@ -310,3 +310,20 @@ test('final receiving close button follows authoritative server readiness', () =
   assert.ok(receivingSource.includes("closeReadinessState.loading ? 'جاري التحقق' : closeReadinessState.ready ? 'جاهزة' : 'غير جاهزة'"));
   assert.ok(receivingSource.includes('تعذر التحقق من جاهزية الإغلاق.'));
 });
+
+
+test('manual receiving refresh reloads the selected order and server readiness without stale file matching', () => {
+  assert.ok(receivingSource.includes('async function loadOrderListState()'));
+  assert.ok(receivingSource.includes('async function refreshManually()'));
+  assert.ok(receivingSource.includes('listState.activeIds.has(selectedId)'));
+  assert.ok(receivingSource.includes('const detail = await api.getOrder(selectedId)'));
+  assert.ok(receivingSource.includes('await refreshCloseReadiness(selectedId)'));
+  assert.ok(receivingSource.includes('setRows([])'));
+  assert.ok(receivingSource.includes("setFileName('')"));
+  assert.doesNotMatch(receivingSource, /const closeReadyLocal =/);
+});
+
+
+test('scoped receiving ids are deduplicated before status resolution', () => {
+  assert.ok(receivingSource.includes('useMemo(() => [...new Set(scopedOrderIdsParam'));
+});

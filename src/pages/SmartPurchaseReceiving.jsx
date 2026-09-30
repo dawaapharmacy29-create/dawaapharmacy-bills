@@ -42,10 +42,10 @@ export default function SmartPurchaseReceiving() {
   const [searchParams] = useSearchParams();
   const scopedOrderIdsParam = searchParams.get('orderIds') || '';
   const selectedOrderIdParam = searchParams.get('selectedOrderId') || '';
-  const scopedOrderIds = useMemo(() => scopedOrderIdsParam
+  const scopedOrderIds = useMemo(() => [...new Set(scopedOrderIdsParam
     .split(',')
     .map((id) => id.trim())
-    .filter(Boolean), [scopedOrderIdsParam]);
+    .filter(Boolean))], [scopedOrderIdsParam]);
   const [orders, setOrders] = useState([]); const [selected, setSelected] = useState(null); const [mode, setMode] = useState('supplier_response'); const [responseType, setResponseType] = useState('available'); const [supplierName, setSupplierName] = useState(''); const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState(''); const [receiptDate, setReceiptDate] = useState(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())); const [fileName, setFileName] = useState(''); const [rows, setRows] = useState([]); const [loading, setLoading] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [invoiceLimit, setInvoiceLimit] = useState(0); const [invoiceTolerancePct] = useState(2); const [invoiceToleranceValue] = useState(100);
   const autoOpenAttemptRef = useRef('');
   const [scopedOrderState, setScopedOrderState] = useState({
@@ -91,41 +91,50 @@ export default function SmartPurchaseReceiving() {
     }
   }
 
-  async function refresh() {
-    setLoading(true); setError('');
+  async function loadOrderListState() {
     if (scopedOrderIds.length) {
       setScopedOrderState({ resolved: false, closedCount: 0, blocked: [] });
+      const states = await api.getScopedOrderStates(scopedOrderIds);
+      const activeStates = states.filter((entry) => entry.state === 'active');
+      const closedStates = states.filter((entry) => entry.state === 'closed');
+      const blockedStates = states.filter((entry) => entry.state === 'blocked');
+      const activeIds = new Set(activeStates.map((entry) => String(entry.id)));
+
+      setOrders(activeStates.map((entry) => entry.order));
+      setSelected((current) => (
+        current?.order?.id && !activeIds.has(String(current.order.id))
+          ? null
+          : current
+      ));
+      setScopedOrderState({
+        resolved: true,
+        closedCount: closedStates.length,
+        blocked: blockedStates,
+      });
+
+      const warning = blockedStates.length
+        ? `إحدى طلبيتي الرحلة ليست في حالة تسمح بالاستلام أو الإغلاق: ${blockedStates
+          .map((entry) => `${entry.order?.branch || entry.id}: ${entry.status || 'حالة غير معروفة'}`)
+          .join(' • ')}`
+        : '';
+
+      return { activeIds, warning };
     }
+
+    const availableOrders = await api.listOrders() || [];
+    setOrders(availableOrders);
+    setScopedOrderState({ resolved: false, closedCount: 0, blocked: [] });
+    return {
+      activeIds: new Set(availableOrders.map((order) => String(order.id))),
+      warning: '',
+    };
+  }
+
+  async function refresh() {
+    setLoading(true); setError('');
     try {
-      if (scopedOrderIds.length) {
-        const states = await api.getScopedOrderStates(scopedOrderIds);
-        const activeStates = states.filter((entry) => entry.state === 'active');
-        const closedStates = states.filter((entry) => entry.state === 'closed');
-        const blockedStates = states.filter((entry) => entry.state === 'blocked');
-        const activeIds = new Set(activeStates.map((entry) => String(entry.id)));
-
-        setOrders(activeStates.map((entry) => entry.order));
-        setSelected((current) => (
-          current?.order?.id && !activeIds.has(String(current.order.id))
-            ? null
-            : current
-        ));
-        setScopedOrderState({
-          resolved: true,
-          closedCount: closedStates.length,
-          blocked: blockedStates,
-        });
-
-        if (blockedStates.length) {
-          const details = blockedStates
-            .map((entry) => `${entry.order?.branch || entry.id}: ${entry.status || 'حالة غير معروفة'}`)
-            .join(' • ');
-          setError(`إحدى طلبيتي الرحلة ليست في حالة تسمح بالاستلام أو الإغلاق: ${details}`);
-        }
-      } else {
-        setOrders(await api.listOrders() || []);
-        setScopedOrderState({ resolved: false, closedCount: 0, blocked: [] });
-      }
+      const result = await loadOrderListState();
+      if (result.warning) setError(result.warning);
     } catch (err) {
       if (scopedOrderIds.length) {
         setScopedOrderState({ resolved: false, closedCount: 0, blocked: [] });
@@ -145,9 +154,36 @@ export default function SmartPurchaseReceiving() {
     void chooseOrder(preferredOrder.id);
   }, [orders, loading, selected?.order?.id, selectedOrderIdParam]);
 
-  function refreshManually() {
+  async function refreshManually() {
     autoOpenAttemptRef.current = '';
-    void refresh();
+    const selectedId = String(selected?.order?.id || '');
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const listState = await loadOrderListState();
+      if (listState.warning) setError(listState.warning);
+
+      if (selectedId && listState.activeIds.has(selectedId)) {
+        const detail = await api.getOrder(selectedId);
+        setSelected(detail);
+        setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0));
+        const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))];
+        setSupplierName((current) => (
+          suppliers.includes(current)
+            ? current
+            : suppliers.length === 1 ? suppliers[0] : ''
+        ));
+        setRows([]);
+        setFileName('');
+        await refreshCloseReadiness(selectedId);
+      } else if (selectedId) {
+        setSelected(null);
+        setCloseReadinessState({ loading: false, ready: false, item: null, financial: null, error: '' });
+      }
+    } catch (err) {
+      setError(err?.message || 'تعذر تحديث حالة الاستلام.');
+    } finally {
+      setLoading(false);
+    }
   }
   async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); setSupplierInvoiceNumber(''); try { const detail = await api.getOrder(id); setSelected(detail); setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0)); const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))]; setSupplierName(suppliers.length === 1 ? suppliers[0] : ''); await refreshCloseReadiness(id); } catch (err) { setError(err.message); } finally { setLoading(false); } }
   async function readFile(file) { setError(''); setMessage(''); setFileName(file.name); try { const parsed = await parseWorkbook(file); if (!parsed.length) throw new Error('لم يتم التعرف على أصناف داخل الملف.'); setRows(parsed); setMessage(`تمت قراءة ${parsed.length} صنف من الملف. المطابقة هتتم على الكميات المتبقية للمورد المختار.`); } catch (err) { setRows([]); setError(`تعذر قراءة الملف: ${err.message}`); } }
@@ -282,13 +318,6 @@ export default function SmartPurchaseReceiving() {
     valueVariance: financialReceipts.reduce((sum, receipt) => sum + num(receipt.value_variance), 0),
     priceVariance: financialReceipts.reduce((sum, receipt) => sum + num(receipt.price_variance), 0),
   }), [financialReceipts]);
-  const closeReadyLocal = receivingStarted
-    && receivingResolutionItems.length > 0
-    && pendingResolutionItems.length === 0
-    && followupResolutionItems.length === 0
-    && pendingFinancialReceipts.length === 0
-    && followupFinancialReceipts.length === 0;
-
   async function resolveReceivingItem(item, resolutionStatus) {
     if (!selected?.order?.id || !item?.id) return;
     setLoading(true); setError(''); setMessage('');
