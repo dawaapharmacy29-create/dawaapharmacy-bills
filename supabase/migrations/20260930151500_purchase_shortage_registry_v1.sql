@@ -21,7 +21,7 @@ create table if not exists public.purchase_shortage_events (
   current_shortage_quantity numeric not null default 0 check (current_shortage_quantity >= 0),
   initial_shortage_type text not null check (initial_shortage_type in ('unavailable','limited_supply')),
   current_shortage_type text not null check (current_shortage_type in ('unavailable','limited_supply','covered_later')),
-  status text not null default 'open' check (status in ('open','covered_later')),
+  status text not null default 'open' check (status in ('open','covered_later','superseded')),
   created_by_account_id uuid null,
   created_by_name text null,
   created_at timestamptz not null default now(),
@@ -117,7 +117,11 @@ begin
         when v_allocated<=0 then 'unavailable'
         else 'limited_supply'
       end,
-      status=case when v_shortage<=0 then 'covered_later' else 'open' end,
+      status=case
+        when e.status='superseded' then 'superseded'
+        when v_shortage<=0 then 'covered_later'
+        else 'open'
+      end,
       updated_at=now()
   where e.order_item_id=p_order_item_id;
 end
@@ -247,6 +251,14 @@ begin
       end if;
 
       v_key:=public.smart_purchase_shortage_product_key_v1(i.product_code,i.product_name);
+
+      update public.purchase_shortage_events previous
+      set status='superseded',
+          updated_at=now()
+      where previous.branch=o.branch
+        and previous.product_key=v_key
+        and previous.order_item_id is distinct from i.id
+        and previous.status='open';
 
       if exists(
         select 1 from public.purchase_shortage_events e

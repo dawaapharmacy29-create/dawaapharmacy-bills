@@ -52,3 +52,13 @@ test('shortage tables are not directly exposed to client roles', () => {
   assert.match(sql, /revoke all on table public\.purchase_shortage_events from public,anon,authenticated/);
   assert.match(sql, /revoke all on function public\.smart_purchase_shortage_registry_v1\(text,text,jsonb\) from public/);
 });
+
+test('a new purchase cycle supersedes the previous open shortage without inflating current shortage', () => {
+  assert.match(sql, /status in \('open','covered_later','superseded'\)/);
+  assert.match(sql, /set status='superseded'/);
+  assert.match(sql, /previous\.branch=o\.branch/);
+  assert.match(sql, /previous\.product_key=v_key/);
+  assert.match(sql, /previous\.order_item_id is distinct from i\.id/);
+  assert.match(sql, /when e\.status='superseded' then 'superseded'/);
+  assert.match(sql, /sum\(e\.current_shortage_quantity\) filter\(where e\.status='open'\)/);
+});
