@@ -16,9 +16,10 @@ test('shortage registry preserves one historical occurrence per purchase order i
   assert.match(sql, /current_shortage_type/);
 });
 
-test('zero supply and limited supply are distinct shortage types', () => {
+test('zero supply and limited supply are distinct shortage types on the active truth basis', () => {
   assert.match(sql, /initial_shortage_type in \('unavailable','limited_supply'\)/);
-  assert.match(sql, /when v_allocated<=0 then 'unavailable' else 'limited_supply'/);
+  assert.match(sql, /when v_coverage<=0 then 'unavailable' else 'limited_supply'/);
+  assert.match(sql, /when v_shortage<=0 then 'covered_later'/);
 });
 
 test('later supplier allocation or receipt updates current shortage without deleting history', () => {

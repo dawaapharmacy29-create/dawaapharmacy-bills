@@ -187,7 +187,7 @@ test('journey navigation is one compact three-stage control without a repeated g
   assert.ok(source.includes("label: 'الرصيد'"));
   assert.ok(source.includes("label: 'الطلبية'"));
   assert.ok(source.includes("'الموردين والتكلفة'"));
-  assert.ok(source.includes("'إرسال الموردين'"));
+  assert.ok(source.includes("'دورة الموردين'"));
   assert.doesNotMatch(source, /function CurrentStepGuide/);
   assert.doesNotMatch(source, /المطلوب منك الآن:/);
   assert.doesNotMatch(source, /مرحلة \{item\.id\} من 3/);

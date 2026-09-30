@@ -9,23 +9,28 @@ const source = await readFile(
 
 test('supplier response works against the whole remaining branch order', () => {
   assert.match(source, /const branchRemainingItems = useMemo/);
-  assert.match(source, /mode === 'supplier_response' \? branchRemainingItems : supplierRemainingItems/);
-  assert.match(source, /رد المورد هيتطابق مع كل الأصناف المتبقية في طلبية الفرع/);
+  assert.match(source, /const responseOrderItems = useMemo/);
+  assert.match(source, /mode === 'supplier_response' \? responseOrderItems : supplierRemainingItems/);
+  assert.match(source, /في رد المورد، المطابقة تتم على طلبية الفرع كاملة/);
 });
 
-test('branch order can be exported before the supplier responds', () => {
+test('branch order can be exported before the supplier responds and later exports only current remainder', () => {
   assert.match(source, /function exportBranchRequest\(\)/);
-  assert.match(source, /_طلبية_الفرع_للمورد\.xlsx/);
-  assert.match(source, /تنزيل طلبية الفرع للمورد/);
+  assert.match(source, /طلبية_الفرع_للمورد_الأول/);
+  assert.match(source, /المتبقي_للمورد_التالي/);
+  assert.match(source, /تنزيل طلبية الفرع للمورد الأول/);
+  assert.match(source, /تنزيل المتبقي للمورد التالي/);
   assert.match(source, /'كود الصنف': item\.product_code/);
 });
 
-test('supplier response may document any supplier while actual receipt remains assigned-supplier scoped', () => {
+test('supplier response may document any supplier while actual receipt follows current allocations with legacy fallback', () => {
   assert.match(source, /list="supplier-response-options"/);
   assert.match(source, /اكتب أو اختر اسم المورد/);
-  assert.match(source, /const supplierAllItems = useMemo/);
-  assert.match(source, /String\(item\.supplier_name \|\| ''\)\.trim\(\)\.toLowerCase\(\) === supplierKey/);
-  assert.match(source, /الاستلام الفعلي يظل مقيدًا بالأصناف المسندة للمورد داخل الطلبية/);
+  assert.match(source, /const supplierAllocations = useMemo/);
+  assert.match(source, /const allocationMode = supplierAllocations\.length > 0/);
+  assert.match(source, /allocationRemainingQuantity/);
+  assert.match(source, /cleanName\(item\.supplier_name \|\| ''\) === receiptSupplierKey/);
+  assert.match(source, /الاستلام الفعلي يتقيد بالكميات المخصصة فعليًا للمورد/);
 });
 
 test('saved supplier responses become cumulative and latest response per supplier wins', () => {
