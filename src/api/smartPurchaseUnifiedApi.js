@@ -66,6 +66,11 @@ async function standaloneRpc(functionName, body) {
       historical_allocation_hash_required: 'راجع التحليل التاريخي من جديد قبل التثبيت.',
       historical_allocation_changed: 'تاريخ المورد أو التكلفة اتغير بعد المراجعة. تم إيقاف التثبيت؛ أعد تحميل التحليل.',
       historical_allocation_incomplete: 'التحليل التاريخي غير مكتمل لكل الأصناف؛ لم يتم تثبيت أي تغيير.',
+      dual_order_pair_required: 'الاعتماد يحتاج مسودتي شكري والشامي معًا.',
+      invalid_dual_order_pair: 'المسودتان لا تمثلان زوج شكري والشامي الصحيح.',
+      approval_requires_draft_pair: 'الاعتماد متاح فقط طالما المسودتان ما زالتا في حالة مسودة.',
+      reviewed_allocation_not_persisted: 'المورد أو التكلفة المثبتة لا تطابق آخر مراجعة؛ أعد التثبيت قبل الاعتماد.',
+      reviewed_total_mismatch: 'إجمالي المسودتين لا يطابق آخر مراجعة تاريخية؛ أعد المراجعة قبل الاعتماد.',
       supplier_not_in_order: 'المورد غير موجود ضمن البنود المعتمدة في الطلبية.',
       supplier_items_not_send_ready: 'بنود المورد غير جاهزة للإرسال: راجع الأسعار والتحقق منها أولًا.',
       no_active_purchase_policy: 'لا توجد سياسة مخزون ذكية مفعلة لهذا الفرع؛ التحليل متوقف للحماية.',
@@ -286,6 +291,10 @@ export const smartPurchaseUnifiedApi = {
   historyEnrichRows: (branch, rows = []) => standaloneRpc('smart_purchase_history_enrich_rows_v1', { p_branch: branch, p_rows: rows }),
   historicalAllocationPreview: (orderIds = []) => standaloneRpc('smart_purchase_historical_allocation_preview_v1', { p_order_ids: orderIds }),
   applyHistoricalAllocation: (orderIds = [], expectedHash = '') => standaloneRpc('smart_purchase_apply_historical_allocation_v2', {
+    p_order_ids: orderIds,
+    p_expected_hash: expectedHash,
+  }),
+  approveReviewedDual: (orderIds = [], expectedHash = '') => standaloneRpc('smart_purchase_approve_reviewed_dual_v1', {
     p_order_ids: orderIds,
     p_expected_hash: expectedHash,
   }),

@@ -114,3 +114,11 @@ test('clean historical persistence contract points at snapshot-checked v2', () =
   assert.match(unifiedApiSource, /smart_purchase_apply_historical_allocation_v2/);
   assert.doesNotMatch(unifiedApiSource, /smart_purchase_apply_historical_allocation_v1/);
 });
+
+
+test('clean API exposes only the snapshot-checked dual approval for the new journey', () => {
+  assert.match(unifiedApiSource, /smart_purchase_approve_reviewed_dual_v1/);
+  assert.match(unifiedApiSource, /approveReviewedDual/);
+  assert.match(unifiedApiSource, /reviewed_allocation_not_persisted/);
+  assert.match(unifiedApiSource, /reviewed_total_mismatch/);
+});
