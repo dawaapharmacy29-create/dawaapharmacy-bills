@@ -2373,7 +2373,7 @@ export default function PurchaseCenterClean() {
                   <div className="mt-1 text-sm">المرحلة التالية هي الاستلام ومطابقة الفاتورة.</div>
                 </div>
                 <Link
-                  to="/smart-purchase-receiving"
+                  to={`/smart-purchase-receiving?orderIds=${encodeURIComponent([draftResult.shokry_order_id, draftResult.shamy_order_id].join(','))}&selectedOrderId=${encodeURIComponent(draftResult.shokry_order_id)}`}
                   className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-black text-white shadow-sm"
                 >
                   الانتقال للاستلام
