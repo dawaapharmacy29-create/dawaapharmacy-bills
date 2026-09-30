@@ -270,6 +270,12 @@ test('receiving auto-open attempts each scoped order once and manual refresh can
 });
 
 
+test('scoped receiving journey shows remaining-order progress', () => {
+  assert.ok(receivingSource.includes('متبقي {orders.length} من {scopedOrderIds.length} للاستلام'));
+  assert.ok(receivingSource.includes('!loading && !scopedJourneyComplete'));
+});
+
+
 test('scoped receiving journey ends with a clear completion state after both orders close', () => {
   assert.ok(receivingSource.includes('scopedJourneyComplete'));
   assert.ok(receivingSource.includes('تم إغلاق طلبيتي شكري والشامي ✓'));
