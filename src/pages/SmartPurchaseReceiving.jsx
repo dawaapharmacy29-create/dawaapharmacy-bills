@@ -60,7 +60,27 @@ function allocationRemainingQuantity(item, supplierKey, allocations = []) {
 }
 function expectedCost(item) { return Math.max(0, num(item.expected_unit_cost || item.last_purchase_price)); }
 function orderTitle(order = {}) { return order.title || order.name || order.order_name || order.order_number || 'طلبية'; }
-function parseWorkbook(file) { return file.arrayBuffer().then((buffer) => { const workbook = XLSX.read(buffer, { type: 'array' }); const sheet = workbook.Sheets[workbook.SheetNames[0]]; const raw = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true }); return raw.map((row, index) => ({ row_number: index + 2, product_code: String(findValue(row, 'product_code') || '').trim(), product_name: String(findValue(row, 'product_name') || '').trim(), quantity: Math.max(0, num(findValue(row, 'quantity'))), price: Math.max(0, num(findValue(row, 'price'))), source: row })).filter((row) => row.product_code || row.product_name); }); }
+function parseWorkbook(file) {
+  return file.arrayBuffer().then((buffer) => {
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const raw = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+    return raw.map((row, index) => {
+      const quantityValue = findValue(row, 'quantity');
+      const priceValue = findValue(row, 'price');
+      return {
+        row_number: index + 2,
+        product_code: String(findValue(row, 'product_code') || '').trim(),
+        product_name: String(findValue(row, 'product_name') || '').trim(),
+        quantity: Math.max(0, num(quantityValue)),
+        quantity_present: quantityValue !== '' && quantityValue !== null && quantityValue !== undefined,
+        price: Math.max(0, num(priceValue)),
+        price_present: priceValue !== '' && priceValue !== null && priceValue !== undefined,
+        source: row,
+      };
+    }).filter((row) => row.product_code || row.product_name);
+  });
+}
 function matchRows(orderItems, uploadedRows) {
   const used = new Set();
   const matches = orderItems.map((item) => {
@@ -348,7 +368,31 @@ export default function SmartPurchaseReceiving() {
     return { ordered, received, remaining, completion };
   }, [supplierAllItems, allocationMode, supplierAllocations, receiptSupplierKey]);
   const matching = useMemo(() => matchRows(orderItems, rows), [orderItems, rows]);
-  const supplierResult = useMemo(() => { if (!selected || !rows.length) return null; const details = matching.matches.map(({ item, row, confidence, method }) => { const ordered = sourcingRemainingQuantity(item, supplierCommitmentsBySupplier, currentSupplierKey); let confirmed = 0; let remaining = 0; if (responseType === 'missing') { remaining = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; confirmed = ordered - remaining; } else { confirmed = row ? Math.min(ordered, row.quantity > 0 ? row.quantity : ordered) : 0; remaining = Math.max(0, ordered - confirmed); } return { item, row, ordered, confirmed, remaining, confidence, method, status: remaining <= 0 ? 'متاح بالكامل' : confirmed > 0 ? 'متاح جزئيًا' : 'غير متاح' }; }); return { details, remaining: details.filter((row) => row.remaining > 0), confirmed: details.filter((row) => row.confirmed > 0), unexpected: matching.unexpected }; }, [selected, rows, matching, responseType]);
+  const supplierResult = useMemo(() => {
+    if (!selected || !rows.length) return null;
+    const details = matching.matches.map(({ item, row, confidence, method }) => {
+      const ordered = sourcingRemainingQuantity(item, supplierCommitmentsBySupplier, currentSupplierKey);
+      let confirmed = 0;
+      let remaining = 0;
+      if (responseType === 'missing') {
+        remaining = row ? Math.min(ordered, row.quantity_present ? row.quantity : ordered) : 0;
+        confirmed = ordered - remaining;
+      } else {
+        confirmed = row ? Math.min(ordered, row.quantity_present ? row.quantity : ordered) : 0;
+        remaining = Math.max(0, ordered - confirmed);
+      }
+      return {
+        item, row, ordered, confirmed, remaining, confidence, method,
+        status: remaining <= 0 ? 'متاح بالكامل' : confirmed > 0 ? 'متاح جزئيًا' : 'غير متاح',
+      };
+    });
+    return {
+      details,
+      remaining: details.filter((row) => row.remaining > 0),
+      confirmed: details.filter((row) => row.confirmed > 0),
+      unexpected: matching.unexpected,
+    };
+  }, [selected, rows, matching, responseType]);
   const receiptResult = useMemo(() => { if (!selected || !rows.length) return null; const details = matching.matches.map(({ item, row, confidence, method }) => { const ordered = receiptOrderedQuantity(item); const received = row ? row.quantity : 0; const expectedPrice = expectedCost(item); const actualPrice = row ? row.price : 0; let status = 'سليم'; if (!row) status = 'لم يصل'; else if (received < ordered) status = 'كمية ناقصة'; else if (received > ordered) status = 'كمية زائدة'; else if (method === 'fuzzy' && confidence < 0.9) status = 'اسم مختلف يحتاج مراجعة'; if (row && received > 0 && actualPrice <= 0) status = status === 'سليم' ? 'السعر غير موجود' : `${status} + السعر غير موجود`;
     else if (row && actualPrice > 0 && expectedPrice > 0 && Math.abs(actualPrice - expectedPrice) > 0.01) status = status === 'سليم' ? 'فرق سعر' : `${status} + فرق سعر`; return { item, row, ordered, received, difference: received - ordered, expectedPrice, actualPrice, valueDifference: (received * actualPrice) - (ordered * expectedPrice), confidence, method, status }; }); const unexpected = matching.unexpected.map((row) => ({ ...row, status: row.similarity >= 0.45 ? 'صنف مختلف محتمل' : 'صنف غير مطلوب' })); return { details, unexpected }; }, [selected, rows, matching]);
   const currentResult = mode === 'supplier_response' ? supplierResult : receiptResult;
@@ -366,6 +410,10 @@ export default function SmartPurchaseReceiving() {
     if (!selected?.order?.id || !currentResult) return;
     if (!supplierName.trim()) {
       setError(mode === 'receipt' ? 'حدد المورد قبل تسجيل الاستلام الفعلي.' : 'حدد المورد صاحب ملف الرد أولًا.');
+      return;
+    }
+    if (mode === 'supplier_response' && supplierResult?.unexpected?.length > 0) {
+      setError(`يوجد ${supplierResult.unexpected.length} صف في رد المورد لم يتطابق مع الطلبية. تم إيقاف الحفظ حتى لا يتم تأكيد أو نفي توفر صنف بالخطأ.`);
       return;
     }
     if (mode === 'receipt' && allocationMode && receiptResult?.unexpected?.length > 0) {
@@ -757,7 +805,7 @@ export default function SmartPurchaseReceiving() {
             <Link to="/purchase-shortages" className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-black text-white">فتح الأصناف الناقصة</Link>
           </div>}
         </div>}<div className="grid md:grid-cols-5 gap-3">{mode === 'supplier_response' && <label className="text-sm">نوع ملف رد المورد<select value={responseType} onChange={(event) => setResponseType(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="available">الأصناف المتاحة فقط</option><option value="missing">الأصناف غير المتاحة فقط</option><option value="modified">نسخة الطلبية بعد حذف النواقص</option></select></label>}<label className="text-sm">المورد *{mode === 'supplier_response' ? <><input list="supplier-response-options" value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2" placeholder="اكتب أو اختر اسم المورد" /><datalist id="supplier-response-options">{orderSuppliers.map((supplier) => <option key={supplier} value={supplier} />)}</datalist><span className="text-[11px] text-slate-500">رد المورد هيتطابق مع المتبقي التراكمي في طلبية الفرع، بغض النظر عن المورد التاريخي. ولو رفعت ردًا جديدًا لنفس المورد فآخر رد محفوظ له هو اللي يدخل في الحساب.</span></> : <><select value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2"><option value="">اختر المورد</option>{orderSuppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}</select><span className="text-[11px] text-slate-500">الاستلام الفعلي يتقيد بالكميات المخصصة فعليًا للمورد في الرحلة الحالية، ويعود للتوزيع التاريخي فقط للطلبيات القديمة التي لا يوجد لها تخصيص فعلي.</span></>}</label>{mode === 'receipt' && <><label className="text-sm">رقم فاتورة المورد<input value={supplierInvoiceNumber} onChange={(event) => setSupplierInvoiceNumber(event.target.value)} className="mt-1 w-full rounded-lg border p-2" placeholder="اختياري لكن يفضل إدخاله" /></label><label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label></>}<label className="text-sm md:col-span-2">ملف Excel أو CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-1 block w-full text-sm" /></label></div><div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">{mode === 'supplier_response' ? 'في رد المورد، المطابقة تتم على طلبية الفرع كاملة حتى تقدر تبعت نفس الاحتياج لمورد واحد ثم تصدر النواقص للمورد التالي. اسم المورد هنا للتوثيق ويمكن كتابة مورد غير موجود في التوزيع التاريخي.' : 'في الاستلام الفعلي، اختيار المورد إلزامي والمطابقة تظل على الأصناف المسندة له داخل الطلبية لحماية الكميات والقيمة ومنع الخلط بين الموردين.'}</div></section>
-        {mode === 'supplier_response' && supplierResult && <><div className="grid sm:grid-cols-3 gap-3">{[['تم تأكيده', supplierStats.confirmed], ['متبقي لمورد آخر', supplierStats.remaining], ['صفوف غير معروفة', supplierStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap items-center gap-2"><button disabled={loading} onClick={saveSnapshot} className="rounded-lg bg-teal-700 text-white px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />حفظ رد المورد وتثبيت المتاح</button><span className="text-xs text-slate-500">بعد الحفظ سيتحدث المتبقي من السيرفر، ومنه يتم تنزيل ملف المورد التالي.</span></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'المطلوب', 'المؤكد', 'المتبقي', 'المطابقة', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{supplierResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.ordered}</td><td className="p-3">{row.confirmed}</td><td className="p-3 font-bold">{row.remaining}</td><td className="p-3">{row.method === 'code' ? 'بالكود' : row.method === 'name' ? 'بالاسم' : row.method === 'fuzzy' ? `تشابه ${Math.round(row.confidence * 100)}%` : 'غير موجود'}</td><td className="p-3">{row.status}</td></tr>)}</tbody></table></div></>}
+        {mode === 'supplier_response' && supplierResult && <><div className="grid sm:grid-cols-3 gap-3">{[['تم تأكيده', supplierStats.confirmed], ['متبقي لمورد آخر', supplierStats.remaining], ['صفوف غير معروفة', supplierStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div>{supplierResult.unexpected.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">يوجد {supplierResult.unexpected.length} صف غير مطابق لطلبية الفرع. راجع الكود/الاسم في الملف قبل حفظ رد المورد.</div>}<div className="flex flex-wrap items-center gap-2"><button disabled={loading || supplierResult.unexpected.length > 0} onClick={saveSnapshot} className="rounded-lg bg-teal-700 text-white px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />حفظ رد المورد وتثبيت المتاح</button><span className="text-xs text-slate-500">بعد الحفظ سيتحدث المتبقي من السيرفر، ومنه يتم تنزيل ملف المورد التالي.</span></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'المطلوب', 'المؤكد', 'المتبقي', 'المطابقة', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{supplierResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.ordered}</td><td className="p-3">{row.confirmed}</td><td className="p-3 font-bold">{row.remaining}</td><td className="p-3">{row.method === 'code' ? 'بالكود' : row.method === 'name' ? 'بالاسم' : row.method === 'fuzzy' ? `تشابه ${Math.round(row.confidence * 100)}%` : 'غير موجود'}</td><td className="p-3">{row.status}</td></tr>)}</tbody></table></div></>}
         {mode === 'receipt' && receiptResult && <><div className="grid sm:grid-cols-3 gap-3">{[['سليم', receiptStats.ok], ['يحتاج مراجعة', receiptStats.issues], ['أصناف غير متوقعة', receiptStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap gap-2"><button onClick={exportReceiptReport} className="rounded-lg bg-slate-900 text-white px-4 py-2 font-bold flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />تصدير تقرير المطابقة</button><button disabled={loading || (allocationMode && receiptResult.unexpected.length > 0) || receiptMissingPrices > 0 || invoiceGuard.blocked} onClick={saveSnapshot} className="rounded-lg bg-teal-700 text-white px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />تسجيل الاستلام فعليًا</button></div>
         {allocationMode && receiptResult.unexpected.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {receiptResult.unexpected.length} صنف غير مخصص لهذا المورد؛ لن يتم تسجيل الفاتورة قبل تصحيح الملف أو التخصيص.</div>}{receiptMissingPrices > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {receiptMissingPrices} صف بدون سعر فعلي؛ تم إيقاف التسجيل المالي حتى استكمال السعر.</div>}
         <div className={`rounded-xl border p-3 text-sm ${invoiceGuard.blocked ? 'border-red-200 bg-red-50 text-red-700' : invoiceGuard.needsReview ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>المتوقع: {money(receiptExpectedTotal)} ج • الفعلي بكل صفوف الملف: {money(receiptActualTotal)} ج • الحد المقبول: {money(invoiceGuard.effectiveLimit)} ج{invoiceLimit > 0 ? ` • سقف الطلبية: ${money(invoiceLimit)} ج` : ''}</div>

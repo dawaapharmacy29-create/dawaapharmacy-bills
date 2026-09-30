@@ -75,3 +75,15 @@ test('supplier history and completion guide the next action', () => {
   assert.match(source, /sourcingComplete/);
   assert.match(source, /sourcingCoverage/);
 });
+
+test('explicit zero availability is never converted into full availability', () => {
+  assert.match(source, /quantity_present:/);
+  assert.match(source, /row\.quantity_present \? row\.quantity : ordered/);
+  assert.doesNotMatch(source, /row\.quantity > 0 \? row\.quantity : ordered/);
+});
+
+test('unmatched supplier response rows block saving to protect missing-only semantics', () => {
+  assert.match(source, /mode === 'supplier_response' && supplierResult\?\.unexpected\?\.length > 0/);
+  assert.match(source, /تم إيقاف الحفظ حتى لا يتم تأكيد أو نفي توفر صنف بالخطأ/);
+  assert.match(source, /disabled=\{loading \|\| supplierResult\.unexpected\.length > 0\}/);
+});
