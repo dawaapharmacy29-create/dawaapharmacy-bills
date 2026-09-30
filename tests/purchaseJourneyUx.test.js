@@ -6,6 +6,10 @@ const source = await readFile(
   new URL('../src/pages/PurchaseCenterClean.jsx', import.meta.url),
   'utf8'
 );
+const receivingSource = await readFile(
+  new URL('../src/pages/SmartPurchaseReceiving.jsx', import.meta.url),
+  'utf8'
+);
 
 test('clean purchase journey exposes three simple stages and one fixed action bar', () => {
   for (const label of [
@@ -238,11 +242,18 @@ test('approved clean journey renders supplier-by-supplier dispatch cards', () =>
 });
 
 
-test('receiving handoff appears only after all supplier sends are recorded', () => {
-  assert.ok(source.includes('to="/smart-purchase-receiving"'));
+test('receiving handoff appears only after all supplier sends are recorded and carries the exact dual-order scope', () => {
+  assert.ok(source.includes('/smart-purchase-receiving?orderIds='));
+  assert.ok(source.includes('draftResult.shokry_order_id'));
+  assert.ok(source.includes('draftResult.shamy_order_id'));
+  assert.ok(source.includes('selectedOrderId='));
   assert.ok(source.includes('الانتقال للاستلام'));
   assert.ok(source.includes('dispatchState.suppliers.shokry.every((supplier) => supplier.sent)'));
   assert.ok(source.includes('dispatchState.suppliers.shamy.every((supplier) => supplier.sent)'));
+  assert.ok(receivingSource.includes("searchParams.get('orderIds')"));
+  assert.ok(receivingSource.includes("searchParams.get('selectedOrderId')"));
+  assert.ok(receivingSource.includes('availableOrders.filter((order) => scopedOrderIds.includes(String(order.id)))'));
+  assert.ok(receivingSource.includes("تم فتح شكري والشامي مباشرة من رحلة المشتريات الحالية."));
 });
 
 
