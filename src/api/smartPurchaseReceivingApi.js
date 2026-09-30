@@ -3,6 +3,16 @@ import { smartPurchaseUnifiedApi } from '@/api/smartPurchaseUnifiedApi';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 
+const ACTIVE_RECEIVING_STATUSES = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received', 'وصلت جزئيًا', 'received', 'وصلت بالكامل']);
+const CLOSED_RECEIVING_STATUSES = new Set(['مغلقة', 'closed', 'completed', 'مكتمل']);
+
+function receivingStateFromStatus(status) {
+  const normalized = String(status || '').trim();
+  if (CLOSED_RECEIVING_STATUSES.has(normalized)) return 'closed';
+  if (ACTIVE_RECEIVING_STATUSES.has(normalized)) return 'active';
+  return 'blocked';
+}
+
 function token() {
   try { return JSON.parse(localStorage.getItem('dawaa_staff_session') || 'null')?.session_token || ''; }
   catch { return ''; }
@@ -110,8 +120,21 @@ async function saveSnapshot(payload) {
 export const smartPurchaseReceivingApi = {
   listOrders: async () => {
     const rows = await receivingRpc('list_orders');
-    const allowed = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received', 'وصلت جزئيًا', 'received', 'وصلت بالكامل']);
-    return (rows || []).filter((order) => allowed.has(String(order.status || '').trim()));
+    return (rows || []).filter((order) => ACTIVE_RECEIVING_STATUSES.has(String(order.status || '').trim()));
+  },
+  getScopedOrderStates: async (ids = []) => {
+    const uniqueIds = [...new Set((ids || []).map((id) => String(id || '').trim()).filter(Boolean))];
+    const details = await Promise.all(uniqueIds.map((id) => receivingRpc('get_order', { id })));
+    return details.map((detail) => {
+      const order = detail?.order || {};
+      const status = String(order.status || '').trim();
+      return {
+        id: String(order.id || ''),
+        status,
+        state: receivingStateFromStatus(status),
+        order,
+      };
+    });
   },
   getOrder: (id) => receivingRpc('get_order', { id }),
   importReceipt,

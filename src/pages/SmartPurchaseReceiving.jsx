@@ -48,15 +48,55 @@ export default function SmartPurchaseReceiving() {
     .filter(Boolean), [scopedOrderIdsParam]);
   const [orders, setOrders] = useState([]); const [selected, setSelected] = useState(null); const [mode, setMode] = useState('supplier_response'); const [responseType, setResponseType] = useState('available'); const [supplierName, setSupplierName] = useState(''); const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState(''); const [receiptDate, setReceiptDate] = useState(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())); const [fileName, setFileName] = useState(''); const [rows, setRows] = useState([]); const [loading, setLoading] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [invoiceLimit, setInvoiceLimit] = useState(0); const [invoiceTolerancePct] = useState(2); const [invoiceToleranceValue] = useState(100);
   const autoOpenAttemptRef = useRef('');
+  const [scopedOrderState, setScopedOrderState] = useState({
+    resolved: false,
+    closedCount: 0,
+    blocked: [],
+  });
+
   async function refresh() {
     setLoading(true); setError('');
+    if (scopedOrderIds.length) {
+      setScopedOrderState({ resolved: false, closedCount: 0, blocked: [] });
+    }
     try {
-      const availableOrders = await api.listOrders() || [];
-      setOrders(scopedOrderIds.length
-        ? availableOrders.filter((order) => scopedOrderIds.includes(String(order.id)))
-        : availableOrders);
-    } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
+      if (scopedOrderIds.length) {
+        const states = await api.getScopedOrderStates(scopedOrderIds);
+        const activeStates = states.filter((entry) => entry.state === 'active');
+        const closedStates = states.filter((entry) => entry.state === 'closed');
+        const blockedStates = states.filter((entry) => entry.state === 'blocked');
+        const activeIds = new Set(activeStates.map((entry) => String(entry.id)));
+
+        setOrders(activeStates.map((entry) => entry.order));
+        setSelected((current) => (
+          current?.order?.id && !activeIds.has(String(current.order.id))
+            ? null
+            : current
+        ));
+        setScopedOrderState({
+          resolved: true,
+          closedCount: closedStates.length,
+          blocked: blockedStates,
+        });
+
+        if (blockedStates.length) {
+          const details = blockedStates
+            .map((entry) => `${entry.order?.branch || entry.id}: ${entry.status || 'حالة غير معروفة'}`)
+            .join(' • ');
+          setError(`إحدى طلبيتي الرحلة ليست في حالة تسمح بالاستلام أو الإغلاق: ${details}`);
+        }
+      } else {
+        setOrders(await api.listOrders() || []);
+        setScopedOrderState({ resolved: false, closedCount: 0, blocked: [] });
+      }
+    } catch (err) {
+      if (scopedOrderIds.length) {
+        setScopedOrderState({ resolved: false, closedCount: 0, blocked: [] });
+      }
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => { refresh(); }, [scopedOrderIdsParam]);
   useEffect(() => {
@@ -245,14 +285,18 @@ export default function SmartPurchaseReceiving() {
     finally { setLoading(false); }
   }
 
-  const scopedJourneyComplete = scopedOrderIds.length > 0 && !loading && orders.length === 0;
+  const scopedRemainingCount = Math.max(0, scopedOrderIds.length - scopedOrderState.closedCount);
+  const scopedJourneyComplete = scopedOrderIds.length > 0
+    && scopedOrderState.resolved
+    && scopedOrderState.blocked.length === 0
+    && scopedOrderState.closedCount === scopedOrderIds.length;
 
   return <div dir="rtl" className="p-3 md:p-6 space-y-5">
     <header className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><PackageCheck className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">دورة تنفيذ ومطابقة الطلبية</h1><p className="text-sm text-slate-500 mt-1">رد المورد، استخراج المتبقي، ثم مطابقة ما وصل فعليًا مع المطلوب.</p></div></div><button onClick={refreshManually} className="rounded-lg border bg-white px-4 py-2 flex items-center gap-2"><RefreshCw className="w-4 h-4" />تحديث</button></header>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</div>}
     {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
     <div className="grid lg:grid-cols-[300px_minmax(0,1fr)] gap-4">
-      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">{scopedOrderIds.length ? 'طلبيتا الرحلة الحالية' : 'الطلبيات'}</h2>{scopedOrderIds.length > 0 && <p className="mb-2 text-xs text-slate-500">تم فتح شكري والشامي مباشرة من رحلة المشتريات الحالية.</p>}{scopedOrderIds.length > 0 && !loading && !scopedJourneyComplete && <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-black text-teal-800">متبقي {orders.length} من {scopedOrderIds.length} للاستلام</div>}<div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className={`rounded-xl p-3 text-sm ${scopedJourneyComplete ? 'border border-emerald-200 bg-emerald-50 font-bold text-emerald-800' : 'text-slate-400'}`}>{scopedJourneyComplete ? 'تم إغلاق طلبيتي شكري والشامي ✓' : 'لا توجد طلبيات متاحة.'}</p>}</div></aside>
+      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">{scopedOrderIds.length ? 'طلبيتا الرحلة الحالية' : 'الطلبيات'}</h2>{scopedOrderIds.length > 0 && <p className="mb-2 text-xs text-slate-500">تم فتح شكري والشامي مباشرة من رحلة المشتريات الحالية.</p>}{scopedOrderIds.length > 0 && !loading && !scopedJourneyComplete && <div className="mb-3 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-black text-teal-800">متبقي {scopedRemainingCount} من {scopedOrderIds.length} للاستلام</div>}<div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className={`rounded-xl p-3 text-sm ${scopedJourneyComplete ? 'border border-emerald-200 bg-emerald-50 font-bold text-emerald-800' : 'text-slate-400'}`}>{scopedJourneyComplete ? 'تم إغلاق طلبيتي شكري والشامي ✓' : 'لا توجد طلبيات متاحة.'}</p>}</div></aside>
       <main className="space-y-4">{!selected && (scopedJourneyComplete ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-8 text-center text-emerald-900"><PackageCheck className="mx-auto h-10 w-10" /><div className="mt-3 text-xl font-black">تم إنهاء استلام طلبيتي شكري والشامي ✓</div><p className="mt-2 text-sm text-emerald-800">تم إغلاق الطلبتين بعد حسم المطابقة والاستلام.</p><Link to="/purchase-center" className="mt-4 inline-flex rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-black text-white">العودة لمركز المشتريات</Link></div> : <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">اختر طلبية للبدء.</div>)}{selected && <>
         <section className="rounded-2xl border bg-white p-4 shadow-sm"><h2 className="text-xl font-bold">{orderTitle(selected.order)}</h2><p className="text-xs text-slate-400 mt-1">{selected.order.order_number}</p><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {orderSuppliers.length} مورد • {supplierName ? `${orderItems.length} صنف للمورد المختار` : 'اختر المورد لبدء المطابقة'}</p><div className="mt-4 grid sm:grid-cols-2 gap-2"><button onClick={() => { setMode('supplier_response'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'supplier_response' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>1. تسجيل رد المورد واستخراج المتبقي</button><button onClick={() => { setMode('receipt'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'receipt' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>2. رفع المشتريات ومطابقة الاستلام</button></div></section>
         {receivingStarted && <section className="rounded-2xl border border-blue-200 bg-blue-50/30 p-4 shadow-sm space-y-3">

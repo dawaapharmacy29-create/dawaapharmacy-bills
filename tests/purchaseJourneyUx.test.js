@@ -290,3 +290,13 @@ test('authoritative server resume clears stale local execution after receiving s
   assert.ok(source.includes('clearJourneyResume();'));
   assert.ok(source.includes('return;'));
 });
+
+
+test('scoped receiving completion is based on authoritative order status, not an empty list', () => {
+  assert.ok(receivingSource.includes('getScopedOrderStates'));
+  assert.ok(receivingSource.includes('scopedOrderState.resolved'));
+  assert.ok(receivingSource.includes('scopedOrderState.closedCount === scopedOrderIds.length'));
+  assert.ok(receivingSource.includes('scopedOrderState.blocked.length === 0'));
+  assert.doesNotMatch(receivingSource, /scopedJourneyComplete = scopedOrderIds\.length > 0 && !loading && orders\.length === 0/);
+  assert.ok(receivingSource.includes('متبقي {scopedRemainingCount} من {scopedOrderIds.length} للاستلام'));
+});
