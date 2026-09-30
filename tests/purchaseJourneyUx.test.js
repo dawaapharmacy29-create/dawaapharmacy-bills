@@ -227,33 +227,31 @@ test('clean final step approves both reviewed drafts explicitly without auto-sen
 });
 
 
-test('approved journey resumes directly into supplier dispatch without replanning', () => {
-  assert.ok(source.includes("async function loadDispatchWorkspace"));
+test('approved journey resumes directly into branch supplier sourcing without replanning', () => {
+  assert.ok(source.includes("async function loadSourcingLaunchWorkspace"));
   assert.ok(source.includes("resume.stage === 'dispatch'"));
-  assert.ok(source.includes("await loadDispatchWorkspace(resumedDrafts)"));
+  assert.ok(source.includes("await loadSourcingLaunchWorkspace(resumedDrafts)"));
   assert.ok(source.includes("persistDispatchJourneyResume"));
   assert.ok(source.includes("تم استكمال الطلبية المعتمدة من السيرفر"));
 });
 
 
-test('approved clean journey renders supplier-by-supplier dispatch cards', () => {
-  assert.ok(source.includes("function SupplierDispatchBranchCard"));
-  assert.ok(source.includes("تسجيل تم الإرسال"));
-  assert.ok(source.includes("markHistoricalSupplierSent"));
-  assert.ok(source.includes("لن يتم إرسال رسالة أو ملف تلقائيًا"));
-  assert.ok(source.includes("تم تسجيل إرسال كل الموردين للفرعين"));
-  assert.ok(source.includes("المرحلة التالية هي الاستلام ومطابقة الفاتورة"));
+test('approved clean journey renders independent branch supplier-sourcing cards', () => {
+  assert.ok(source.includes("function SupplierSourcingBranchCard"));
+  assert.ok(source.includes("فتح دورة موردي"));
+  assert.ok(source.includes("ابدأ بطلبية الفرع كاملة مع المورد الأول"));
+  assert.ok(source.includes("المورد التاريخي يظل مرجعًا تحليليًا فقط"));
+  assert.doesNotMatch(source, /تسجيل تم الإرسال/);
+  assert.doesNotMatch(source, /markHistoricalSupplierSent/);
 });
 
 
-test('receiving handoff appears only after all supplier sends are recorded and carries the exact dual-order scope', () => {
+test('each approved branch opens its own exact supplier-sourcing scope', () => {
   assert.ok(source.includes('/smart-purchase-receiving?orderIds='));
+  assert.ok(source.includes("encodeURIComponent(orderId || '')"));
   assert.ok(source.includes('draftResult.shokry_order_id'));
   assert.ok(source.includes('draftResult.shamy_order_id'));
-  assert.ok(source.includes('selectedOrderId='));
-  assert.ok(source.includes('الانتقال للاستلام'));
   assert.ok(source.includes('SupplierSourcingBranchCard'));
-  assert.ok(source.includes('فتح دورة موردي'));
   assert.doesNotMatch(source, /dispatchState\.suppliers/);
   assert.doesNotMatch(source, /markHistoricalSupplierSent/);
   assert.ok(receivingSource.includes("searchParams.get('orderIds')"));
