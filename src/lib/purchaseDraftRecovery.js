@@ -32,7 +32,11 @@ function canonicalOrderRows(order = {}) {
     .sort((a, b) => a.key.localeCompare(b.key) || a.quantity - b.quantity || a.unitCost - b.unitCost);
 }
 
-export function orderMatchesPurchasePlan(order, planRows = [], { quantityTolerance = 1e-6, costTolerance = 0.01 } = {}) {
+export function orderMatchesPurchasePlan(
+  order,
+  planRows = [],
+  { quantityTolerance = 1e-6, costTolerance = 0.01, compareCost = true } = {}
+) {
   const expected = canonicalPlanRows(planRows);
   const actual = canonicalOrderRows(order);
   if (!expected.length || expected.length !== actual.length) return false;
@@ -41,6 +45,6 @@ export function orderMatchesPurchasePlan(order, planRows = [], { quantityToleran
     const other = actual[index];
     return row.key === other.key
       && Math.abs(row.quantity - other.quantity) <= quantityTolerance
-      && Math.abs(row.unitCost - other.unitCost) <= costTolerance;
+      && (!compareCost || Math.abs(row.unitCost - other.unitCost) <= costTolerance);
   });
 }

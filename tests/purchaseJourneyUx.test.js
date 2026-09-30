@@ -7,16 +7,15 @@ const source = await readFile(
   'utf8'
 );
 
-test('clean purchase journey keeps the five guided steps and one fixed action bar', () => {
+test('clean purchase journey exposes three simple stages and one fixed action bar', () => {
   for (const label of [
     'رفع الرصيد',
-    'مراجعة الخطة',
-    'إنشاء المسودتين',
-    'تحليل تاريخ المشتريات',
-    'المراجعة النهائية',
+    'راجع وأنشئ',
+    'المورد والنتيجة',
   ]) {
-    assert.ok(source.includes(label), `missing journey step: ${label}`);
+    assert.ok(source.includes(label), `missing journey stage: ${label}`);
   }
+  assert.ok(source.includes('مرحلة {item.id} من 3'));
   assert.ok(source.includes('function JourneyActionBar'));
   assert.ok(source.includes('fixed inset-x-3 bottom-3'));
 });
@@ -32,7 +31,7 @@ test('clean purchase journey safely resumes the last atomic stock sync after ref
 test('fast path only skips detailed review when guards are green and quick review is empty', () => {
   assert.ok(source.includes("result?.creation_guard?.can_create_dual === true && quickReviewCount === 0"));
   assert.ok(source.includes('setActiveStep(fastPathReady ? 3 : 2)'));
-  assert.ok(source.includes('Fast Path: لا توجد أصناف داخل الطلبية تحتاج مراجعة سريعة'));
+  assert.ok(source.includes('لا توجد مراجعات سريعة مطلوبة؛ الطلبية جاهزة لإنشاء المسودتين.'));
 });
 
 test('heavy plan content renders only while the review step is active', () => {

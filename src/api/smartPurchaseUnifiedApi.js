@@ -260,6 +260,7 @@ export const smartPurchaseUnifiedApi = {
   historyStatus: (branch) => standaloneRpc('smart_purchase_history_status_v1', { p_branch: branch }),
   refreshDecisionDailySnapshot: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   historyEnrichRows: (branch, rows = []) => standaloneRpc('smart_purchase_history_enrich_rows_v1', { p_branch: branch, p_rows: rows }),
+  applyHistoricalAllocation: (orderIds = []) => standaloneRpc('smart_purchase_apply_historical_allocation_v1', { p_order_ids: orderIds }),
   importHistory: ({ branch, kind, fileName, rows, reset = false }) => standaloneRpc('smart_purchase_history_import_v1', {
     p_branch: branch,
     p_kind: kind,

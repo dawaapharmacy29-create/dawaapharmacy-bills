@@ -45,12 +45,8 @@ const navGroups = [
         { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badgeKey: "invoices" },
         { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks },
       ]},
-      { label: "الأداة الموحدة (ابدأ من هنا)", items: [
-        { path: "/purchase-center-clean", label: "مركز المشتريات الجديد — تجريبي", icon: BrainCircuit, permission: "canPlanPurchases" },
-        { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap },
-      ]},
-      { label: "تنفيذ ومتابعة الطلبية", items: [
-        { path: "/purchase-center", label: "إنشاء ومراجعة واعتماد الطلبية", icon: BrainCircuit },
+      { label: "المشتريات", items: [
+        { path: "/purchase-center", label: "مركز المشتريات والطلبية", icon: BrainCircuit, permission: "canPlanPurchases" },
         { path: "/smart-purchase-receiving", label: "الاستلام والمطابقة", icon: PackageCheck },
         { path: "/smart-purchase-insights", label: "تقييم الأداء بعد التنفيذ", icon: BarChart3 },
       ]},
