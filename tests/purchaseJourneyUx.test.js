@@ -256,7 +256,8 @@ test('receiving handoff appears only after all supplier sends are recorded and c
   assert.ok(source.includes('dispatchState.suppliers.shamy.every((supplier) => supplier.sent)'));
   assert.ok(receivingSource.includes("searchParams.get('orderIds')"));
   assert.ok(receivingSource.includes("searchParams.get('selectedOrderId')"));
-  assert.ok(receivingSource.includes('availableOrders.filter((order) => scopedOrderIds.includes(String(order.id)))'));
+  assert.ok(receivingSource.includes('api.getScopedOrderStates(scopedOrderIds)'));
+  assert.ok(receivingSource.includes("states.filter((entry) => entry.state === 'active')"));
   assert.ok(receivingSource.includes("تم فتح شكري والشامي مباشرة من رحلة المشتريات الحالية."));
 });
 
@@ -271,7 +272,7 @@ test('receiving auto-open attempts each scoped order once and manual refresh can
 
 
 test('scoped receiving journey shows remaining-order progress', () => {
-  assert.ok(receivingSource.includes('متبقي {orders.length} من {scopedOrderIds.length} للاستلام'));
+  assert.ok(receivingSource.includes('متبقي {scopedRemainingCount} من {scopedOrderIds.length} للاستلام'));
   assert.ok(receivingSource.includes('!loading && !scopedJourneyComplete'));
 });
 
