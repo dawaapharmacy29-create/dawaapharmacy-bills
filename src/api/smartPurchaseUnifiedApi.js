@@ -71,6 +71,9 @@ async function standaloneRpc(functionName, body) {
       approval_requires_draft_pair: 'الاعتماد متاح فقط طالما المسودتان ما زالتا في حالة مسودة.',
       reviewed_allocation_not_persisted: 'المورد أو التكلفة المثبتة لا تطابق آخر مراجعة؛ أعد التثبيت قبل الاعتماد.',
       reviewed_total_mismatch: 'إجمالي المسودتين لا يطابق آخر مراجعة تاريخية؛ أعد المراجعة قبل الاعتماد.',
+      clean_approval_required: 'لا يمكن تسجيل الإرسال لأن الطلبية لم تُعتمد من المسار التاريخي الجديد.',
+      historical_supplier_items_not_send_ready: 'بنود المورد لا تطابق المورد والتكلفة التاريخية المعتمدة؛ راجع الطلبية قبل الإرسال.',
+      order_receiving_started: 'بدأ استلام هذه الطلبية بالفعل؛ لا يمكن تسجيل إرسال مورد جديد من هنا.',
       supplier_not_in_order: 'المورد غير موجود ضمن البنود المعتمدة في الطلبية.',
       supplier_items_not_send_ready: 'بنود المورد غير جاهزة للإرسال: راجع الأسعار والتحقق منها أولًا.',
       no_active_purchase_policy: 'لا توجد سياسة مخزون ذكية مفعلة لهذا الفرع؛ التحليل متوقف للحماية.',
@@ -355,5 +358,9 @@ export const smartPurchaseUnifiedApi = {
   markSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v3', {
     p_action: 'mark_supplier_sent',
     p_payload: { order_id: orderId, supplier_name: supplierName },
+  }),
+  markHistoricalSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_mark_historical_supplier_sent_v1', {
+    p_order_id: orderId,
+    p_supplier_name: supplierName,
   }),
 };

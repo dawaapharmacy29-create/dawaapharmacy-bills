@@ -122,3 +122,11 @@ test('clean API exposes only the snapshot-checked dual approval for the new jour
   assert.match(unifiedApiSource, /reviewed_allocation_not_persisted/);
   assert.match(unifiedApiSource, /reviewed_total_mismatch/);
 });
+
+
+test('clean execution uses the historical supplier dispatch writer and guarded list reader', () => {
+  assert.match(unifiedApiSource, /markHistoricalSupplierSent/);
+  assert.match(unifiedApiSource, /smart_purchase_mark_historical_supplier_sent_v1/);
+  assert.match(unifiedApiSource, /supplierDispatches/);
+  assert.match(unifiedApiSource, /historical_supplier_items_not_send_ready/);
+});
