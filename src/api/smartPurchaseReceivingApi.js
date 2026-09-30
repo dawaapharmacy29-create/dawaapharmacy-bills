@@ -126,6 +126,7 @@ async function saveSupplierResponse(payload) {
       invalid_supplier_response_item: 'رد المورد يحتوي على صنف غير موجود في الطلبية.',
       supplier_allocation_above_order: 'الكمية التي أكدها المورد تتجاوز المتبقي الحقيقي للصنف.',
       supplier_allocation_below_received: 'لا يمكن تقليل تخصيص المورد عن كمية تم استلامها منه فعليًا.',
+      supplier_allocation_requires_pre_receiving: 'لا يمكن بدء نظام توزيع الموردين الجديد بعد وجود استلام قديم على الطلبية. أكمل الطلبية القديمة بمسارها الحالي.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل حفظ رد المورد (${response.status})`));

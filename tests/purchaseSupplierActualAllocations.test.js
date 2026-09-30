@@ -59,3 +59,22 @@ test('security remains session and branch guarded with no direct table grants', 
   assert.match(sql, /revoke all on function public\.smart_purchase_save_supplier_response_v1\(text,jsonb\) from public/);
   assert.match(sql, /revoke all on function public\.smart_purchase_import_receipt_v5\(text,jsonb\) from public/);
 });
+
+test('first actual allocation cannot be retrofitted after legacy receiving starts', () => {
+  assert.match(sql, /supplier_allocation_requires_pre_receiving/);
+  assert.match(sql, /purchase_order_receipts r where r\.order_id=v_order_id/);
+  assert.match(sql, /not exists\([\s\S]{0,160}purchase_order_supplier_allocations/);
+});
+
+test('allocation receipt authenticates and authorizes before choosing new or legacy path', () => {
+  const v5 = sql.slice(sql.indexOf('create or replace function public.smart_purchase_import_receipt_v5'));
+  assert.ok(v5.indexOf('staff_sessions') < v5.indexOf('select exists(\n    select 1\n    from public.purchase_order_supplier_allocations'));
+  assert.ok(v5.indexOf('smart_purchase_branch_allowed_v2') < v5.indexOf('return public.smart_purchase_import_receipt_v4'));
+  assert.doesNotMatch(v5, /select i\.\*,x\.\*[\s\S]{0,40}into i,al/);
+});
+
+test('allocation-mode UI blocks unexpected invoice rows before any write', () => {
+  assert.match(page, /allocationMode && receiptResult\?\.unexpected\?\.length > 0/);
+  assert.match(page, /صنف في فاتورة المورد غير مخصص له/);
+  assert.match(page, /allocationMode && receiptResult\.unexpected\.length > 0/);
+});

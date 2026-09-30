@@ -119,6 +119,14 @@ begin
     return jsonb_build_object('ok',false,'error','supplier_response_order_not_ready','status',o.status);
   end if;
 
+  if exists(
+    select 1 from public.purchase_order_receipts r where r.order_id=v_order_id
+  ) and not exists(
+    select 1 from public.purchase_order_supplier_allocations x where x.order_id=v_order_id
+  ) then
+    return jsonb_build_object('ok',false,'error','supplier_allocation_requires_pre_receiving');
+  end if;
+
   perform pg_advisory_xact_lock(hashtext(v_order_id::text||':supplier-response:'||v_supplier_key));
 
   select ws.id into v_existing_snapshot
@@ -472,16 +480,6 @@ declare
 begin
   v_order_id:=nullif(p_payload->>'order_id','')::uuid;
 
-  select exists(
-    select 1
-    from public.purchase_order_supplier_allocations x
-    where x.order_id=v_order_id and x.allocated_quantity>0
-  ) into v_has_allocations;
-
-  if not v_has_allocations then
-    return public.smart_purchase_import_receipt_v4(p_session_token,p_payload);
-  end if;
-
   select sa.* into a
   from public.staff_sessions ss
   join public.staff_accounts sa on sa.id=ss.account_id
@@ -494,6 +492,26 @@ begin
     return jsonb_build_object('ok',false,'error','forbidden');
   end if;
 
+  select * into o
+  from public.smart_purchase_orders
+  where id=v_order_id
+  for update;
+
+  if not found then return jsonb_build_object('ok',false,'error','order_not_found'); end if;
+  if not public.smart_purchase_branch_allowed_v2(a.id,o.branch) then
+    return jsonb_build_object('ok',false,'error','forbidden_branch');
+  end if;
+
+  select exists(
+    select 1
+    from public.purchase_order_supplier_allocations x
+    where x.order_id=v_order_id and x.allocated_quantity>0
+  ) into v_has_allocations;
+
+  if not v_has_allocations then
+    return public.smart_purchase_import_receipt_v4(p_session_token,p_payload);
+  end if;
+
   v_supplier:=nullif(trim(p_payload->>'supplier_name'),'');
   v_supplier_key:=lower(trim(coalesce(v_supplier,'')));
   v_file:=nullif(trim(p_payload->>'file_name'),'');
@@ -504,18 +522,8 @@ begin
   if jsonb_typeof(coalesce(p_payload->'rows','[]'::jsonb))<>'array' then
     return jsonb_build_object('ok',false,'error','invalid_rows');
   end if;
-
-  select * into o
-  from public.smart_purchase_orders
-  where id=v_order_id
-  for update;
-
-  if not found then return jsonb_build_object('ok',false,'error','order_not_found'); end if;
   if coalesce(o.status,'') not in ('معتمدة','تم الإرسال للمورد','approved','sent','partially_received','وصلت جزئيًا','received','وصلت بالكامل') then
     return jsonb_build_object('ok',false,'error','receipt_order_not_ready','status',o.status);
-  end if;
-  if not public.smart_purchase_branch_allowed_v2(a.id,o.branch) then
-    return jsonb_build_object('ok',false,'error','forbidden_branch');
   end if;
 
   if not exists(
@@ -692,24 +700,30 @@ begin
       continue;
     end if;
 
-    select i.*,x.*
-    into i,al
+    select x.*
+    into al
     from public.purchase_order_supplier_allocations x
-    join public.smart_purchase_order_items i on i.id=x.order_item_id
+    join public.smart_purchase_order_items oi on oi.id=x.order_item_id
     where x.order_id=v_order_id
       and lower(trim(x.supplier_name))=v_supplier_key
       and (
         (nullif(trim(rowj->>'product_code'),'') is not null
-          and lower(trim(coalesce(i.product_code,'')))=lower(trim(rowj->>'product_code')))
-        or lower(trim(i.product_name))=lower(trim(coalesce(rowj->>'product_name','')))
+          and lower(trim(coalesce(oi.product_code,'')))=lower(trim(rowj->>'product_code')))
+        or lower(trim(oi.product_name))=lower(trim(coalesce(rowj->>'product_name','')))
       )
     order by
       case when nullif(trim(rowj->>'product_code'),'') is not null
-        and lower(trim(coalesce(i.product_code,'')))=lower(trim(rowj->>'product_code'))
+        and lower(trim(coalesce(oi.product_code,'')))=lower(trim(rowj->>'product_code'))
         then 0 else 1 end,
       x.created_at
     limit 1
-    for update of x,i;
+    for update of x;
+
+    select *
+    into i
+    from public.smart_purchase_order_items
+    where id=al.order_item_id and order_id=v_order_id
+    for update;
 
     v_line_ordered:=greatest(0,al.allocated_quantity-al.received_quantity);
     v_row_invoiced:=greatest(0,coalesce(nullif(rowj->>'invoiced_quantity','')::numeric,v_row_received));
