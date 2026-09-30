@@ -53,6 +53,43 @@ export default function SmartPurchaseReceiving() {
     closedCount: 0,
     blocked: [],
   });
+  const [closeReadinessState, setCloseReadinessState] = useState({
+    loading: false,
+    ready: false,
+    item: null,
+    financial: null,
+    error: '',
+  });
+
+  async function refreshCloseReadiness(orderId) {
+    if (!orderId) {
+      setCloseReadinessState({ loading: false, ready: false, item: null, financial: null, error: '' });
+      return;
+    }
+
+    setCloseReadinessState((current) => ({ ...current, loading: true, error: '' }));
+    try {
+      const [item, financial] = await Promise.all([
+        api.closeReadiness(orderId),
+        api.financialReadiness(orderId),
+      ]);
+      setCloseReadinessState({
+        loading: false,
+        ready: Boolean(item?.ready && financial?.ready),
+        item,
+        financial,
+        error: '',
+      });
+    } catch (err) {
+      setCloseReadinessState({
+        loading: false,
+        ready: false,
+        item: null,
+        financial: null,
+        error: err?.message || 'تعذر التحقق من جاهزية الإغلاق.',
+      });
+    }
+  }
 
   async function refresh() {
     setLoading(true); setError('');
@@ -112,7 +149,7 @@ export default function SmartPurchaseReceiving() {
     autoOpenAttemptRef.current = '';
     void refresh();
   }
-  async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); setSupplierInvoiceNumber(''); try { const detail = await api.getOrder(id); setSelected(detail); setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0)); const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))]; setSupplierName(suppliers.length === 1 ? suppliers[0] : ''); } catch (err) { setError(err.message); } finally { setLoading(false); } }
+  async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); setSupplierInvoiceNumber(''); try { const detail = await api.getOrder(id); setSelected(detail); setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0)); const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))]; setSupplierName(suppliers.length === 1 ? suppliers[0] : ''); await refreshCloseReadiness(id); } catch (err) { setError(err.message); } finally { setLoading(false); } }
   async function readFile(file) { setError(''); setMessage(''); setFileName(file.name); try { const parsed = await parseWorkbook(file); if (!parsed.length) throw new Error('لم يتم التعرف على أصناف داخل الملف.'); setRows(parsed); setMessage(`تمت قراءة ${parsed.length} صنف من الملف. المطابقة هتتم على الكميات المتبقية للمورد المختار.`); } catch (err) { setRows([]); setError(`تعذر قراءة الملف: ${err.message}`); } }
   const orderSuppliers = useMemo(() => [...new Set((selected?.items || [])
     .filter((item) => activeQuantity(item) > 0)
@@ -213,7 +250,10 @@ export default function SmartPurchaseReceiving() {
       if (mode === 'receipt') {
         const detail = await api.getOrder(selected.order.id);
         setSelected(detail);
-        await refresh();
+        await Promise.all([
+          refresh(),
+          refreshCloseReadiness(selected.order.id),
+        ]);
       }
     } catch (err) {
       setError(actualReceiptSaved
@@ -256,6 +296,7 @@ export default function SmartPurchaseReceiving() {
       await api.resolveItem(selected.order.id, item.id, resolutionStatus);
       const detail = await api.getOrder(selected.order.id);
       setSelected(detail);
+      await refreshCloseReadiness(selected.order.id);
       setMessage('تم حفظ قرار الاستلام للصنف.');
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
@@ -268,6 +309,7 @@ export default function SmartPurchaseReceiving() {
       await api.resolveReceiptFinancial(receipt.id, resolutionStatus);
       const detail = await api.getOrder(selected.order.id);
       setSelected(detail);
+      await refreshCloseReadiness(selected.order.id);
       setMessage('تم حفظ قرار المطابقة المالية لفاتورة المورد.');
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
@@ -280,6 +322,7 @@ export default function SmartPurchaseReceiving() {
       await api.closeOrder(selected.order.id);
       setMessage('تم إغلاق الطلبية بعد حسم كل فروق الاستلام.');
       setSelected(null);
+      setCloseReadinessState({ loading: false, ready: false, item: null, financial: null, error: '' });
       await refresh();
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
@@ -343,16 +386,17 @@ export default function SmartPurchaseReceiving() {
               <h3 className="font-bold">إغلاق الطلبية بعد الاستلام</h3>
               <p className="text-xs text-slate-500 mt-1">الأصناف السليمة تُقفل تلقائيًا. أي نقص أو زيادة أو فرق سعر/فاتورة يحتاج قرار واضح قبل الإغلاق النهائي.</p>
             </div>
-            <button type="button" onClick={closeCurrentOrder} disabled={loading || !closeReadyLocal} className="rounded-lg bg-slate-900 px-4 py-2 font-bold text-white disabled:opacity-40">إغلاق الطلبية نهائيًا</button>
+            <button type="button" onClick={closeCurrentOrder} disabled={loading || closeReadinessState.loading || !closeReadinessState.ready} className="rounded-lg bg-slate-900 px-4 py-2 font-bold text-white disabled:opacity-40">إغلاق الطلبية نهائيًا</button>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
             {[
               ['إجمالي البنود', receivingResolutionItems.length],
               ['قرارات معلقة', pendingResolutionItems.length],
               ['متابعة مفتوحة', followupResolutionItems.length + followupFinancialReceipts.length],
-              ['جاهزية الإغلاق', closeReadyLocal ? 'جاهزة' : 'غير جاهزة'],
+              ['جاهزية الإغلاق', closeReadinessState.loading ? 'جاري التحقق' : closeReadinessState.ready ? 'جاهزة' : 'غير جاهزة'],
             ].map(([label, value]) => <div key={label} className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}
           </div>
+          {closeReadinessState.error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{closeReadinessState.error}</div>}
           {(pendingResolutionItems.length > 0 || followupResolutionItems.length > 0) && <div className="space-y-2">
             {receivingResolutionItems.filter((item) => ['pending','followup_required'].includes(String(item.resolution_status || 'pending'))).map((item) => {
               const approved = activeQuantity(item);

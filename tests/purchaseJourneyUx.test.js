@@ -300,3 +300,13 @@ test('scoped receiving completion is based on authoritative order status, not an
   assert.doesNotMatch(receivingSource, /scopedJourneyComplete = scopedOrderIds\.length > 0 && !loading && orders\.length === 0/);
   assert.ok(receivingSource.includes('متبقي {scopedRemainingCount} من {scopedOrderIds.length} للاستلام'));
 });
+
+
+test('final receiving close button follows authoritative server readiness', () => {
+  assert.ok(receivingSource.includes('api.closeReadiness(orderId)'));
+  assert.ok(receivingSource.includes('api.financialReadiness(orderId)'));
+  assert.ok(receivingSource.includes('ready: Boolean(item?.ready && financial?.ready)'));
+  assert.ok(receivingSource.includes('disabled={loading || closeReadinessState.loading || !closeReadinessState.ready}'));
+  assert.ok(receivingSource.includes("closeReadinessState.loading ? 'جاري التحقق' : closeReadinessState.ready ? 'جاهزة' : 'غير جاهزة'"));
+  assert.ok(receivingSource.includes('تعذر التحقق من جاهزية الإغلاق.'));
+});
