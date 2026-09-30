@@ -7,7 +7,6 @@ import {
   FileSpreadsheet,
   Loader2,
   RefreshCw,
-  ShieldCheck,
   ShoppingCart,
   Upload,
 } from 'lucide-react';
@@ -255,7 +254,7 @@ function PurchaseJourneyTabs({
   ];
 
   return (
-    <nav className="sticky top-2 z-30 rounded-2xl border bg-white/95 p-2 shadow-md backdrop-blur" aria-label="رحلة تجهيز الطلبية">
+    <nav className="sticky top-2 z-30 rounded-2xl border bg-white/95 p-1.5 shadow-md backdrop-blur" aria-label="رحلة تجهيز الطلبية">
       <div className="grid gap-2 sm:grid-cols-3">
         {stages.map((item) => {
           const active = item.id === stage;
@@ -265,7 +264,7 @@ function PurchaseJourneyTabs({
               type="button"
               disabled={!item.ready}
               onClick={() => item.ready && onStepChange(item.target)}
-              className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-right transition ${
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-right transition ${
                 active
                   ? 'border-teal-600 bg-teal-700 text-white shadow-sm'
                   : item.done
@@ -275,7 +274,7 @@ function PurchaseJourneyTabs({
                       : 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300'
               }`}
             >
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-black ${
+              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-sm font-black ${
                 active
                   ? 'border-white/40 bg-white/15'
                   : item.done
@@ -330,11 +329,7 @@ function JourneyActionBar({
 
   return (
     <div className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-[1100px] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-2xl backdrop-blur md:inset-x-auto md:left-1/2 md:w-[min(1100px,calc(100vw-3rem))] md:-translate-x-1/2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-bold text-slate-500">
-          المرحلة {step === 1 ? 1 : step <= 3 ? 2 : 3} من 3
-        </div>
-
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {step === 2 && !draftResult && (
             <>
@@ -1194,10 +1189,6 @@ export default function PurchaseCenterClean() {
             >
               بدء طلبية جديدة
             </button>
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
-              <ShieldCheck className="h-4 w-4" />
-              مسار مبسط
-            </div>
           </div>
         </div>
       </header>

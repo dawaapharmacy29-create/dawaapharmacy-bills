@@ -184,3 +184,10 @@ test('journey navigation is one compact three-stage control without a repeated g
   assert.doesNotMatch(source, /المطلوب منك الآن:/);
   assert.doesNotMatch(source, /مرحلة \{item\.id\} من 3/);
 });
+
+
+test('navigation and fixed actions do not repeat stage chrome', () => {
+  assert.doesNotMatch(source, /مسار مبسط/);
+  assert.doesNotMatch(source, /المرحلة \{step === 1/);
+  assert.ok(source.includes('تحديث الخطة'));
+});
