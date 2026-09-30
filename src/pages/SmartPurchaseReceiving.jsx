@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Download, FileSpreadsheet, PackageCheck, RefreshCw, Save, WandSparkles } from 'lucide-react';
@@ -47,6 +47,7 @@ export default function SmartPurchaseReceiving() {
     .map((id) => id.trim())
     .filter(Boolean), [scopedOrderIdsParam]);
   const [orders, setOrders] = useState([]); const [selected, setSelected] = useState(null); const [mode, setMode] = useState('supplier_response'); const [responseType, setResponseType] = useState('available'); const [supplierName, setSupplierName] = useState(''); const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState(''); const [receiptDate, setReceiptDate] = useState(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())); const [fileName, setFileName] = useState(''); const [rows, setRows] = useState([]); const [loading, setLoading] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [invoiceLimit, setInvoiceLimit] = useState(0); const [invoiceTolerancePct] = useState(2); const [invoiceToleranceValue] = useState(100);
+  const autoOpenAttemptRef = useRef('');
   async function refresh() {
     setLoading(true); setError('');
     try {
@@ -61,8 +62,16 @@ export default function SmartPurchaseReceiving() {
   useEffect(() => {
     if (loading || selected?.order?.id || !orders.length) return;
     const preferredOrder = orders.find((order) => String(order.id) === String(selectedOrderIdParam)) || orders[0];
-    if (preferredOrder?.id) void chooseOrder(preferredOrder.id);
+    const preferredOrderId = String(preferredOrder?.id || '');
+    if (!preferredOrderId || autoOpenAttemptRef.current === preferredOrderId) return;
+    autoOpenAttemptRef.current = preferredOrderId;
+    void chooseOrder(preferredOrder.id);
   }, [orders, loading, selected?.order?.id, selectedOrderIdParam]);
+
+  function refreshManually() {
+    autoOpenAttemptRef.current = '';
+    void refresh();
+  }
   async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); setSupplierInvoiceNumber(''); try { const detail = await api.getOrder(id); setSelected(detail); setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0)); const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))]; setSupplierName(suppliers.length === 1 ? suppliers[0] : ''); } catch (err) { setError(err.message); } finally { setLoading(false); } }
   async function readFile(file) { setError(''); setMessage(''); setFileName(file.name); try { const parsed = await parseWorkbook(file); if (!parsed.length) throw new Error('لم يتم التعرف على أصناف داخل الملف.'); setRows(parsed); setMessage(`تمت قراءة ${parsed.length} صنف من الملف. المطابقة هتتم على الكميات المتبقية للمورد المختار.`); } catch (err) { setRows([]); setError(`تعذر قراءة الملف: ${err.message}`); } }
   const orderSuppliers = useMemo(() => [...new Set((selected?.items || [])
@@ -239,7 +248,7 @@ export default function SmartPurchaseReceiving() {
   const scopedJourneyComplete = scopedOrderIds.length > 0 && !loading && orders.length === 0;
 
   return <div dir="rtl" className="p-3 md:p-6 space-y-5">
-    <header className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><PackageCheck className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">دورة تنفيذ ومطابقة الطلبية</h1><p className="text-sm text-slate-500 mt-1">رد المورد، استخراج المتبقي، ثم مطابقة ما وصل فعليًا مع المطلوب.</p></div></div><button onClick={refresh} className="rounded-lg border bg-white px-4 py-2 flex items-center gap-2"><RefreshCw className="w-4 h-4" />تحديث</button></header>
+    <header className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2.5"><PackageCheck className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">دورة تنفيذ ومطابقة الطلبية</h1><p className="text-sm text-slate-500 mt-1">رد المورد، استخراج المتبقي، ثم مطابقة ما وصل فعليًا مع المطلوب.</p></div></div><button onClick={refreshManually} className="rounded-lg border bg-white px-4 py-2 flex items-center gap-2"><RefreshCw className="w-4 h-4" />تحديث</button></header>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</div>}
     {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
     <div className="grid lg:grid-cols-[300px_minmax(0,1fr)] gap-4">
