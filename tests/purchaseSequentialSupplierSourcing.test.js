@@ -51,3 +51,22 @@ test('purchase center launches supplier sourcing independently for each branch',
   assert.doesNotMatch(purchaseSource, /dispatchState\.suppliers/);
   assert.doesNotMatch(purchaseSource, /markHistoricalSupplierSent/);
 });
+
+test('supplier sourcing UI is an explicit safe sequence', () => {
+  assert.match(source, /دورة الموردين للفرع/);
+  assert.match(source, /الدورة الحالية: المورد رقم/);
+  assert.match(source, /تنزيل طلبية الفرع للمورد الأول/);
+  assert.match(source, /تنزيل المتبقي للمورد التالي/);
+  assert.match(source, /حفظ رد المورد وتثبيت المتاح/);
+  assert.match(source, /بعد الحفظ سيتحدث المتبقي من السيرفر/);
+  assert.doesNotMatch(source, /ملف المتبقي لمورد آخر/);
+});
+
+test('supplier history and completion guide the next action', () => {
+  assert.match(source, /سجل دورات الموردين/);
+  assert.match(source, /انتهت مرحلة التوفير/);
+  assert.match(source, /الانتقال للاستلام الفعلي/);
+  assert.match(source, /startNextSupplierRound/);
+  assert.match(source, /sourcingComplete/);
+  assert.match(source, /sourcingCoverage/);
+});

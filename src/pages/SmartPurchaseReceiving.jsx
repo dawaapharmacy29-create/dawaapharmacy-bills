@@ -307,6 +307,24 @@ export default function SmartPurchaseReceiving() {
       suppliers: supplierResponseHistory.length,
     };
   }, [selected, supplierCommitmentsBySupplier, supplierResponseHistory]);
+  const sourcingComplete = sourcingStats.ordered > 0 && sourcingStats.remaining <= 0;
+  const sourcingCoverage = sourcingStats.ordered > 0
+    ? Number(((sourcingStats.covered / sourcingStats.ordered) * 100).toFixed(1))
+    : 0;
+  const sourcingRoundNumber = sourcingComplete
+    ? Math.max(1, supplierResponseHistory.length)
+    : supplierResponseHistory.length + 1;
+  const sourcingActionLabel = supplierResponseHistory.length > 0
+    ? 'تنزيل المتبقي للمورد التالي'
+    : 'تنزيل طلبية الفرع للمورد الأول';
+  const sourcingHistory = useMemo(() => supplierResponseHistory.map((snapshot, index) => ({
+    id: snapshot.id || `${snapshot.supplier_name || 'supplier'}-${index}`,
+    round: index + 1,
+    supplier: snapshot.supplier_name || 'مورد غير محدد',
+    confirmedQuantity: Math.max(0, num(snapshot?.summary?.confirmed_quantity)),
+    remainingQuantity: Math.max(0, num(snapshot?.summary?.remaining_quantity)),
+    createdAt: snapshot.created_at || null,
+  })), [supplierResponseHistory]);
   const supplierProgress = useMemo(() => {
     if (allocationMode) {
       const rows = supplierAllocations.filter((allocation) => cleanName(allocation.supplier_name || '') === receiptSupplierKey);
@@ -433,7 +451,7 @@ export default function SmartPurchaseReceiving() {
         setRows([]);
         setFileName('');
         setSupplierName('');
-        setMessage('تم حفظ رد المورد وتحديث المتبقي التراكمي. الملف التالي هيبدأ من النواقص فقط.');
+        setMessage('تم حفظ رد المورد وتحديث المتبقي التراكمي من السيرفر. استخدم زر «تنزيل المتبقي للمورد التالي» لبدء الجولة التالية.');
       }
     } catch (err) {
       setError(actualReceiptSaved
@@ -443,8 +461,25 @@ export default function SmartPurchaseReceiving() {
       setLoading(false);
     }
   }
-  function exportBranchRequest() { const requestItems = supplierName.trim() ? responseOrderItems : branchRemainingItems; if (!selected?.order || !requestItems.length) return; const exportRows = requestItems.map((item) => ({ 'كود الصنف': item.product_code || '', 'اسم الصنف': item.product_name || '', 'الكمية المطلوبة': sourcingRemainingQuantity(item, supplierCommitmentsBySupplier, currentSupplierKey) })); downloadWorkbook({ 'طلبية الفرع': exportRows }, `${safeFileName(orderTitle(selected.order))}_طلبية_الفرع_للمورد.xlsx`); }
-  function exportRemaining() { if (!supplierResult) return; const exportRows = supplierResult.remaining.map(({ item, remaining }) => ({ 'كود الصنف': item.product_code || '', 'اسم الصنف': item.product_name || '', 'الكمية المطلوبة': remaining })); downloadWorkbook({ 'المتبقي لمورد آخر': exportRows }, `${safeFileName(orderTitle(selected.order))}_المتبقي_لمورد_آخر.xlsx`); }
+  function exportBranchRequest() {
+    const requestItems = supplierName.trim() ? responseOrderItems : branchRemainingItems;
+    if (!selected?.order || !requestItems.length) return;
+    const exportRows = requestItems.map((item) => ({
+      'كود الصنف': item.product_code || '',
+      'اسم الصنف': item.product_name || '',
+      'الكمية المطلوبة': sourcingRemainingQuantity(item, supplierCommitmentsBySupplier, currentSupplierKey),
+    }));
+    const fileSuffix = supplierResponseHistory.length > 0 ? 'المتبقي_للمورد_التالي' : 'طلبية_الفرع_للمورد_الأول';
+    downloadWorkbook({ 'طلبية الفرع': exportRows }, `${safeFileName(orderTitle(selected.order))}_${fileSuffix}.xlsx`);
+  }
+  function startNextSupplierRound() {
+    setMode('supplier_response');
+    setSupplierName('');
+    setRows([]);
+    setFileName('');
+    setMessage('');
+    setError('');
+  }
   function exportReceiptReport() { if (!receiptResult) return; const summary = [{ 'البيان': 'اسم الطلبية', 'القيمة': orderTitle(selected.order) }, { 'البيان': 'الكود المرجعي', 'القيمة': selected.order.order_number || '' }, { 'البيان': 'عدد الأصناف المطلوبة', 'القيمة': receiptResult.details.length }, { 'البيان': 'القيمة المتوقعة', 'القيمة': receiptExpectedTotal }, { 'البيان': 'قيمة الفاتورة الفعلية', 'القيمة': receiptActualTotal }, { 'البيان': 'فرق القيمة', 'القيمة': Number((receiptActualTotal - receiptExpectedTotal).toFixed(2)) }, { 'البيان': 'حالة التحكم المالي', 'القيمة': invoiceGuard.status }, { 'البيان': 'أصناف سليمة', 'القيمة': receiptResult.details.filter((row) => row.status === 'سليم').length }, { 'البيان': 'أصناف بها ملاحظات', 'القيمة': receiptResult.details.filter((row) => row.status !== 'سليم').length }, { 'البيان': 'أصناف غير متوقعة', 'القيمة': receiptResult.unexpected.length }]; const details = receiptResult.details.map((row) => ({ 'الصنف المطلوب': row.item.product_name || '', 'الكود': row.item.product_code || '', 'الكمية المطلوبة': row.ordered, 'الصنف الموجود بالملف': row.row?.product_name || '', 'الكمية المستلمة': row.received, 'فرق الكمية': row.difference, 'السعر المتوقع': row.expectedPrice, 'السعر الفعلي': row.actualPrice, 'فرق القيمة': Number(row.valueDifference.toFixed(2)), 'طريقة المطابقة': row.method, 'نسبة الثقة %': Number((row.confidence * 100).toFixed(1)), 'النتيجة': row.status })); const unexpected = receiptResult.unexpected.map((row) => ({ 'الصنف الموجود بالملف': row.product_name, 'الكود': row.product_code, 'الكمية': row.quantity, 'السعر': row.price, 'أقرب صنف مطلوب': row.closest_item?.product_name || '', 'نسبة التشابه %': Number((row.similarity * 100).toFixed(1)), 'النتيجة': row.status })); downloadWorkbook({ 'الملخص': summary, 'مطابقة الأصناف': details, 'أصناف غير متوقعة': unexpected }, `${safeFileName(orderTitle(selected.order))}_تقرير_الاستلام_والمطابقة.xlsx`); }
   const supplierStats = supplierResult ? { confirmed: supplierResult.confirmed.length, remaining: supplierResult.remaining.length, unexpected: supplierResult.unexpected.length } : null;
   const receiptStats = receiptResult ? { ok: receiptResult.details.filter((row) => row.status === 'سليم').length, issues: receiptResult.details.filter((row) => row.status !== 'سليم').length, unexpected: receiptResult.unexpected.length } : null;
@@ -617,8 +652,81 @@ export default function SmartPurchaseReceiving() {
             ].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
           </div>
         </section>}
-        <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-4">{mode === 'supplier_response' && <div className="space-y-3 rounded-xl border border-teal-200 bg-teal-50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="font-black text-teal-950">طلبية الفرع مجمعة</div><div className="text-xs text-teal-800">الملف يبدأ من المتبقي الحقيقي بعد آخر رد محفوظ لكل مورد، بدون تقسيم حسب المورد التاريخي.</div></div><button type="button" disabled={!(supplierName.trim() ? responseOrderItems.length : branchRemainingItems.length)} onClick={exportBranchRequest} className="rounded-lg bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40 flex items-center gap-2"><Download className="w-4 h-4" />تنزيل طلبية الفرع للمورد</button></div><div className="grid grid-cols-2 gap-2 md:grid-cols-4">{[['إجمالي الكمية', sourcingStats.ordered], ['مغطى حتى الآن', sourcingStats.covered], ['المتبقي للمورد التالي', sourcingStats.remaining], ['ردود موردين محفوظة', sourcingStats.suppliers]].map(([label, value]) => <div key={label} className="rounded-lg border border-teal-100 bg-white p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="mt-1 font-black text-teal-900">{value}</div></div>)}</div></div>}<div className="grid md:grid-cols-5 gap-3">{mode === 'supplier_response' && <label className="text-sm">نوع ملف رد المورد<select value={responseType} onChange={(event) => setResponseType(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="available">الأصناف المتاحة فقط</option><option value="missing">الأصناف غير المتاحة فقط</option><option value="modified">نسخة الطلبية بعد حذف النواقص</option></select></label>}<label className="text-sm">المورد *{mode === 'supplier_response' ? <><input list="supplier-response-options" value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2" placeholder="اكتب أو اختر اسم المورد" /><datalist id="supplier-response-options">{orderSuppliers.map((supplier) => <option key={supplier} value={supplier} />)}</datalist><span className="text-[11px] text-slate-500">رد المورد هيتطابق مع المتبقي التراكمي في طلبية الفرع، بغض النظر عن المورد التاريخي. ولو رفعت ردًا جديدًا لنفس المورد فآخر رد محفوظ له هو اللي يدخل في الحساب.</span></> : <><select value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2"><option value="">اختر المورد</option>{orderSuppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}</select><span className="text-[11px] text-slate-500">الاستلام الفعلي يتقيد بالكميات المخصصة فعليًا للمورد في الرحلة الحالية، ويعود للتوزيع التاريخي فقط للطلبيات القديمة التي لا يوجد لها تخصيص فعلي.</span></>}</label>{mode === 'receipt' && <><label className="text-sm">رقم فاتورة المورد<input value={supplierInvoiceNumber} onChange={(event) => setSupplierInvoiceNumber(event.target.value)} className="mt-1 w-full rounded-lg border p-2" placeholder="اختياري لكن يفضل إدخاله" /></label><label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label></>}<label className="text-sm md:col-span-2">ملف Excel أو CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-1 block w-full text-sm" /></label></div><div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">{mode === 'supplier_response' ? 'في رد المورد، المطابقة تتم على طلبية الفرع كاملة حتى تقدر تبعت نفس الاحتياج لمورد واحد ثم تصدر النواقص للمورد التالي. اسم المورد هنا للتوثيق ويمكن كتابة مورد غير موجود في التوزيع التاريخي.' : 'في الاستلام الفعلي، اختيار المورد إلزامي والمطابقة تظل على الأصناف المسندة له داخل الطلبية لحماية الكميات والقيمة ومنع الخلط بين الموردين.'}</div></section>
-        {mode === 'supplier_response' && supplierResult && <><div className="grid sm:grid-cols-3 gap-3">{[['تم تأكيده', supplierStats.confirmed], ['متبقي لمورد آخر', supplierStats.remaining], ['صفوف غير معروفة', supplierStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap gap-2"><button onClick={exportRemaining} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-bold flex items-center gap-2"><Download className="w-4 h-4" />ملف المتبقي لمورد آخر</button><button disabled={loading} onClick={saveSnapshot} className="rounded-lg border bg-white px-4 py-2 font-bold flex items-center gap-2"><Save className="w-4 h-4" />حفظ النتيجة</button></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'المطلوب', 'المؤكد', 'المتبقي', 'المطابقة', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{supplierResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.ordered}</td><td className="p-3">{row.confirmed}</td><td className="p-3 font-bold">{row.remaining}</td><td className="p-3">{row.method === 'code' ? 'بالكود' : row.method === 'name' ? 'بالاسم' : row.method === 'fuzzy' ? `تشابه ${Math.round(row.confidence * 100)}%` : 'غير موجود'}</td><td className="p-3">{row.status}</td></tr>)}</tbody></table></div></>}
+        <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-4">{mode === 'supplier_response' && <div className="space-y-4 rounded-2xl border border-teal-200 bg-teal-50/60 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="font-black text-teal-950">دورة الموردين للفرع</div>
+              <div className="mt-1 text-xs text-teal-800">
+                {sourcingComplete
+                  ? 'تم تغطية كامل الكمية المطلوبة من ردود الموردين المحفوظة.'
+                  : `الدورة الحالية: المورد رقم ${sourcingRoundNumber}. الملف دائمًا مبني على المتبقي الحقيقي بعد آخر رد محفوظ.`}
+              </div>
+            </div>
+            <span className={`rounded-full px-3 py-1 text-xs font-black ${sourcingComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-white text-teal-800'}`}>
+              {sourcingComplete ? 'التوفير مكتمل' : `تغطية ${sourcingCoverage}%`}
+            </span>
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-4">
+            {[
+              ['1', 'نزّل الملف', supplierResponseHistory.length ? 'المتبقي الحالي' : 'طلبية الفرع كاملة'],
+              ['2', 'أرسله للمورد', 'ثم اكتب اسم المورد هنا'],
+              ['3', 'ارفع رد المورد', 'راجع المطابقة والكميات'],
+              ['4', 'احفظ الرد', 'بعدها يتحدث المتبقي تلقائيًا'],
+            ].map(([step, title, note]) => <div key={step} className="rounded-xl border border-teal-100 bg-white p-3">
+              <div className="text-xs font-black text-teal-700">الخطوة {step}</div>
+              <div className="mt-1 font-black text-slate-900">{title}</div>
+              <div className="mt-1 text-[11px] text-slate-500">{note}</div>
+            </div>)}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+            {[
+              ['إجمالي الكمية', sourcingStats.ordered],
+              ['مغطى حتى الآن', sourcingStats.covered],
+              ['المتبقي', sourcingStats.remaining],
+              ['موردين تم حفظ ردهم', sourcingStats.suppliers],
+            ].map(([label, value]) => <div key={label} className="rounded-xl border border-teal-100 bg-white p-3">
+              <div className="text-[11px] text-slate-500">{label}</div>
+              <div className="mt-1 text-xl font-black text-teal-900">{value}</div>
+            </div>)}
+          </div>
+
+          {!sourcingComplete && <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!(supplierName.trim() ? responseOrderItems.length : branchRemainingItems.length)}
+              onClick={exportBranchRequest}
+              className="rounded-lg bg-teal-700 px-4 py-2 font-bold text-white disabled:opacity-40 flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" />{sourcingActionLabel}
+            </button>
+            {supplierResponseHistory.length > 0 && <button type="button" onClick={startNextSupplierRound} className="rounded-lg border border-teal-300 bg-white px-4 py-2 font-bold text-teal-800">
+              بدء المورد التالي
+            </button>}
+          </div>}
+
+          {sourcingComplete && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
+            <div>
+              <div className="font-black">انتهت مرحلة التوفير ✓</div>
+              <div className="mt-1 text-xs">الكميات المؤكدة موزعة على الموردين الفعليين ويمكن الانتقال لمطابقة الاستلام.</div>
+            </div>
+            <button type="button" onClick={() => { setMode('receipt'); setRows([]); setFileName(''); setSupplierName(''); }} className="rounded-lg bg-emerald-700 px-4 py-2 font-bold text-white">
+              الانتقال للاستلام الفعلي
+            </button>
+          </div>}
+
+          {sourcingHistory.length > 0 && <div className="rounded-xl border border-teal-100 bg-white p-3">
+            <div className="font-black text-slate-900">سجل دورات الموردين</div>
+            <div className="mt-2 space-y-2">
+              {sourcingHistory.map((round) => <div key={round.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
+                <div><span className="font-black">مورد {round.round}: {round.supplier}</span>{round.createdAt ? <span className="mr-2 text-xs text-slate-400">{new Date(round.createdAt).toLocaleString('ar-EG')}</span> : null}</div>
+                <div className="text-xs text-slate-600">أكد {round.confirmedQuantity} • المتبقي بعده {round.remainingQuantity}</div>
+              </div>)}
+            </div>
+          </div>}
+        </div>}<div className="grid md:grid-cols-5 gap-3">{mode === 'supplier_response' && <label className="text-sm">نوع ملف رد المورد<select value={responseType} onChange={(event) => setResponseType(event.target.value)} className="mt-1 w-full rounded-lg border p-2"><option value="available">الأصناف المتاحة فقط</option><option value="missing">الأصناف غير المتاحة فقط</option><option value="modified">نسخة الطلبية بعد حذف النواقص</option></select></label>}<label className="text-sm">المورد *{mode === 'supplier_response' ? <><input list="supplier-response-options" value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2" placeholder="اكتب أو اختر اسم المورد" /><datalist id="supplier-response-options">{orderSuppliers.map((supplier) => <option key={supplier} value={supplier} />)}</datalist><span className="text-[11px] text-slate-500">رد المورد هيتطابق مع المتبقي التراكمي في طلبية الفرع، بغض النظر عن المورد التاريخي. ولو رفعت ردًا جديدًا لنفس المورد فآخر رد محفوظ له هو اللي يدخل في الحساب.</span></> : <><select value={supplierName} onChange={(event) => { setSupplierName(event.target.value); setRows([]); setFileName(''); }} className="mt-1 w-full rounded-lg border p-2"><option value="">اختر المورد</option>{orderSuppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}</select><span className="text-[11px] text-slate-500">الاستلام الفعلي يتقيد بالكميات المخصصة فعليًا للمورد في الرحلة الحالية، ويعود للتوزيع التاريخي فقط للطلبيات القديمة التي لا يوجد لها تخصيص فعلي.</span></>}</label>{mode === 'receipt' && <><label className="text-sm">رقم فاتورة المورد<input value={supplierInvoiceNumber} onChange={(event) => setSupplierInvoiceNumber(event.target.value)} className="mt-1 w-full rounded-lg border p-2" placeholder="اختياري لكن يفضل إدخاله" /></label><label className="text-sm">تاريخ الاستلام<input type="date" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} className="mt-1 w-full rounded-lg border p-2" /></label></>}<label className="text-sm md:col-span-2">ملف Excel أو CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-1 block w-full text-sm" /></label></div><div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">{mode === 'supplier_response' ? 'في رد المورد، المطابقة تتم على طلبية الفرع كاملة حتى تقدر تبعت نفس الاحتياج لمورد واحد ثم تصدر النواقص للمورد التالي. اسم المورد هنا للتوثيق ويمكن كتابة مورد غير موجود في التوزيع التاريخي.' : 'في الاستلام الفعلي، اختيار المورد إلزامي والمطابقة تظل على الأصناف المسندة له داخل الطلبية لحماية الكميات والقيمة ومنع الخلط بين الموردين.'}</div></section>
+        {mode === 'supplier_response' && supplierResult && <><div className="grid sm:grid-cols-3 gap-3">{[['تم تأكيده', supplierStats.confirmed], ['متبقي لمورد آخر', supplierStats.remaining], ['صفوف غير معروفة', supplierStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap items-center gap-2"><button disabled={loading} onClick={saveSnapshot} className="rounded-lg bg-teal-700 text-white px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />حفظ رد المورد وتثبيت المتاح</button><span className="text-xs text-slate-500">بعد الحفظ سيتحدث المتبقي من السيرفر، ومنه يتم تنزيل ملف المورد التالي.</span></div><div className="rounded-2xl border bg-white overflow-auto shadow-sm"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الصنف', 'المطلوب', 'المؤكد', 'المتبقي', 'المطابقة', 'النتيجة'].map((head) => <th key={head} className="p-3 text-right">{head}</th>)}</tr></thead><tbody>{supplierResult.details.map((row) => <tr key={row.item.id} className="border-t"><td className="p-3 font-semibold">{row.item.product_name}<div className="text-xs text-slate-400">{row.item.product_code}</div></td><td className="p-3">{row.ordered}</td><td className="p-3">{row.confirmed}</td><td className="p-3 font-bold">{row.remaining}</td><td className="p-3">{row.method === 'code' ? 'بالكود' : row.method === 'name' ? 'بالاسم' : row.method === 'fuzzy' ? `تشابه ${Math.round(row.confidence * 100)}%` : 'غير موجود'}</td><td className="p-3">{row.status}</td></tr>)}</tbody></table></div></>}
         {mode === 'receipt' && receiptResult && <><div className="grid sm:grid-cols-3 gap-3">{[['سليم', receiptStats.ok], ['يحتاج مراجعة', receiptStats.issues], ['أصناف غير متوقعة', receiptStats.unexpected]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-4 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-2">{value}</div></div>)}</div><div className="flex flex-wrap gap-2"><button onClick={exportReceiptReport} className="rounded-lg bg-slate-900 text-white px-4 py-2 font-bold flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" />تصدير تقرير المطابقة</button><button disabled={loading || (allocationMode && receiptResult.unexpected.length > 0) || receiptMissingPrices > 0 || invoiceGuard.blocked} onClick={saveSnapshot} className="rounded-lg bg-teal-700 text-white px-4 py-2 font-bold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" />تسجيل الاستلام فعليًا</button></div>
         {allocationMode && receiptResult.unexpected.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {receiptResult.unexpected.length} صنف غير مخصص لهذا المورد؛ لن يتم تسجيل الفاتورة قبل تصحيح الملف أو التخصيص.</div>}{receiptMissingPrices > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {receiptMissingPrices} صف بدون سعر فعلي؛ تم إيقاف التسجيل المالي حتى استكمال السعر.</div>}
         <div className={`rounded-xl border p-3 text-sm ${invoiceGuard.blocked ? 'border-red-200 bg-red-50 text-red-700' : invoiceGuard.needsReview ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>المتوقع: {money(receiptExpectedTotal)} ج • الفعلي بكل صفوف الملف: {money(receiptActualTotal)} ج • الحد المقبول: {money(invoiceGuard.effectiveLimit)} ج{invoiceLimit > 0 ? ` • سقف الطلبية: ${money(invoiceLimit)} ج` : ''}</div>
