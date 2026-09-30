@@ -76,7 +76,7 @@ test('negative stock remains review-only instead of blocking dual draft creation
 
 
 test('clean path never auto-approves or auto-dispatches after historical persistence', () => {
-  assert.match(unifiedApiSource, /smart_purchase_apply_historical_allocation_v1/);
+  assert.match(unifiedApiSource, /smart_purchase_apply_historical_allocation_v2/);
   assert.match(cleanPageSource, /applyHistoricalAllocation/);
   assert.doesNotMatch(cleanPageSource, /approveOrder\s*\(/);
   assert.doesNotMatch(cleanPageSource, /approveAndReserve\s*\(/);
@@ -98,4 +98,19 @@ test('clean supplier review uses one canonical historical snapshot and no curren
   assert.doesNotMatch(cleanPageSource, /purchaseApi\.supplierDecision\(/);
   assert.doesNotMatch(cleanPageSource, /buildSupplierFinancialRows\(/);
   assert.doesNotMatch(cleanPageSource, /buildSingleSupplierScenarios\(/);
+});
+
+
+test('clean stock upload retries transport failure once on the same sync identity', () => {
+  assert.match(unifiedApiSource, /function isRetryableTransportError/);
+  assert.match(unifiedApiSource, /async function withOneTransportRetry/);
+  assert.match(unifiedApiSource, /withOneTransportRetry\(\(\) => standaloneRpc\('smart_purchase_stage_dual_stock_master_v1'/);
+  assert.match(unifiedApiSource, /withOneTransportRetry\(\(\) => standaloneRpc\('smart_purchase_finalize_dual_stock_master_v1'/);
+  assert.match(unifiedApiSource, /const syncId = `dual-stock-${syncNonce}`/);
+});
+
+test('clean historical persistence contract points at snapshot-checked v2', () => {
+  assert.match(unifiedApiSource, /smart_purchase_historical_allocation_preview_v1/);
+  assert.match(unifiedApiSource, /smart_purchase_apply_historical_allocation_v2/);
+  assert.doesNotMatch(unifiedApiSource, /smart_purchase_apply_historical_allocation_v1/);
 });

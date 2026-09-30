@@ -23,6 +23,24 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   }
 }
 
+function isRetryableTransportError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.name === 'TypeError'
+    || message.includes('انتهت مهلة الاتصال بالخادم')
+    || message.includes('failed to fetch')
+    || message.includes('networkerror')
+    || message.includes('network request failed');
+}
+
+async function withOneTransportRetry(operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isRetryableTransportError(error)) throw error;
+    return operation();
+  }
+}
+
 async function standaloneRpc(functionName, body) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
@@ -163,10 +181,10 @@ export const smartPurchaseUnifiedApi = {
     await runBoundedChunkPool(
       chunks,
       async (chunk) => {
-        const result = await standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
+        const result = await withOneTransportRetry(() => standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
           p_stock_sync_id: syncId,
           p_rows: chunk,
-        });
+        }));
         const reported = Number(result?.staged_rows ?? chunk.length);
         return Number.isFinite(reported) ? Math.max(0, Math.min(chunk.length, reported)) : chunk.length;
       },
@@ -186,10 +204,10 @@ export const smartPurchaseUnifiedApi = {
         },
       }
     );
-    const finalized = await standaloneRpc('smart_purchase_finalize_dual_stock_master_v1', {
+    const finalized = await withOneTransportRetry(() => standaloneRpc('smart_purchase_finalize_dual_stock_master_v1', {
       p_stock_sync_id: syncId,
       p_expected_rows: rows.length,
-    });
+    }));
     return {
       stock_sync_id: syncId,
       staged_rows: staged,
