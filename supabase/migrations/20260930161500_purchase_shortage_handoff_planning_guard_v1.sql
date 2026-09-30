@@ -13,12 +13,7 @@ security definer
 set search_path='pg_catalog','public'
 as $$
   select
-    exists(
-      select 1
-      from public.purchase_shortage_events e
-      where e.order_id=p_order_id
-    )
-    and not exists(
+    not exists(
       select 1
       from public.smart_purchase_order_items i
       where i.order_id=p_order_id

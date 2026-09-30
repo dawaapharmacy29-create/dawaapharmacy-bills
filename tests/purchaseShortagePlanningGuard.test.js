@@ -28,3 +28,12 @@ test('internal guard helpers are fixed-search-path and not client callable', () 
   assert.match(sql, /smart_purchase_order_shortage_handoff_complete_v1\(uuid\)[\s\S]*from public,anon,authenticated/);
   assert.match(sql, /smart_purchase_branch_has_blocking_order_clean_v1\(text\)[\s\S]*from public,anon,authenticated/);
 });
+
+test('fully allocated order does not require a fake shortage event', () => {
+  const helper = sql.slice(
+    sql.indexOf('create or replace function public.smart_purchase_order_shortage_handoff_complete_v1'),
+    sql.indexOf('revoke all on function public.smart_purchase_order_shortage_handoff_complete_v1')
+  );
+  assert.doesNotMatch(helper, /exists\([\s\S]{0,120}purchase_shortage_events e[\s\S]{0,80}where e\.order_id=p_order_id[\s\S]{0,40}\)\s*and\s*not exists/);
+  assert.match(helper, /not exists\([\s\S]*approved_quantity,i\.requested_quantity[\s\S]*sum\(greatest\(0,a\.allocated_quantity\)\)/);
+});
