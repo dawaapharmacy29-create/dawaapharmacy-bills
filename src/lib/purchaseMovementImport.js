@@ -45,9 +45,12 @@ export function normalizeMovementWorkbookRows(rows, fileName = '') {
     const productCode = clean(row[codeIndex]).replace(/\.0+$/, '');
     const productName = clean(row[nameIndex]);
 
-    // Ignore report totals/page footers and truly blank rows.
-    if (!productCode && !productName) continue;
-    if (!productCode || !productName || /عدد الأصناف|page\s*-?\d+/i.test(productName)) continue;
+    // Ignore truly blank/report footer rows, but never silently drop a malformed product row.
+    const joinedRow = row.map(clean).join(' ');
+    if (!productCode && !productName && (!joinedRow || /عدد الأصناف|page\s*-?\d+|وقت الطباعة|copyright/i.test(joinedRow))) continue;
+    if (/عدد الأصناف|page\s*-?\d+|وقت الطباعة|copyright/i.test(joinedRow) && !productCode) continue;
+    if (!productCode) throw new Error(`كود الصنف مفقود في الصف ${rowNo}.`);
+    if (!productName) throw new Error(`اسم الصنف مفقود في الصف ${rowNo}.`);
 
     if (seen.has(productCode)) {
       throw new Error(`الكود ${productCode} مكرر داخل ملف الحركة.`);
