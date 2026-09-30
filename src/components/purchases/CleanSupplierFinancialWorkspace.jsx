@@ -113,6 +113,7 @@ export default function CleanSupplierFinancialWorkspace({
   groups = [],
   scenarios = [],
   loading = false,
+  applying = '',
   message = '',
   error = '',
   draftTotals = {},
