@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   Loader2,
-  RefreshCw,
   ShoppingCart,
   Upload,
 } from 'lucide-react';
