@@ -562,11 +562,17 @@ export default function PurchaseCenterClean() {
   }, [plan, supplierWorkspace.draftTotals]);
 
   const liveReferenceTotal = useMemo(() => {
+    // Once the historical allocation is persisted, the draft line totals are the accounting
+    // source of truth. Using the raw historical average here can differ by a few piastres
+    // because each persisted line is rounded independently.
+    if (supplierWorkspace.historicalApplied && draftOrderTotal > 0) {
+      return draftOrderTotal;
+    }
     if (supplierWorkspace.rows?.length) {
       return supplierWorkspace.rows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0);
     }
     return financialReferenceTotal;
-  }, [financialReferenceTotal, supplierWorkspace.rows]);
+  }, [draftOrderTotal, financialReferenceTotal, supplierWorkspace.historicalApplied, supplierWorkspace.rows]);
 
   const estimatedPurchaseGap = Math.max(0, draftOrderTotal - liveReferenceTotal);
   const reviewAlertsTotal =
@@ -1759,8 +1765,14 @@ export default function PurchaseCenterClean() {
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                   <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
-                  <Metric label="القيمة التاريخية المرجعية" value={`${money(liveReferenceTotal)} ج`} />
-                  <Metric label="فرق تقديري" value={`${money(estimatedPurchaseGap)} ج`} />
+                  <Metric
+                    label={supplierWorkspace.historicalApplied ? 'القيمة التاريخية المثبتة' : 'القيمة التاريخية المرجعية'}
+                    value={`${money(liveReferenceTotal)} ج`}
+                  />
+                  <Metric
+                    label={supplierWorkspace.historicalApplied ? 'فرق بعد التثبيت' : 'فرق تقديري'}
+                    value={`${money(estimatedPurchaseGap)} ج`}
+                  />
                   <Metric label="أصناف الطلبية" value={plan?.totals?.buy_items || 0} />
                   <Metric label="تغطية التحليل التاريخي" value={`${supplierDecision.historicalItems}/${supplierDecision.totalItems}`} />
                   <Metric label="ثقة تاريخية عالية" value={`${supplierDecision.highConfidenceItems}/${supplierDecision.totalItems}`} />
