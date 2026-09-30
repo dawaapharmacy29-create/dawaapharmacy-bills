@@ -1,0 +1,1 @@
+-- Operational data load marker only. Supplier history part 3/7; data intentionally excluded from source control.

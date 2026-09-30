@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import LoginPage from './pages/LoginPage';
@@ -51,11 +51,11 @@ const ReviewNeededInvoices = lazy(() => import('./components/invoices/ReviewNeed
 const DataReviewCenter = lazy(() => import('./pages/DataReviewCenter'));
 const BranchSettlements = lazy(() => import('./pages/BranchSettlements'));
 const PurchaseWorkflowCenter = lazy(() => import('./pages/PurchaseWorkflowCenter'));
-const SmartPurchaseCenter = lazy(() => import('./pages/SmartPurchaseCenter'));
 const SmartPurchaseReceiving = lazy(() => import('./pages/SmartPurchaseReceiving'));
-const SmartPurchaseOrderManagement = lazy(() => import('./pages/SmartPurchaseOrderManagement'));
+const PurchaseShortages = lazy(() => import('./pages/PurchaseShortages'));
 const SmartPurchaseInsights = lazy(() => import('./pages/SmartPurchaseInsights'));
 const PurchaseCommandCenter = lazy(() => import('./pages/PurchaseCommandCenter'));
+const PurchaseCenterClean = lazy(() => import('./pages/PurchaseCenterClean'));
 const TeamMergeCenter = lazy(() => import('./pages/TeamMergeCenter'));
 const AdminSettingsCenter = lazy(() => import('./pages/AdminSettingsCenter'));
 const SystemStatus = lazy(() => import('./pages/SystemStatus'));
@@ -122,10 +122,13 @@ const AuthenticatedApp = () => {
     <Route path="/base44-sync-review" element={<RoleRouteGuard adminOnly><Base44SyncReview /></RoleRouteGuard>} />
     <Route path="/branch-settlements" element={<RoleRouteGuard adminOnly><BranchSettlements /></RoleRouteGuard>} />
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
-    <Route path="/purchase-center" element={<PurchaseCommandCenter />} />
-    <Route path="/smart-purchase-orders" element={<SmartPurchaseCenter />} />
-    <Route path="/smart-purchase-orders/manage" element={<SmartPurchaseOrderManagement />} />
+    <Route path="/purchase-center" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />
+    <Route path="/purchase-center-clean" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />
+    <Route path="/purchase-center-legacy" element={<RoleRouteGuard adminOnly><PurchaseCommandCenter /></RoleRouteGuard>} />
+    <Route path="/smart-purchase-orders" element={<Navigate to="/purchase-center" replace />} />
+    <Route path="/smart-purchase-orders/manage" element={<Navigate to="/purchase-center" replace />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
+    <Route path="/purchase-shortages" element={<PurchaseShortages />} />
     <Route path="/smart-purchase-insights" element={<SmartPurchaseInsights />} />
   </Route><Route path="*" element={<PageNotFound />} /></Routes></Suspense>;
 };

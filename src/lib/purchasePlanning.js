@@ -1,17 +1,10 @@
+import { applyItemPurchaseLimits, resolveItemPurchaseLimits } from './purchasePolicyEngine.js';
+import { explicitDiscountPercent, purchaseUnitCost } from './purchasePricing.js';
+
 const toNumber = (value) => {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
 };
-
-function discountPercent(item = {}) {
-  const value = toNumber(item.expected_discount);
-  return value > 0 ? Math.min(100, value) : 20;
-}
-
-function netPurchasePrice(item = {}) {
-  const publicPrice = Math.max(0, toNumber(item.expected_unit_cost || item.last_purchase_price));
-  return publicPrice * (1 - (discountPercent(item) / 100));
-}
 
 export function normalizeProductKey(row = {}) {
   const code = String(row.product_code || '').trim();
@@ -53,13 +46,16 @@ function hasPriorityException(row = {}) {
 }
 
 export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
-  const targetDays = Math.max(1, toNumber(coverageDays) || 7);
+  const savedTargetDays = Math.max(0, toNumber(row.target_coverage_days));
+  const targetDays = savedTargetDays > 0 ? savedTargetDays : Math.max(1, toNumber(coverageDays) || 7);
   const currentStock = Math.max(0, toNumber(row.current_stock));
   const pendingIncoming = Math.max(0, toNumber(row.pending_incoming));
   const availableStock = currentStock + pendingIncoming;
   const averageDaily = estimateDailyUsage(row);
-  const targetStock = Math.max(0, Math.ceil(averageDaily * targetDays));
-  const suggestedQuantity = Math.max(0, targetStock - availableStock);
+  const targetStock = Math.max(0, Math.ceil(Number((averageDaily * targetDays).toFixed(6))));
+  const rawSuggestedQuantity = Math.max(0, targetStock - availableStock);
+  const limitDecision = applyItemPurchaseLimits(rawSuggestedQuantity, row);
+  const suggestedQuantity = limitDecision.blocked ? rawSuggestedQuantity : limitDecision.quantity;
   const projectedStock = availableStock + suggestedQuantity;
   const projectedCoverageDays = averageDaily > 0 ? projectedStock / averageDaily : 0;
 
@@ -72,11 +68,19 @@ export function calculatePurchaseNeed(row = {}, coverageDays = 7) {
     target_coverage_days: targetDays,
     target_stock: targetStock,
     available_stock: availableStock,
+    raw_suggested_quantity: rawSuggestedQuantity,
     suggested_quantity: suggestedQuantity,
+    item_minimum_quantity: limitDecision.minimum,
+    item_maximum_quantity: limitDecision.maximum,
+    purchase_limit_status: limitDecision.status,
+    purchase_limit_adjusted: limitDecision.adjusted,
+    purchase_limit_blocked: limitDecision.blocked,
+    purchase_limit_reasons: limitDecision.reasons,
     projected_stock: projectedStock,
     projected_coverage_days: projectedCoverageDays,
-    expected_discount: toNumber(row.expected_discount) > 0 ? Math.min(100, toNumber(row.expected_discount)) : 20,
-    calculation_method: 'unified_final_coverage_v6_slow_mover_guard',
+    expected_discount: explicitDiscountPercent(row),
+    coverage_policy_source: savedTargetDays > 0 ? 'saved_product_policy' : 'order_default',
+    calculation_method: 'unified_final_coverage_v7_product_policy',
   };
 }
 
@@ -129,15 +133,29 @@ export function buildPurchaseCandidates(rows = [], options = {}) {
 
 function isCritical(item) { return hasPriorityException(item); }
 
+function packageStep(item) {
+  const limits = resolveItemPurchaseLimits(item);
+  return limits.has_package_multiple ? limits.package_multiple : 1;
+}
+
+function normalizeProtectedQuantity(value, item, desired) {
+  const step = packageStep(item);
+  const raw = Math.max(0, Math.ceil(toNumber(value)));
+  if (!raw) return 0;
+  return Math.min(desired, Math.ceil(raw / step) * step);
+}
+
 function protectedMinimum(item) {
   const desired=Math.max(0,Math.floor(toNumber(item.desired)));
   if(!desired) return 0;
+  const configuredLimits=resolveItemPurchaseLimits(item);
+  const configuredMinimum=configuredLimits.invalid_range ? 0 : normalizeProtectedQuantity(configuredLimits.minimum || 0,item,desired);
   const requests=Math.max(0,Math.ceil(toNumber(item.customer_requests_count)));
-  if(requests>0) return Math.min(desired,Math.max(1,requests));
-  if(isCritical(item)) return 1;
+  if(requests>0) return normalizeProtectedQuantity(Math.max(configuredMinimum,1,requests),item,desired);
+  if(isCritical(item)) return normalizeProtectedQuantity(Math.max(configuredMinimum,1),item,desired);
   const usage=Math.max(0,estimateDailyUsage(item));
   const available=Math.max(0,toNumber(item.available_stock));
-  return Math.min(desired,Math.max(0,Math.ceil(usage*2)-available));
+  return normalizeProtectedQuantity(Math.max(configuredMinimum,Math.max(0,Math.ceil(usage*2)-available)),item,desired);
 }
 
 function marginalPriority(item,current) {
@@ -153,7 +171,7 @@ function marginalPriority(item,current) {
 
 export function buildBudgetPlan(rows=[],budgetValue=0) {
   const budget=Math.max(0,toNumber(budgetValue));
-  const source=rows.map((item)=>{const price=netPurchasePrice(item);const desired=Math.max(0,Math.floor(toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity)));return {...item,price,desired};}).filter((item)=>item.price>0&&item.desired>0);
+  const source=rows.map((item)=>{const price=purchaseUnitCost(item);const desired=Math.max(0,Math.floor(toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity)));return {...item,price,desired};}).filter((item)=>item.price>0&&item.desired>0);
   const fullTargetTotal=source.reduce((sum,item)=>sum+item.desired*item.price,0);
   const quantities=new Map(source.map((item)=>[item.id||normalizeProductKey(item),0]));
   let remaining=budget;
@@ -161,11 +179,11 @@ export function buildBudgetPlan(rows=[],budgetValue=0) {
   else if(budget>0){
     const protectedQueue=source.map((item)=>({...item,protectedQty:protectedMinimum(item)})).filter((item)=>item.protectedQty>0).sort((a,b)=>marginalPriority(b,0)-marginalPriority(a,0)||a.price-b.price);
     let moved=true;
-    while(moved&&remaining>0){moved=false;for(const item of protectedQueue){const key=item.id||normalizeProductKey(item);const current=quantities.get(key)||0;if(current>=item.protectedQty||item.price>remaining) continue;quantities.set(key,current+1);remaining-=item.price;moved=true;}}
+    while(moved&&remaining>0){moved=false;for(const item of protectedQueue){const key=item.id||normalizeProductKey(item);const current=quantities.get(key)||0;const step=packageStep(item);const stepCost=step*item.price;if(current>=item.protectedQty||current+step>item.protectedQty||stepCost>remaining) continue;quantities.set(key,current+step);remaining-=stepCost;moved=true;}}
     moved=true;
-    while(moved&&remaining>0){moved=false;const candidates=source.map((item)=>{const key=item.id||normalizeProductKey(item);const current=quantities.get(key)||0;const priority=marginalPriority(item,current);return {...item,key,current,priority,valueScore:priority/Math.max(1,Math.sqrt(item.price))};}).filter((item)=>item.current<item.desired&&item.price<=remaining).sort((a,b)=>b.valueScore-a.valueScore||b.priority-a.priority||a.price-b.price);if(!candidates.length) break;const best=candidates[0];quantities.set(best.key,best.current+1);remaining-=best.price;moved=true;}
+    while(moved&&remaining>0){moved=false;const candidates=source.map((item)=>{const key=item.id||normalizeProductKey(item);const current=quantities.get(key)||0;const step=packageStep(item);const stepCost=step*item.price;const priority=marginalPriority(item,current);return {...item,key,current,step,stepCost,priority,valueScore:priority/Math.max(1,Math.sqrt(stepCost))};}).filter((item)=>item.current<item.desired&&item.current+item.step<=item.desired&&item.stepCost<=remaining).sort((a,b)=>b.valueScore-a.valueScore||b.priority-a.priority||a.stepCost-b.stepCost);if(!candidates.length) break;const best=candidates[0];quantities.set(best.key,best.current+best.step);remaining-=best.stepCost;moved=true;}
   }
-  const plannedRows=rows.map((item)=>{const key=item.id||normalizeProductKey(item);const approvedQuantity=quantities.get(key)||0;const price=netPurchasePrice(item);const desired=Math.max(0,toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity));const protectedQty=protectedMinimum({...item,desired});return {...item,approved_quantity:approvedQuantity,budget_line_total:approvedQuantity*price,original_desired_quantity:desired,protected_minimum_quantity:protectedQty,protected_minimum_met:approvedQuantity>=protectedQty,budget_reduction_percent:desired>0?Number((((desired-approvedQuantity)/desired)*100).toFixed(1)):0,budget_distribution_method:'protected_priority_marginal_value_v5'};});
+  const plannedRows=rows.map((item)=>{const key=item.id||normalizeProductKey(item);const approvedQuantity=quantities.get(key)||0;const price=purchaseUnitCost(item);const desired=Math.max(0,toNumber(item.requested_quantity||item.suggested_quantity||item.approved_quantity));const protectedQty=protectedMinimum({...item,desired});return {...item,approved_quantity:approvedQuantity,budget_line_total:approvedQuantity*price,original_desired_quantity:desired,protected_minimum_quantity:protectedQty,protected_minimum_met:approvedQuantity>=protectedQty,budget_reduction_percent:desired>0?Number((((desired-approvedQuantity)/desired)*100).toFixed(1)):0,budget_distribution_method:'protected_priority_marginal_value_v5'};});
   const total=plannedRows.reduce((sum,item)=>sum+toNumber(item.budget_line_total),0);const activeRows=plannedRows.filter((item)=>toNumber(item.approved_quantity)>0);const zeroedRows=plannedRows.filter((item)=>toNumber(item.approved_quantity)===0&&toNumber(item.requested_quantity||item.suggested_quantity)>0);const reducedRows=plannedRows.filter((item)=>toNumber(item.approved_quantity)<toNumber(item.requested_quantity||item.suggested_quantity));const unmet=plannedRows.filter((item)=>!item.protected_minimum_met&&toNumber(item.protected_minimum_quantity)>0);
   return {rows:plannedRows,budget,full_target_total:fullTargetTotal,budget_ratio:fullTargetTotal>0?budget/fullTargetTotal:0,total,remaining:Math.max(0,budget-total),utilization_percent:budget>0?Number(((total/budget)*100).toFixed(1)):0,active_items:activeRows.length,retained_items_percent:source.length?Number(((activeRows.length/source.length)*100).toFixed(1)):0,total_quantity:activeRows.reduce((sum,item)=>sum+toNumber(item.approved_quantity),0),reduced_items:reducedRows.length,zeroed_items:zeroedRows.length,protected_items_unmet:unmet.length,missing_price_items:rows.filter((item)=>toNumber(item.expected_unit_cost||item.last_purchase_price)<=0).length,distribution_method:'protected_priority_marginal_value_v5'};
 }

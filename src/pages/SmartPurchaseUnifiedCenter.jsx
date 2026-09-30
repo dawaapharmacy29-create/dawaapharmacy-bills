@@ -1,20 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { smartPurchaseUnifiedApi as unified } from '@/api/smartPurchaseUnifiedApi';
 import { smartPurchaseOrderManagementApi as management } from '@/api/smartPurchaseOrderManagementApi';
 import { smartPurchaseApi } from '@/api/smartPurchaseApi';
+import { smartPurchaseProductPolicyApi } from '@/api/smartPurchaseProductPolicyApi';
+import { smartPurchaseBranchPolicyApi } from '@/api/smartPurchaseBranchPolicyApi';
 import {
-  AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Send,
+  AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RefreshCw,
   Upload, ShoppingCart, SlidersHorizontal, Save, WalletCards, Calculator, Eye, ArrowUpDown,
 } from 'lucide-react';
-import { purchaseBudgetGuard } from '@/lib/purchaseFinancialControl';
 import {
   buildBudgetPlan,
   buildPurchaseCandidates,
   estimateDailyUsage,
   isValidProductName,
   mergePurchaseRows,
+  normalizeProductKey,
 } from '@/lib/purchasePlanning';
+import { applyItemPurchaseLimits, evaluateOrderValue } from '@/lib/purchasePolicyEngine';
+import { explicitDiscountPercent, independentReferenceUnitPrice, purchaseLineTotal, purchaseUnitCost, referenceUnitPrice } from '@/lib/purchasePricing';
 
 const BRANCHES = ['دواء الشامي', 'دواء شكري'];
 const STATUS_STEPS = ['مسودة', 'تم التحليل', 'معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا', 'وصلت بالكامل', 'تمت مطابقة الفاتورة', 'مغلقة'];
@@ -25,13 +29,29 @@ const number = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const norm = (value) => String(value ?? '').trim().toLowerCase().replace(/[\s_\-]+/g, ' ');
-const normStatus = (status) => status === 'draft' ? 'مسودة' : status || 'مسودة';
+const STATUS_ALIASES = {
+  draft: 'مسودة',
+  analysis_complete: 'تم التحليل',
+  approved: 'معتمدة',
+  sent: 'تم الإرسال للمورد',
+  partially_received: 'وصلت جزئيًا',
+  received: 'وصلت بالكامل',
+  invoice_matched: 'تمت مطابقة الفاتورة',
+  matched: 'تمت مطابقة الفاتورة',
+  closed: 'مغلقة',
+  cancelled: 'ملغاة',
+  canceled: 'ملغاة',
+};
+const normStatus = (status) => STATUS_ALIASES[String(status || '').trim()] || status || 'مسودة';
 
 const FIELD_LABELS = {
   product_code: 'كود الصنف', product_name: 'اسم الصنف', current_stock: 'الرصيد الحالي',
   sales_30: 'مبيعات آخر 30 يوم', sales_60: 'مبيعات آخر 60 يوم', sales_90: 'مبيعات آخر 90 يوم',
-  avg_daily_usage: 'متوسط الاستهلاك اليومي', last_purchase_price: 'آخر سعر شراء',
+  avg_daily_usage: 'متوسط الاستهلاك اليومي', last_sale_date: 'تاريخ آخر بيع', last_purchase_price: 'آخر سعر شراء',
   pending_incoming: 'الكمية المنتظر وصولها',
+  minimum_order_quantity: 'الحد الأدنى للصنف',
+  maximum_order_quantity: 'الحد الأقصى للصنف',
+  package_multiple: 'مضاعف العبوة',
 };
 const ALIASES = {
   product_code: ['كود الصنف', 'الكود', 'كود', 'code', 'item code', 'product code'],
@@ -41,9 +61,66 @@ const ALIASES = {
   sales_60: ['مبيعات 60 يوم', 'مبيعات 60', 'sales 60', 'sales_60'],
   sales_90: ['مبيعات 90 يوم', 'مبيعات 90', 'sales 90', 'sales_90'],
   avg_daily_usage: ['متوسط الاستهلاك اليومي', 'متوسط الاستهلاك', 'avg daily usage', 'daily average'],
+  last_sale_date: ['تاريخ آخر بيع', 'اخر بيع', 'آخر بيع', 'last sale date', 'last sale'],
   last_purchase_price: ['آخر سعر شراء', 'سعر الشراء', 'السعر', 'purchase price', 'cost', 'price'],
   pending_incoming: ['كمية منتظر وصولها', 'منتظر وصول', 'pending incoming', 'incoming qty', 'on order'],
+  minimum_order_quantity: ['الحد الأدنى للصنف', 'حد أدنى', 'اقل كمية', 'أقل كمية', 'internal minimum quantity', 'min purchase qty', 'min qty'],
+  maximum_order_quantity: ['الحد الأقصى للصنف', 'حد أقصى', 'اكبر كمية', 'أكبر كمية', 'maximum order quantity', 'max qty'],
+  package_multiple: ['مضاعف العبوة', 'عبوة', 'باك', 'كرتونة', 'pack multiple', 'package multiple', 'order multiple'],
 };
+const STOCK_MASTER_ALIASES = {
+  code: ['الكود','كود الصنف'],
+  name: ['إسم الصنف','اسم الصنف'],
+  unit: ['الوحدة'],
+  company: ['الشركة'],
+  shamy: ['الفرعية الشامي'],
+  shokry: ['الادارة فرع شكري','الإدارة فرع شكري'],
+};
+function exactStockHeader(headers, aliases) {
+  return headers.find((header) => aliases.some((alias) => norm(header) === norm(alias))) || '';
+}
+function dualStockMasterMapping(headers) {
+  const resolved = Object.fromEntries(Object.entries(STOCK_MASTER_ALIASES).map(([key, aliases]) => [key, exactStockHeader(headers, aliases)]));
+  return resolved.code && resolved.name && resolved.shamy && resolved.shokry ? resolved : null;
+}
+function inventoryEligibleName(name) {
+  const value = norm(name);
+  return value && !['توصيل','delivery','رسوم','service'].some((token) => value.includes(token));
+}
+function normalizeDualStockMaster(rows, fileName = '') {
+  const headers = Object.keys(rows[0] || {});
+  const map = dualStockMasterMapping(headers);
+  if (!map) return null;
+  const shamy = [];
+  const shokry = [];
+  rows.forEach((row, index) => {
+    const productCode = String(row[map.code] ?? '').trim().replace(/\.0+$/,'');
+    const productName = String(row[map.name] ?? '').trim();
+    if (!productCode || !productName) return;
+    const common = {
+      row_number: index + 2,
+      product_code: productCode,
+      product_name: productName,
+      stock_unit: map.unit ? String(row[map.unit] ?? '').trim() : '',
+      company_name: map.company ? String(row[map.company] ?? '').trim() : '',
+      inventory_eligible: inventoryEligibleName(productName),
+      snapshot_mode: 'stock_only',
+      stock_source: fileName || 'bconnect-dual-branch-stock',
+      pending_incoming: 0,
+      sales_30: 0,
+      sales_60: 0,
+      sales_90: 0,
+      avg_daily_usage: 0,
+      last_purchase_price: 0,
+      minimum_order_quantity: 0,
+      maximum_order_quantity: 0,
+      package_multiple: 0,
+    };
+    shamy.push({ ...common, current_stock: Math.max(0, number(row[map.shamy])) });
+    shokry.push({ ...common, current_stock: Math.max(0, number(row[map.shokry])) });
+  });
+  return { shamy, shokry, map, file_name: fileName };
+}
 const monthKey = (header) => {
   const match = String(header || '').trim().match(/^(20\d{2})[\/-](0?[1-9]|1[0-2])$/);
   return match ? Number(`${match[1]}${String(match[2]).padStart(2, '0')}`) : 0;
@@ -65,14 +142,143 @@ function autoMapping(headers) {
   }
   return mapping;
 }
-function itemPrice(item) { return Math.max(0, number(item.expected_unit_cost || item.last_purchase_price)); }
-function itemDiscount(item) {
-  const value = number(item.expected_discount);
-  return value > 0 ? Math.min(100, value) : 20;
+function normalizeDateValue(value) {
+  if (!value) return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number' && value > 0) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+  }
+  const text = String(value).trim();
+  const iso = text.match(/^(20\d{2})[-\/]([01]?\d)[-\/]([0-3]?\d)$/);
+  if (iso) return `${iso[1]}-${String(iso[2]).padStart(2, '0')}-${String(iso[3]).padStart(2, '0')}`;
+  const dmy = text.match(/^([0-3]?\d)[-\/]([01]?\d)[-\/](20\d{2})$/);
+  if (dmy) return `${dmy[3]}-${String(dmy[2]).padStart(2, '0')}-${String(dmy[1]).padStart(2, '0')}`;
+  return '';
 }
-function netUnitPrice(item) { return itemPrice(item) * (1 - (itemDiscount(item) / 100)); }
+
+const HISTORY_KINDS = {
+  movement_6m: { label: 'حركة الأصناف — 6 شهور' },
+  customer_history: { label: 'مبيعات العملاء — انتشار الصنف' },
+  purchase_history: { label: 'مشتريات الموردين — التاريخ السابق' },
+};
+function findHistoryHeader(headers, aliases) {
+  return headers.find((header) => aliases.some((alias) => norm(header) === norm(alias)))
+    || headers.find((header) => aliases.some((alias) => norm(header).includes(norm(alias)) || norm(alias).includes(norm(header))))
+    || '';
+}
+
+function normalizePurchaseHistoryMatrix(matrix) {
+  const output = [];
+  let supplier = '';
+  let purchaseDate = '';
+  for (const rawRow of matrix) {
+    const row = Array.isArray(rawRow) ? rawRow : [];
+    const normalizedCells = row.map((cell) => norm(cell));
+    const supplierHeaderIndex = normalizedCells.findIndex((cell) => ['إسم المورد','اسم المورد'].some((alias) => cell === norm(alias)));
+    const hasItemHeaders = normalizedCells.some((cell) => cell === norm('ن.الربح'))
+      && normalizedCells.some((cell) => cell === norm('س.شراء'));
+    if (supplierHeaderIndex >= 0 && hasItemHeaders) {
+      supplier = String(row[20] ?? '').trim();
+      purchaseDate = normalizeDateValue(row[22]);
+      continue;
+    }
+    const qty = Math.max(0, number(row[11]));
+    const bonus = Math.max(0, number(row[10]));
+    const unitCost = Math.max(0, number(row[5]));
+    const productName = String(row[14] ?? '').trim();
+    const productCode = String(row[15] ?? '').trim();
+    if (!supplier || !productName || qty <= 0 || unitCost <= 0) continue;
+    output.push({
+      product_code: productCode,
+      product_name: productName,
+      supplier_name: supplier,
+      purchase_qty: qty,
+      bonus_qty: bonus,
+      unit_cost: unitCost,
+      purchase_date: purchaseDate,
+    });
+  }
+  return output;
+}
+
+function normalizeHistoryRows(kind, rows) {
+  const headers = Object.keys(rows[0] || {});
+  const codeCol = findHistoryHeader(headers, ['كود الصنف','الكود','كود','product code','item code','code']);
+  const nameCol = findHistoryHeader(headers, ['اسم الصنف','الصنف','الاسم','الإسم','product name','item name','description']);
+  if (!nameCol) throw new Error('لم أتعرف على عمود اسم الصنف في الملف.');
+
+  if (kind === 'movement_6m') {
+    let qtyCol = findHistoryHeader(headers, ['كمية البيع','مبيعات 6 شهور','اجمالي الكمية','إجمالي الكمية','الكمية','كمية','sales qty','quantity','qty']);
+    let resolvedCodeCol = codeCol;
+    let resolvedNameCol = nameCol;
+    const sample = rows.slice(0, 20);
+    const looksShiftedAbouElAzm = headers.some((header) => norm(header) === norm('الموظف'))
+      && codeCol
+      && sample.filter((row) => String(row[codeCol] ?? '').trim()).length === 0
+      && sample.filter((row) => /^\d+(?:\.0+)?$/.test(String(row[nameCol] ?? '').trim())).length >= Math.min(5, sample.length);
+    if (looksShiftedAbouElAzm) {
+      resolvedCodeCol = nameCol;
+      resolvedNameCol = findHistoryHeader(headers, ['الشركة']);
+      qtyCol = findHistoryHeader(headers, ['الوحدة']);
+    }
+    if (!qtyCol || !resolvedNameCol) throw new Error('لم أتعرف على كمية/اسم الصنف في ملف الست شهور.');
+    const grouped = new Map();
+    for (const row of rows) {
+      const code = String(row[resolvedCodeCol] ?? '').trim();
+      const name = String(row[resolvedNameCol] ?? '').trim();
+      if (!name) continue;
+      const key = code || norm(name);
+      const current = grouped.get(key) || { product_code: code, product_name: name, sales_6m: 0 };
+      current.sales_6m += Math.max(0, number(row[qtyCol]));
+      grouped.set(key, current);
+    }
+    return [...grouped.values()];
+  }
+
+  if (kind === 'customer_history') {
+    const customerCol = findHistoryHeader(headers, ['كود العميل','رقم العميل','اسم العميل','إسم العميل','العميل','رقم الموبايل','الموبايل','customer code','customer name','customer','mobile','phone']);
+    if (!customerCol) throw new Error('لم أتعرف على عمود العميل في ملف مبيعات العملاء.');
+    const grouped = new Map();
+    rows.forEach((row, index) => {
+      const code = String(row[codeCol] ?? '').trim();
+      const name = String(row[nameCol] ?? '').trim();
+      if (!name) return;
+      const key = code || norm(name);
+      const customer = String(row[customerCol] ?? '').trim() || `row-${index + 2}`;
+      const current = grouped.get(key) || { product_code: code, product_name: name, customers: new Set() };
+      current.customers.add(customer);
+      grouped.set(key, current);
+    });
+    return [...grouped.values()].map((row) => ({
+      product_code: row.product_code,
+      product_name: row.product_name,
+      distinct_customers: row.customers.size,
+    }));
+  }
+
+  const supplierCol = findHistoryHeader(headers, ['اسم المورد','المورد','supplier name','supplier']);
+  const qtyCol = findHistoryHeader(headers, ['كمية الشراء','الكمية','كمية','purchase qty','quantity','qty']);
+  const bonusCol = findHistoryHeader(headers, ['البونص','بونص','bonus','bonus qty']);
+  const costCol = findHistoryHeader(headers, ['سعر الشراء','سعر شراء','purchase price','unit cost','cost']);
+  const dateCol = findHistoryHeader(headers, ['تاريخ الشراء','تاريخ الفاتورة','التاريخ','purchase date','invoice date','date']);
+  if (!supplierCol || !qtyCol || !costCol) throw new Error('ملف المشتريات يحتاج المورد + الكمية + سعر الشراء.');
+  return rows.map((row) => ({
+    product_code: String(row[codeCol] ?? '').trim(),
+    product_name: String(row[nameCol] ?? '').trim(),
+    supplier_name: String(row[supplierCol] ?? '').trim(),
+    purchase_qty: Math.max(0, number(row[qtyCol])),
+    bonus_qty: bonusCol ? Math.max(0, number(row[bonusCol])) : 0,
+    unit_cost: Math.max(0, number(row[costCol])),
+    purchase_date: dateCol ? normalizeDateValue(row[dateCol]) : '',
+  })).filter((row) => row.product_name && row.supplier_name && row.purchase_qty > 0 && row.unit_cost > 0);
+}
+
+function itemPrice(item) { return referenceUnitPrice(item); }
+function itemDiscount(item) { return explicitDiscountPercent(item); }
+function netUnitPrice(item) { return purchaseUnitCost(item); }
 function itemQuantity(item) { return Math.max(0, number(item.approved_quantity)); }
-function itemTotal(item) { return itemQuantity(item) * netUnitPrice(item); }
+function itemTotal(item) { return purchaseLineTotal(item, itemQuantity(item)); }
 function sortValue(item, field) {
   if (field === 'quantity') return itemQuantity(item);
   if (field === 'public_price') return itemPrice(item);
@@ -98,7 +304,7 @@ function exportWorkbook(payload) {
     ['بيانات الطلبية', ''], ['رقم الطلبية', order.order_number || ''], ['الفرع', order.branch || ''],
     ['الحالة', normStatus(order.status)], ['عدد الأصناف', items.length],
     ['إجمالي الكميات', items.reduce((sum, item) => sum + itemQuantity(item), 0)],
-    ['إجمالي تكلفة الصيدلية بعد الخصم', total], ['تاريخ التصدير', new Date().toLocaleString('ar-EG')],
+    ['إجمالي تكلفة الشراء المتوقعة', total], ['تاريخ التصدير', new Date().toLocaleString('ar-EG')],
   ]);
   summary['!dir'] = 'rtl'; summary['!cols'] = [{ wch: 30 }, { wch: 28 }];
   const details = XLSX.utils.json_to_sheet(items.map((item) => ({
@@ -106,9 +312,9 @@ function exportWorkbook(payload) {
     'الكمية المطلوبة قبل الميزانية': number(item.requested_quantity),
     'الكمية النهائية المعتمدة': itemQuantity(item), 'الرصيد الحالي': number(item.current_stock),
     'المنتظر وصوله': number(item.pending_incoming), 'متوسط الاستهلاك اليومي': Number(estimateDailyUsage(item).toFixed(3)),
-    'التغطية النهائية بالأيام': Number(finalCoverage(item).toFixed(1)), 'سعر الجمهور': itemPrice(item),
-    'الخصم المتوقع %': itemDiscount(item), 'سعر الصيدلية بعد الخصم': Number(netUnitPrice(item).toFixed(2)),
-    'إجمالي الصنف بعد الخصم': Number(itemTotal(item).toFixed(2)), 'طلبات العملاء': number(item.customer_requests_count),
+    'التغطية النهائية بالأيام': Number(finalCoverage(item).toFixed(1)), 'السعر المرجعي': itemPrice(item),
+    'الخصم المتوقع %': itemDiscount(item), 'تكلفة الوحدة المتوقعة': Number(netUnitPrice(item).toFixed(2)),
+    'إجمالي تكلفة الصنف': Number(itemTotal(item).toFixed(2)), 'طلبات العملاء': number(item.customer_requests_count),
   })));
   details['!dir'] = 'rtl'; details['!autofilter'] = { ref: details['!ref'] || 'A1:L1' }; details['!freeze'] = { ySplit: 1 };
   details['!cols'] = [{ wch: 14 }, { wch: 38 }, { wch: 22 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 24 }, { wch: 22 }];
@@ -118,23 +324,51 @@ function exportWorkbook(payload) {
   XLSX.writeFile(workbook, `${String(order.title || order.order_number || 'طلبية').replace(/[\/:*?"<>|]/g, '-')}_${order.order_number || ''}_مراجعة_داخلية.xlsx`);
 }
 
-function exportSendFile(payload) {
+function supplierGroups(payload) {
+  const groups = new Map();
+  for (const item of (payload.items || []).filter((row) => itemQuantity(row) > 0)) {
+    const supplier = String(item.supplier_name || '').trim();
+    if (!supplier) continue;
+    if (!groups.has(supplier)) groups.set(supplier, []);
+    groups.get(supplier).push(item);
+  }
+  return groups;
+}
+
+function exportSendFiles(payload) {
   const order = payload.order || {};
-  const items = (payload.items || [])
-    .filter((item) => itemQuantity(item) > 0)
-    .sort((a, b) => String(a.product_name || '').localeCompare(String(b.product_name || ''), 'ar'));
-  const sheet = XLSX.utils.json_to_sheet(items.map((item) => ({
-    'اسم الصنف': item.product_name || '',
-    'سعر الجمهور': itemPrice(item),
-    'الكمية المطلوبة': itemQuantity(item),
-  })));
-  sheet['!dir'] = 'rtl';
-  sheet['!autofilter'] = { ref: sheet['!ref'] || 'A1:C1' };
-  sheet['!freeze'] = { ySplit: 1 };
-  sheet['!cols'] = [{ wch: 45 }, { wch: 16 }, { wch: 18 }];
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, sheet, 'الطلبية');
-  XLSX.writeFile(workbook, `${String(order.title || order.order_number || 'طلبية').replace(/[\/:*?"<>|]/g, '-')}_${order.order_number || ''}_جاهز_للإرسال.xlsx`);
+  const groups = supplierGroups(payload);
+  if (!groups.size) throw new Error('لا يوجد مورد محدد للأصناف المعتمدة.');
+
+  for (const [supplier, rows] of groups.entries()) {
+    const items = [...rows].sort((a, b) => String(a.product_name || '').localeCompare(String(b.product_name || ''), 'ar'));
+    const sheet = XLSX.utils.json_to_sheet(items.map((item) => ({
+      'كود الصنف': item.product_code || '',
+      'اسم الصنف': item.product_name || '',
+      'الكمية المطلوبة': itemQuantity(item),
+    })));
+    sheet['!dir'] = 'rtl';
+    sheet['!autofilter'] = { ref: sheet['!ref'] || 'A1:C1' };
+    sheet['!freeze'] = { ySplit: 1 };
+    sheet['!cols'] = [{ wch: 16 }, { wch: 45 }, { wch: 18 }];
+
+    const summary = XLSX.utils.aoa_to_sheet([
+      ['المورد', supplier],
+      ['رقم الطلبية', order.order_number || ''],
+      ['الفرع', order.branch || ''],
+      ['عدد الأصناف', items.length],
+      ['إجمالي الكميات', items.reduce((sum, item) => sum + itemQuantity(item), 0)],
+      ['ملاحظة', 'ملف إرسال للمورد — لا يحتوي على أسعار أو سياسات شراء داخلية'],
+    ]);
+    summary['!dir'] = 'rtl';
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, summary, 'ملخص');
+    XLSX.utils.book_append_sheet(workbook, sheet, 'الطلبية');
+    const safeSupplier = supplier.replace(/[\/:*?"<>|]/g, '-');
+    const safeOrder = String(order.title || order.order_number || 'طلبية').replace(/[\/:*?"<>|]/g, '-');
+    XLSX.writeFile(workbook, `${safeOrder}_${order.order_number || ''}_${safeSupplier}.xlsx`);
+  }
 }
 
 async function runPool(rows, worker, concurrency = 8) {
@@ -144,57 +378,226 @@ async function runPool(rows, worker, concurrency = 8) {
   }));
 }
 
+async function loadHydratedOrder(id) {
+  const detail = await unified.getOrder(id);
+  const importId = detail?.order?.source_import_id;
+  if (!importId || !(detail?.items || []).length) return detail;
+  try {
+    const source = await smartPurchaseApi.getImport(importId);
+    const byId = new Map((source?.items || []).map((item) => [String(item.id), item]));
+    const byKey = new Map((source?.items || []).map((item) => [normalizeProductKey(item), item]));
+    return {
+      ...detail,
+      items: (detail.items || []).map((item) => {
+        const analysis = byId.get(String(item.analysis_item_id)) || byKey.get(normalizeProductKey(item)) || {};
+        return { ...analysis, ...item };
+      }),
+      analysis_source: source?.import || null,
+    };
+  } catch {
+    return detail;
+  }
+}
+
 export default function SmartPurchaseUnifiedCenter() {
   const [data, setData] = useState({ orders: [], pending_actions: {} });
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const dashboardRunningRef = useRef(false);
+  const dashboardRefreshPendingRef = useRef(null);
+  const stockSaveRunningRef = useRef(false);
+  const analysisRunningRef = useRef(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [branch, setBranch] = useState('دواء الشامي');
   const [creationTitle, setCreationTitle] = useState('');
   const [editingTitle, setEditingTitle] = useState('');
-  const [coverageDays, setCoverageDays] = useState(7);
+  const [coverageDays, setCoverageDays] = useState(14);
+  const [financialMode, setFinancialMode] = useState('medium');
+  const [demandTransferPreview, setDemandTransferPreview] = useState(null);
+  const [creationMinimum, setCreationMinimum] = useState('');
   const [creationBudget, setCreationBudget] = useState('');
   const [fileName, setFileName] = useState('');
   const [rawRows, setRawRows] = useState([]);
+  const [dualStockMaster, setDualStockMaster] = useState(null);
+  const [dualStockMasterSaved, setDualStockMasterSaved] = useState(false);
   const [headers, setHeaders] = useState([]);
   const [mapping, setMapping] = useState({});
   const [mappingSource, setMappingSource] = useState('');
   const [preview, setPreview] = useState([]);
   const [previewErrors, setPreviewErrors] = useState([]);
+  const [productPolicies, setProductPolicies] = useState([]);
+  const [policiesLoading, setPoliciesLoading] = useState(false);
+  const [branchPolicy, setBranchPolicy] = useState(null);
+  const [branchPolicyLoading, setBranchPolicyLoading] = useState(false);
+  const [orderMinimum, setOrderMinimum] = useState('');
   const [budgetLimit, setBudgetLimit] = useState('');
   const [budgetPreviewVisible, setBudgetPreviewVisible] = useState(false);
+  const [supplierDecision, setSupplierDecision] = useState(null);
+  const [supplierDispatches, setSupplierDispatches] = useState([]);
+  const [showCancelOrder, setShowCancelOrder] = useState(false);
+  const [cancelOrderReason, setCancelOrderReason] = useState('');
   const [onlyUrgent, setOnlyUrgent] = useState(false);
   const [onlyCustomers, setOnlyCustomers] = useState(false);
   const [hideZero, setHideZero] = useState(true);
   const [sortConfig, setSortConfig] = useState({ field: 'quantity', direction: 'desc' });
+  const [itemPage, setItemPage] = useState(1);
   const [opsBranch, setOpsBranch] = useState('all');
   const [opsStatus, setOpsStatus] = useState('all');
   const [opsSearch, setOpsSearch] = useState('');
+  const [historyKind, setHistoryKind] = useState('movement_6m');
+  const [historyStatus, setHistoryStatus] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [dashboardWarning, setDashboardWarning] = useState('');
 
   async function refresh(openId) {
-    setLoading(true); setError('');
+    if (dashboardRunningRef.current) {
+      dashboardRefreshPendingRef.current = openId || dashboardRefreshPendingRef.current || true;
+      return;
+    }
+    dashboardRunningRef.current = true;
+    setDashboardLoading(true);
+    setDashboardWarning('');
     try {
       const next = await unified.dashboard();
       setData(next || { orders: [], pending_actions: {} });
       const id = openId || selected?.order?.id;
       if (id) {
-        const detail = await unified.getOrder(id);
+        const detail = await loadHydratedOrder(id);
         setSelected(detail);
-        setBudgetLimit((old) => old || String(Math.ceil((detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0))));
+        try {
+          const dispatchData = await unified.supplierDispatches(id);
+          setSupplierDispatches(dispatchData?.suppliers || []);
+        } catch {
+          setSupplierDispatches([]);
+        }
+        const computedTotal = (detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0);
+        setOrderMinimum(String(number(detail.order?.minimum_order_value) || ''));
+        setBudgetLimit(String(number(detail.order?.maximum_order_value) || number(detail.order?.budget) || Math.ceil(computedTotal)));
       }
-    } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
+    } catch (err) {
+      setDashboardWarning(err?.message === 'canceling statement due to statement timeout'
+        ? 'تعذر تحديث لوحة الطلبات العامة مؤقتًا بسبب بطء الاستعلام. تحليل الطلبية الذكي يعمل بشكل مستقل.'
+        : `تعذر تحديث لوحة الطلبات العامة: ${err.message}`);
+    } finally {
+      dashboardRunningRef.current = false;
+      setDashboardLoading(false);
+      const pending = dashboardRefreshPendingRef.current;
+      dashboardRefreshPendingRef.current = null;
+      if (pending) void refresh(pending === true ? undefined : pending);
+    }
   }
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPolicies() {
+      setPoliciesLoading(true);
+      try {
+        const rows = await smartPurchaseProductPolicyApi.list(branch);
+        if (!cancelled) setProductPolicies(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        if (!cancelled) {
+          setProductPolicies([]);
+          setDashboardWarning((current) => current || `تعذر تحميل سياسات أصناف ${branch}: ${err.message}`);
+        }
+      } finally {
+        if (!cancelled) setPoliciesLoading(false);
+      }
+    }
+    loadPolicies();
+    return () => { cancelled = true; };
+  }, [branch]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBranchPolicy() {
+      setBranchPolicyLoading(true);
+      try {
+        const policy = await smartPurchaseBranchPolicyApi.get(branch);
+        if (!cancelled) {
+          setBranchPolicy(policy || null);
+          setCreationMinimum(Number(policy?.minimum_order_value || 0) > 0 ? String(policy.minimum_order_value) : '');
+          setCreationBudget(Number(policy?.maximum_order_value || 0) > 0 ? String(policy.maximum_order_value) : '');
+          setCoverageDays(Math.max(1, Number(policy?.default_coverage_days || 14)));
+        }
+      } catch (err) {
+        if (!cancelled) setDashboardWarning((current) => current || `تعذر تحميل سياسة طلبية ${branch}: ${err.message}`);
+      } finally {
+        if (!cancelled) setBranchPolicyLoading(false);
+      }
+    }
+    loadBranchPolicy();
+    return () => { cancelled = true; };
+  }, [branch]);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHistoryStatus() {
+      try {
+        const status = await unified.historyStatus(branch);
+        if (!cancelled) setHistoryStatus(status || null);
+      } catch {
+        if (!cancelled) setHistoryStatus(null);
+      }
+    }
+    loadHistoryStatus();
+    return () => { cancelled = true; };
+  }, [branch]);
+
+  async function importHistoryFile(file) {
+    setHistoryLoading(true); setError(''); setMessage('');
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const normalizedRows = historyKind === 'purchase_history'
+        ? normalizePurchaseHistoryMatrix(XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true }))
+        : (() => {
+            const rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: true });
+            if (!rows.length) throw new Error('الملف فارغ.');
+            return normalizeHistoryRows(historyKind, rows);
+          })();
+      if (!normalizedRows.length) throw new Error('لم أجد صفوفًا صالحة للحفظ بعد قراءة الملف.');
+      const chunkSize = 500;
+      let processed = 0;
+      let skipped = 0;
+      for (let start = 0; start < normalizedRows.length; start += chunkSize) {
+        const result = await unified.importHistory({
+          branch,
+          kind: historyKind,
+          fileName: file.name,
+          rows: normalizedRows.slice(start, start + chunkSize),
+          reset: start === 0,
+        });
+        processed += number(result?.processed);
+        skipped += number(result?.skipped);
+      }
+      const status = await unified.historyStatus(branch);
+      setHistoryStatus(status || null);
+      setDemandTransferPreview(null);
+      setMessage(`تم تحديث ذاكرة ${HISTORY_KINDS[historyKind]?.label || 'الشراء'} لفرع ${branch}: ${processed} سجل صالح${skipped ? ` • ${skipped} متروك` : ''}. لن تحتاج لرفع هذا التاريخ مع كل طلبية.`);
+    } catch (err) {
+      setError(`تعذر استيراد الذاكرة التاريخية: ${err.message}`);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   async function openOrder(id) {
-    setLoading(true); setError(''); setMessage(''); setBudgetPreviewVisible(false);
+    setLoading(true); setError(''); setSupplierDecision(null); setMessage(''); setBudgetPreviewVisible(false); setShowCancelOrder(false); setCancelOrderReason('');
     try {
-      const detail = await unified.getOrder(id);
+      const detail = await loadHydratedOrder(id);
       setSelected(detail);
-      setBudgetLimit(String(Math.ceil((detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0))));
+      try {
+        const dispatchData = await unified.supplierDispatches(id);
+        setSupplierDispatches(dispatchData?.suppliers || []);
+      } catch {
+        setSupplierDispatches([]);
+      }
+      const computedTotal = (detail.items || []).reduce((sum, item) => sum + itemTotal(item), 0);
+      setOrderMinimum(String(number(detail.order?.minimum_order_value) || ''));
+      setBudgetLimit(String(number(detail.order?.maximum_order_value) || number(detail.order?.budget) || Math.ceil(computedTotal)));
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -208,7 +611,18 @@ export default function SmartPurchaseUnifiedCenter() {
     finally { setLoading(false); }
   }
 
-  function buildPreview(rows, nextMapping) {
+  function buildPreview(rows, nextMapping, branchOverride = branch, stockMasterOverride = dualStockMaster) {
+    const stockMaster = stockMasterOverride || normalizeDualStockMaster(rows, fileName);
+    if (stockMaster) {
+      const selectedRows = branchOverride === 'دواء شكري' ? stockMaster.shokry : stockMaster.shamy;
+      const errors = selectedRows
+        .filter((row) => !isValidProductName(row.product_name))
+        .map((row) => `صف ${row.row_number}: اسم الصنف غير صالح`);
+      setPreview(mergePurchaseRows(selectedRows));
+      setPreviewErrors(errors);
+      return;
+    }
+
     const months = monthlyHeaders(Object.keys(rows[0] || {}));
     const parsed = rows.map((row, index) => {
       const monthly = months.map((header) => number(row[header]));
@@ -223,7 +637,11 @@ export default function SmartPurchaseUnifiedCenter() {
         pending_incoming: Math.max(0, number(row[nextMapping.pending_incoming])),
         sales_30: sales30, sales_60: sales60, sales_90: sales90,
         avg_daily_usage: number(row[nextMapping.avg_daily_usage]),
+        last_sale_date: normalizeDateValue(row[nextMapping.last_sale_date]),
         last_purchase_price: number(row[nextMapping.last_purchase_price]),
+        minimum_order_quantity: Math.max(0, number(row[nextMapping.minimum_order_quantity])),
+        maximum_order_quantity: Math.max(0, number(row[nextMapping.maximum_order_quantity])),
+        package_multiple: Math.max(0, Math.floor(number(row[nextMapping.package_multiple]))),
       };
     });
     const errors = parsed.filter((row) => !isValidProductName(row.product_name)).map((row) => `صف ${row.row_number}: اسم الصنف غير صالح`);
@@ -231,58 +649,282 @@ export default function SmartPurchaseUnifiedCenter() {
   }
 
   async function readFile(file) {
-    setError(''); setMessage(''); setFileName(file.name);
+    setError(''); setMessage(''); setFileName(file.name); setDemandTransferPreview(null); setDualStockMasterSaved(false);
     try {
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
       const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '', raw: true });
       const cols = Object.keys(rows[0] || {});
       if (!rows.length || !cols.length) throw new Error('الملف فارغ أو لا يحتوي على عناوين أعمدة.');
+
+      const stockMaster = normalizeDualStockMaster(rows, file.name);
+      if (stockMaster) {
+        setRawRows(rows); setHeaders(cols); setMapping({}); setDualStockMaster(stockMaster);
+        setMappingSource('تم التعرف على ملف رصيد الفرعين من B-Connect');
+        buildPreview(rows, {}, branch, stockMaster);
+        const excluded = [...stockMaster.shamy].filter((row) => !row.inventory_eligible).length;
+        setMessage(`تم التعرف على ملف رصيد الفرعين: ${stockMaster.shamy.length} صنف فعلي • سيتم حفظ شكري والشامي معًا مع الحفاظ على تاريخ المبيعات${excluded ? ` • ${excluded} خدمة/صف غير مخزني مستبعد من قرار الشراء` : ''}.`);
+        return;
+      }
+
+      setDualStockMaster(null);
       const saved = loadMappings()[signature(cols)];
       const nextMapping = saved || autoMapping(cols);
       setRawRows(rows); setHeaders(cols); setMapping(nextMapping);
       setMappingSource(saved ? 'تم تطبيق قالب محفوظ تلقائيًا' : monthlyHeaders(cols).length ? 'تم التعرف على ملف B-Connect وأعمدة الشهور' : 'تم التعرف على الأعمدة تلقائيًا');
-      buildPreview(rows, nextMapping);
+      buildPreview(rows, nextMapping, branch, null);
       setMessage(`تمت قراءة ${rows.length} صف وتجميع التكرارات حسب الكود أو اسم الصنف.`);
     } catch (err) { setError(`تعذر قراءة الملف: ${err.message}`); }
   }
+
+  async function persistDualStockMaster(silent = false) {
+    if (!dualStockMaster) return null;
+    if (stockSaveRunningRef.current) return null;
+    stockSaveRunningRef.current = true;
+    if (!silent) { setLoading(true); setError(''); setMessage(''); }
+    try {
+      const result = await unified.saveDualBranchStockMaster(dualStockMaster);
+      setDualStockMasterSaved(true);
+      if (!silent) setMessage(`تم حفظ رصيد الفرعين بنجاح: الشامي ${result?.shamy_saved || 0} صف • شكري ${result?.shokry_saved || 0} صف. تاريخ المبيعات والأسعار القديمة لم يتم مسحه.`);
+      return result;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      stockSaveRunningRef.current = false;
+      if (!silent) setLoading(false);
+    }
+  }
   function changeMapping(field, value) {
     const next = { ...mapping, [field]: value };
+    setDemandTransferPreview(null);
     setMapping(next); buildPreview(rawRows, next); setMappingSource('تم تعديل ربط الأعمدة يدويًا');
+  }
+  function updatePreviewLimit(item, field, value) {
+    const key = normalizeProductKey(item);
+    const nextValue = Math.max(0, Math.floor(number(value)));
+    setPreview((current) => current.map((row) => normalizeProductKey(row) === key ? { ...row, [field]: nextValue } : row));
   }
   function saveMapping() {
     const all = loadMappings(); all[signature(headers)] = mapping;
     localStorage.setItem(MAPPING_KEY, JSON.stringify(all)); setMappingSource('تم حفظ القالب على هذا الجهاز');
   }
+  async function runDemandTransferPreview() {
+    if (analysisRunningRef.current) return;
+    analysisRunningRef.current = true;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      if (dualStockMaster && !dualStockMasterSaved) await persistDualStockMaster(true);
+      const analysisRows = dualStockMaster ? [] : previewWithPolicies;
+      const result = await unified.demandTransferPreview(branch, financialMode, analysisRows, creationBudget);
+      setDemandTransferPreview(result || null);
+      const engine = result?.method?.engine || '';
+      const smartReady = engine === 'smart_purchase_demand_transfer_preview_v10';
+      const quality = result?.method?.data_quality || {};
+      if (smartReady && quality.analysis_ready_for_order === false) {
+        const reasons = [
+          quality.stock_snapshot_fresh === false ? 'الرصيد الحالي قديم' : '',
+          quality.movement_snapshot_fresh === false ? 'حركة المبيعات قديمة' : '',
+          (!creationBudget && quality.financial_snapshot_fresh === false) ? 'الوضع المالي يحتاج تحديث' : '',
+        ].filter(Boolean);
+        setDashboardWarning(`التحليل متاح للمراجعة فقط حاليًا: ${reasons.join(' • ') || 'بيانات التشغيل تحتاج تحديث'}؛ إنشاء الطلبية سيظل مقفولًا حتى تحديث البيانات.`);
+      }
+      setMessage(smartReady
+        ? 'تم التحليل بمحرك V10 المعتمد: الكميات الظاهرة هي خطة التنفيذ نفسها، ولن يعاد حسابها بمنطق التغطية القديم عند إنشاء الطلبية.'
+        : 'تم عرض نتيجة بمحرك غير معتمد حاليًا؛ إنشاء الطلبية سيظل مقفولًا للحماية.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      analysisRunningRef.current = false;
+      setLoading(false);
+    }
+  }
 
-  const plannedCandidates = useMemo(() => buildPurchaseCandidates(preview, { coverage_days: coverageDays }).map((item) => ({
-    ...item, requested_quantity: item.suggested_quantity, approved_quantity: item.suggested_quantity,
-    expected_unit_cost: item.last_purchase_price, supplier_name: '',
-  })), [preview, coverageDays]);
+  async function saveCurrentBranchPolicy() {
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const saved = await smartPurchaseBranchPolicyApi.save({
+        branch,
+        minimumOrderValue: number(creationMinimum),
+        maximumOrderValue: number(creationBudget),
+        defaultCoverageDays: coverageDays,
+      });
+      setBranchPolicy(saved);
+      setMessage(`تم حفظ إعدادات طلبية ${branch} كافتراضي${number(creationMinimum) > 0 ? ` • حد أدنى ${money(creationMinimum)} ج` : ''}${number(creationBudget) > 0 ? ` • حد أقصى ${money(creationBudget)} ج` : ''}.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveCurrentProductPolicies() {
+    const rows = plannedCandidates
+      .filter((item) => number(item.minimum_order_quantity) > 0 || number(item.maximum_order_quantity) > 0 || number(item.target_coverage_days) > 0 || number(item.package_multiple) > 0)
+      .map((item) => ({
+        product_key: normalizeProductKey(item),
+        product_code: item.product_code || '',
+        product_name: item.product_name,
+        minimum_order_quantity: number(item.minimum_order_quantity),
+        maximum_order_quantity: number(item.maximum_order_quantity),
+        target_coverage_days: number(item.target_coverage_days),
+        package_multiple: number(item.package_multiple),
+        is_active: true,
+      }));
+    if (!rows.length) return setError('لا توجد حدود أصناف محددة لحفظها كسياسات دائمة.');
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const result = await smartPurchaseProductPolicyApi.upsertMany(branch, rows);
+      const refreshed = await smartPurchaseProductPolicyApi.list(branch);
+      setProductPolicies(Array.isArray(refreshed) ? refreshed : []);
+      setMessage(`تم حفظ ${result?.updated || rows.length} سياسة صنف لفرع ${branch}. ستُطبق تلقائيًا في الطلبيات القادمة.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const policyByKey = useMemo(() => new Map(
+    productPolicies.map((policy) => [String(policy.product_key || '').trim(), policy])
+  ), [productPolicies]);
+
+  const previewWithPolicies = useMemo(() => preview.map((row) => {
+    const policy = policyByKey.get(normalizeProductKey(row));
+    if (!policy) return row;
+    return {
+      ...row,
+      minimum_order_quantity: number(row.minimum_order_quantity) > 0 ? number(row.minimum_order_quantity) : number(policy.minimum_order_quantity),
+      maximum_order_quantity: number(row.maximum_order_quantity) > 0 ? number(row.maximum_order_quantity) : number(policy.maximum_order_quantity),
+      target_coverage_days: number(policy.target_coverage_days),
+      package_multiple: number(policy.package_multiple),
+      purchase_policy_source: 'saved_policy',
+    };
+  }), [preview, policyByKey]);
+
+  const demandTransferByKey = useMemo(() => new Map(
+    (demandTransferPreview?.plan || []).map((row) => [normalizeProductKey(row), row])
+  ), [demandTransferPreview]);
+
+  const basePreviewByKey = useMemo(() => new Map(
+    previewWithPolicies.map((row) => [normalizeProductKey(row), row])
+  ), [previewWithPolicies]);
+
+  const plannedCandidates = useMemo(() => {
+    if (demandTransferPreview?.plan?.length) {
+      return demandTransferPreview.plan
+        .filter((intelligence) => Math.max(0, number(intelligence.buy_quantity)) > 0)
+        .map((intelligence) => {
+          const base = basePreviewByKey.get(normalizeProductKey(intelligence)) || {};
+          const merged = { ...base, ...intelligence };
+          const rawSmartBuyQuantity = Math.max(0, number(intelligence.buy_quantity));
+          const smartLimit = applyItemPurchaseLimits(rawSmartBuyQuantity, merged);
+          const smartBuyQuantity = smartLimit?.blocked
+            ? rawSmartBuyQuantity
+            : (smartLimit?.quantity ?? rawSmartBuyQuantity);
+          return {
+            ...merged,
+            suggested_quantity: smartBuyQuantity,
+            requested_quantity: smartBuyQuantity,
+            approved_quantity: smartBuyQuantity,
+            expected_unit_cost: purchaseUnitCost({ ...merged, expected_unit_cost: 0 }),
+            supplier_name: '',
+            transfer_from_branch: intelligence?.transfer_from_branch || '',
+            suggested_transfer_quantity: Math.max(0, number(intelligence?.suggested_transfer_qty)),
+            gross_need_before_transfer: Math.max(0, number(intelligence?.gross_need)),
+            movement_class: intelligence?.movement_class || '',
+            smart_purchase_decision: intelligence?.decision || 'buy',
+            smart_purchase_limit_status: smartLimit?.status || merged.purchase_limit_status,
+            smart_purchase_limit_reasons: smartLimit?.reasons || merged.purchase_limit_reasons,
+          };
+        })
+        .filter((item) => number(item.suggested_quantity) > 0);
+    }
+
+    return buildPurchaseCandidates(previewWithPolicies, { coverage_days: coverageDays })
+      .filter((item) => number(item.suggested_quantity) > 0);
+  }, [demandTransferPreview, basePreviewByKey, previewWithPolicies, coverageDays]);
+
+  const invalidItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_blocked), [plannedCandidates]);
+  const adjustedItemLimits = useMemo(() => plannedCandidates.filter((item) => item.purchase_limit_adjusted), [plannedCandidates]);
   const creationBudgetPlan = useMemo(() => {
+    if (demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10') return null;
     const value = number(creationBudget);
     return value > 0 ? buildBudgetPlan(plannedCandidates, value) : null;
-  }, [plannedCandidates, creationBudget]);
+  }, [plannedCandidates, creationBudget, demandTransferPreview]);
   const rowsForCreation = creationBudgetPlan ? creationBudgetPlan.rows.filter((item) => number(item.approved_quantity) > 0) : plannedCandidates;
-  const creationTotal = rowsForCreation.reduce((sum, item) => sum + number(item.approved_quantity || item.suggested_quantity) * itemPrice(item), 0);
-  const openOrderForBranch = (data.orders || []).find((order) => order.branch === branch && ['مسودة', 'تم التحليل', 'معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا'].includes(normStatus(order.status)));
+  const creationTotal = rowsForCreation.reduce((sum, item) => sum + purchaseLineTotal(item, number(item.approved_quantity || item.suggested_quantity)), 0);
+  const creationOrderGuard = useMemo(() => evaluateOrderValue(creationTotal, {
+    minimum_order_value: number(creationMinimum),
+    maximum_order_value: number(creationBudget),
+  }), [creationTotal, creationMinimum, creationBudget]);
+  const planningOrdersForBranch = (data.orders || []).filter((order) => order.branch === branch && ['مسودة', 'تم التحليل', 'معتمدة'].includes(normStatus(order.status)));
+  const openOrderForBranch = planningOrdersForBranch[0] || null;
 
   async function importAndCreate() {
-    if (!mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
-    if (!plannedCandidates.length) return setError('لا توجد أصناف تحتاج شراء وفق أيام التغطية الحالية.');
-    if (openOrderForBranch) return setError(`يوجد طلبية مفتوحة للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أغلقها قبل إنشاء طلبية جديدة.`);
-    if (creationBudget && rowsForCreation.length === 0) return setError('الميزانية لا تكفي لإضافة أي صنف بسعره الحالي.');
-    if (creationBudget && creationTotal > number(creationBudget) + 0.01) return setError(`قيمة الطلبية ${money(creationTotal)} ج تتجاوز الحد المالي ${money(creationBudget)} ج.`);
+    if (!dualStockMaster && !mapping.product_name) return setError('حدد عمود اسم الصنف أولًا.');
+    if (preview.length > 0 && (!demandTransferPreview || demandTransferPreview.branch !== branch)) return setError('شغّل «تحليل ذكي قبل الشراء» على الملف الحالي قبل إنشاء الطلبية.');
+    if (preview.length > 0 && demandTransferPreview?.method?.engine !== 'smart_purchase_demand_transfer_preview_v10') return setError('محرك التحليل المصحح غير نشط على قاعدة البيانات بعد. إنشاء الطلبية مقفول حتى تفعيل الإصلاح حتى لا نعتمد أرقامًا قديمة أو مضخمة.');
+    if (demandTransferPreview?.method?.data_quality?.analysis_ready_for_order === false) return setError('بيانات الرصيد/الحركة/الوضع المالي ليست حديثة بما يكفي لإنشاء طلبية آمنة. حدّث البيانات ثم أعد التحليل.');
+    if (!plannedCandidates.length) return setError('لا توجد أصناف وصلت لنقطة إعادة الطلب وتحتاج شراء الآن.');
+    if (openOrderForBranch) return setError(`يوجد طلبية في مرحلة التخطيط/الاعتماد للفرع رقم ${openOrderForBranch.order_number}. أكملها أو أرسلها للمورد قبل إنشاء طلبية جديدة.`);
+    if (invalidItemLimits.length) return setError(`يوجد ${invalidItemLimits.length} صنف الحد الأدنى له أكبر من الحد الأقصى. راجع حدود الأصناف قبل إنشاء الطلبية.`);
+    if (creationBudget && rowsForCreation.length === 0) return setError('الحد الأقصى لا يكفي لإضافة أي صنف بسعره الحالي.');
+    if (creationBudgetPlan?.protected_items_unmet > 0) return setError(`الحد الأقصى الحالي لا يكفي للحفاظ على الحد الأدنى لـ ${creationBudgetPlan.protected_items_unmet} صنف محمي. ارفع الحد الأقصى أو راجع حدود الأصناف.`);
+    if (creationOrderGuard.invalid_range) return setError('حد الطلبية الأدنى لا يمكن أن يكون أكبر من الحد الأقصى.');
+    if (creationOrderGuard.above_maximum) return setError(`قيمة الطلبية ${money(creationTotal)} ج تتجاوز الحد الأقصى ${money(creationBudget)} ج.`);
+    if (creationOrderGuard.below_minimum) return setError(`قيمة الطلبية ${money(creationTotal)} ج أقل من الحد الأدنى ${money(creationMinimum)} ج.`);
     await run(async () => {
       const imported = await smartPurchaseApi.importRows({
-        file_name: fileName, branch, coverage_days: coverageDays, safety_days: 0,
-        enforce_budget: Boolean(creationBudgetPlan), budget_limit: number(creationBudget),
-        rows: rowsForCreation.map((item) => ({ ...item, budget_quantity: number(item.approved_quantity || item.suggested_quantity) })),
+        file_name: fileName,
+        branch,
+        coverage_days: coverageDays,
+        safety_days: 0,
+        preserve_plan: demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10',
+        enforce_budget: false,
+        budget_limit: number(creationBudget),
+        rows: rowsForCreation.map((item) => ({
+          ...item,
+          old_discount: itemDiscount(item),
+          budget_quantity: number(item.approved_quantity || item.suggested_quantity),
+        })),
       });
       const title = creationTitle.trim() || `طلبية ${branch}`;
-      const created = await smartPurchaseApi.createOrder({ import_id: imported.id, branch, title });
-      setPreview([]); setRawRows([]); setHeaders([]); setFileName(''); setShowImport(false); setCreationBudget(''); setCreationTitle('');
+      const created = await smartPurchaseApi.createOrderFromPlan({
+        importId: imported.id,
+        branch,
+        title,
+        budget: number(creationBudget),
+        minimumOrderValue: number(creationMinimum),
+        maximumOrderValue: number(creationBudget),
+        items: rowsForCreation.map((item) => ({
+          analysis_item_id: item.id || item.analysis_item_id || null,
+          product_code: item.product_code || '',
+          product_name: item.product_name,
+          supplier_name: item.supplier_name || '',
+          requested_quantity: number(item.requested_quantity || item.suggested_quantity),
+          approved_quantity: number(item.approved_quantity || item.suggested_quantity),
+          expected_unit_cost: purchaseUnitCost(item),
+          expected_discount: itemDiscount(item),
+          customer_requests_count: number(item.customer_requests_count),
+          priority_score: number(item.priority_score),
+          minimum_order_quantity: number(item.minimum_order_quantity),
+          maximum_order_quantity: number(item.maximum_order_quantity),
+          package_multiple: number(item.package_multiple),
+          transfer_from_branch: item.transfer_from_branch || '',
+          suggested_transfer_quantity: number(item.suggested_transfer_quantity),
+          gross_need_before_transfer: number(item.gross_need_before_transfer),
+          movement_class: item.movement_class || '',
+          smart_purchase_decision: item.smart_purchase_decision || '',
+        })),
+      });
+
+      setPreview([]); setRawRows([]); setHeaders([]); setFileName(''); setShowImport(false);
+      setCreationMinimum(number(branchPolicy?.minimum_order_value) > 0 ? String(branchPolicy.minimum_order_value) : '');
+      setCreationBudget(number(branchPolicy?.maximum_order_value) > 0 ? String(branchPolicy.maximum_order_value) : '');
+      setCoverageDays(Math.max(1, number(branchPolicy?.default_coverage_days) || 7));
+      setCreationTitle('');
       return created;
-    }, 'تم إنشاء الطلبية وفق التغطية والميزانية المحددة.');
+    }, 'تم إنشاء الطلبية بنفس كميات خطة V10 المعتمدة والحد المالي المحدد.');
   }
 
   const items = selected?.items || [];
@@ -291,6 +933,22 @@ export default function SmartPurchaseUnifiedCenter() {
     quantity: items.reduce((sum, item) => sum + itemQuantity(item), 0),
     total: items.reduce((sum, item) => sum + itemTotal(item), 0),
     average_discount: items.filter((item) => itemQuantity(item) > 0).length ? items.filter((item) => itemQuantity(item) > 0).reduce((sum, item) => sum + itemDiscount(item), 0) / items.filter((item) => itemQuantity(item) > 0).length : 0,
+  }), [items]);
+  const storedOrderTotal = number(selected?.order?.approved_total || selected?.order?.expected_total);
+  const orderTotalDifference = storedOrderTotal - totals.total;
+  const orderTotalMismatch = Boolean(selected?.order?.id) && Math.abs(orderTotalDifference) > 0.01;
+  const orderMissingSupplierItems = useMemo(() => items.filter((item) => itemQuantity(item) > 0 && !String(item.supplier_name || '').trim()), [items]);
+  const orderMissingCostItems = useMemo(() => items.filter((item) => itemQuantity(item) > 0 && netUnitPrice(item) <= 0), [items]);
+  const orderUnverifiedCostItems = useMemo(() => items.filter((item) => itemQuantity(item) > 0 && netUnitPrice(item) > 0 && !item.cost_verified_at), [items]);
+  const orderItemLimitViolations = useMemo(() => items.filter((item) => {
+    const qty = itemQuantity(item);
+    const min = number(item.minimum_order_quantity);
+    const max = number(item.maximum_order_quantity);
+    const pack = Math.max(0, Math.floor(number(item.package_multiple)));
+    return (min > 0 && max > 0 && min > max)
+      || (qty > 0 && min > 0 && qty < min)
+      || (qty > 0 && max > 0 && qty > max)
+      || (qty > 0 && pack > 1 && qty % pack !== 0);
   }), [items]);
   const visibleItems = useMemo(() => items.filter((item) => {
     if (hideZero && itemQuantity(item) <= 0) return false;
@@ -301,78 +959,393 @@ export default function SmartPurchaseUnifiedCenter() {
     const delta = sortValue(a, sortConfig.field) - sortValue(b, sortConfig.field);
     return sortConfig.direction === 'asc' ? delta : -delta;
   }), [items, hideZero, onlyUrgent, onlyCustomers, sortConfig]);
+  const itemPageSize = 100;
+  const itemPageCount = Math.max(1, Math.ceil(visibleItems.length / itemPageSize));
+  const safeItemPage = Math.min(itemPage, itemPageCount);
+  const pagedVisibleItems = useMemo(
+    () => visibleItems.slice((safeItemPage - 1) * itemPageSize, safeItemPage * itemPageSize),
+    [visibleItems, safeItemPage]
+  );
+  useEffect(() => { setItemPage(1); }, [selected?.order?.id, hideZero, onlyUrgent, onlyCustomers, sortConfig.field, sortConfig.direction]);
   function toggleSort(field) {
     setSortConfig((current) => ({ field, direction: current.field === field && current.direction === 'desc' ? 'asc' : 'desc' }));
   }
   const budgetPlan = useMemo(() => number(budgetLimit) > 0 ? buildBudgetPlan(items, number(budgetLimit)) : null, [items, budgetLimit]);
-  const financialGuard = useMemo(() => purchaseBudgetGuard(totals.total, number(budgetLimit)), [totals.total, budgetLimit]);
+  const orderPolicyGuard = useMemo(() => evaluateOrderValue(totals.total, {
+    minimum_order_value: number(orderMinimum),
+    maximum_order_value: number(budgetLimit),
+  }), [totals.total, orderMinimum, budgetLimit]);
   const opsOrders = useMemo(() => (data.orders || []).filter((order) => { const st = normStatus(order.status); if (opsBranch !== 'all' && order.branch !== opsBranch) return false; if (opsStatus !== 'all' && st !== opsStatus) return false; if (opsSearch) { const q = opsSearch.toLowerCase(); const hay = [order.title, order.order_number, order.branch, order.supplier_name, order.ordered_supplier, st].filter(Boolean).join(' ').toLowerCase(); if (!hay.includes(q)) return false; } return true; }), [data.orders, opsBranch, opsStatus, opsSearch]);
   const opsOpen = (data.orders || []).filter((o) => !['مغلقة', 'تمت مطابقة الفاتورة', 'وصلت بالكامل'].includes(normStatus(o.status)));
   const opsAwaiting = (data.orders || []).filter((o) => ['تم الإرسال للمورد', 'وصلت جزئيًا'].includes(normStatus(o.status)));
-  const opsExpected = opsOpen.reduce((sum, o) => sum + number(o.approved_total || o.expected_total || o.total_value), 0);
+  const opsExpected = opsOpen.reduce((sum, o) => sum + number(o.calculated_total || o.approved_total || o.expected_total || o.total_value), 0);
   const opsActual = (data.orders || []).reduce((sum, o) => sum + number(o.actual_total || o.invoice_total || o.received_total), 0);
-  const opsInvoiceIssues = (data.orders || []).filter((o) => { const expected = number(o.approved_total || o.expected_total || o.total_value); const actual = number(o.actual_total || o.invoice_total || o.received_total); return expected > 0 && actual > expected + Math.max(expected * 0.02, 100); });
+  const opsInvoiceIssues = (data.orders || []).filter((o) => { const expected = number(o.calculated_total || o.approved_total || o.expected_total || o.total_value); const actual = number(o.actual_total || o.invoice_total || o.received_total); return expected > 0 && actual > expected + Math.max(expected * 0.02, 100); });
 
   async function updateOne(item, patch) { return management.updateItem({ id: item.id, order_id: selected.order.id, ...patch }); }
+  async function reconcileOrderTotal() {
+    if (!selected?.order?.id) return;
+    await run(
+      () => management.setOrderPolicy(
+        selected.order.id,
+        number(selected.order.minimum_order_value),
+        number(selected.order.maximum_order_value || selected.order.budget),
+      ),
+      'تمت مزامنة قيمة الطلبية مع مجموع البنود الحالية.',
+      selected.order.id,
+    );
+  }
+
+  async function reviewSupplierOffers() {
+    if (!selected?.order?.id) return;
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const decision = await unified.supplierDecision(selected.order.id);
+      setSupplierDecision(decision);
+      setMessage('تم تحليل عروض الموردين الحالية. راجع الاختيارات قبل تطبيقها.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function resolveSupplierRecommendationQuantity(item, recommended = {}, neededQty = 0) {
+    const internalMin = Math.max(0, number(item?.minimum_order_quantity));
+    const internalMax = Math.max(0, number(item?.maximum_order_quantity));
+    const supplierMoq = Math.max(0, number(recommended?.minimum_order_quantity));
+    const available = Math.max(0, number(recommended?.available_quantity));
+    const packageMultiple = Math.max(0, Math.floor(number(item?.package_multiple)));
+    const raw = Math.max(0, number(recommended?.purchase_qty || neededQty), internalMin, supplierMoq);
+    const qty = packageMultiple > 1 ? Math.ceil(raw / packageMultiple) * packageMultiple : Math.ceil(raw);
+    const conflict = !item
+      || qty <= 0
+      || (internalMax > 0 && qty > internalMax)
+      || (available > 0 && qty > available)
+      || number(recommended?.net_unit_cost) <= 0;
+    return { qty, conflict, packageMultiple };
+  }
+
+  async function applySupplierRecommendations() {
+    if (!selected?.order?.id || !supplierDecision?.items?.length) return;
+    const currentById = new Map(items.map((item) => [String(item.id), item]));
+    const plan = supplierDecision.items
+      .filter((decision) => decision?.recommended?.offer_id && decision?.recommended?.quantity_fully_available !== false)
+      .map((decision) => {
+        const item = currentById.get(String(decision.item_id));
+        const resolved = resolveSupplierRecommendationQuantity(item, decision.recommended, decision.needed_qty);
+        return resolved.conflict ? null : {
+          item_id: decision.item_id,
+          offer_id: decision.recommended.offer_id,
+          approved_quantity: resolved.qty,
+        };
+      })
+      .filter(Boolean);
+    if (!plan.length) return setError('لا توجد توصيات مورد قابلة للتطبيق بدون كسر حدود الأصناف.');
+    await run(
+      () => management.applySupplierPlan(selected.order.id, plan),
+      `تم تطبيق ${plan.length} اختيار مورد بعد التحقق من الحدود والتوافر.`,
+      selected.order.id,
+    );
+    setSupplierDecision(null);
+  }
+
+  async function saveOrderPolicy() {
+    if (!selected?.order?.id) return;
+    await run(
+      () => management.setOrderPolicy(selected.order.id, number(orderMinimum), number(budgetLimit)),
+      'تم حفظ الحد الأدنى والأقصى للطلبية.',
+      selected.order.id,
+    );
+  }
+
   async function applyBudgetPlan() {
     if (!budgetPlan) return setError('اكتب ميزانية صحيحة أولًا.');
     const changes = budgetPlan.rows.filter((item) => number(item.approved_quantity) !== number(items.find((source) => source.id === item.id)?.approved_quantity));
     setLoading(true); setError('');
     try {
-      await runPool(changes, (item) => updateOne(item, { approved_quantity: number(item.approved_quantity) }), 10);
-      setMessage(`تم ضبط الطلبية إلى ${money(budgetPlan.total)} ج داخل ميزانية ${money(budgetPlan.budget)} ج.`);
+      if (budgetPlan.protected_items_unmet > 0) throw new Error(`الحد الأقصى الحالي لا يكفي للحفاظ على الحد الأدنى لـ ${budgetPlan.protected_items_unmet} صنف محمي.`);
+      await management.setOrderPolicy(selected.order.id, number(orderMinimum), number(budgetLimit));
+      if (changes.length) await management.applyItemPlan(selected.order.id, changes.map((item) => ({
+        id: item.id,
+        approved_quantity: number(item.approved_quantity),
+      })));
+      setMessage(`تم ضبط الطلبية إلى ${money(budgetPlan.total)} ج داخل الحد الأقصى ${money(budgetPlan.budget)} ج.`);
       setBudgetPreviewVisible(false); await refresh();
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }
   const status = normStatus(selected?.order?.status);
-  const stepIndex = Math.max(0, STATUS_STEPS.indexOf(status));
+  const anySupplierSent = supplierDispatches.some((dispatch) => dispatch.sent);
+  const statusEditable = ['مسودة', 'تم التحليل'].includes(status);
+  const statusReturnable = status === 'معتمدة' && !anySupplierSent;
+  const statusCancelable = ['مسودة', 'تم التحليل', 'معتمدة'].includes(status) && !anySupplierSent;
+  const statusReceivable = ['معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا'].includes(status);
+  const stepIndex = STATUS_STEPS.indexOf(status);
 
   return <div dir="rtl" className="p-3 md:p-4 space-y-4">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2"><ShoppingCart className="h-6 w-6 text-teal-600" /></div><div><h1 className="text-2xl font-bold">مركز الطلبية الموحد</h1><p className="text-sm text-slate-500">إنشاء ومراجعة الطلبية، ضبط الميزانية، ثم تصدير ملف جاهز للإرسال.</p></div></div>
-      <div className="flex gap-2"><button onClick={() => setShowImport((value) => !value)} className="rounded-lg bg-teal-600 text-white px-4 py-2 flex gap-2"><Upload className="w-4 h-4" />طلبية جديدة</button><button onClick={() => refresh()} className="rounded-lg border bg-white px-4 py-2 flex gap-2"><RefreshCw className="w-4 h-4" />تحديث</button></div>
+      <div className="flex gap-2"><button onClick={() => setShowImport((value) => !value)} className="rounded-lg bg-teal-600 text-white px-4 py-2 flex gap-2"><Upload className="w-4 h-4" />طلبية جديدة</button><button onClick={() => refresh()} disabled={dashboardLoading} className="rounded-lg border bg-white px-4 py-2 flex gap-2 disabled:opacity-50"><RefreshCw className={`w-4 h-4 ${dashboardLoading ? 'animate-spin' : ''}`} />تحديث</button></div>
     </header>
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</div>}
+    {dashboardWarning && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-800 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{dashboardWarning}</div>}
     {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
+
+
+    <section className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-bold text-violet-900">ذاكرة الشراء التاريخية — {branch}</h2>
+          <p className="mt-1 text-xs text-violet-700">ترفع الملفات التاريخية مرة واحدة أو عند تحديثها. الطلبية اليومية بعدها تحتاج الرصيد والمبيعات الحديثة فقط.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="rounded-lg border bg-white p-2"><div className="text-slate-500">حركة 6 شهور</div><div className="font-bold text-base">{number(historyStatus?.movement_products)}</div></div>
+          <div className="rounded-lg border bg-white p-2"><div className="text-slate-500">انتشار العملاء</div><div className="font-bold text-base">{number(historyStatus?.customer_products)}</div></div>
+          <div className="rounded-lg border bg-white p-2"><div className="text-slate-500">سجل مورد/صنف</div><div className="font-bold text-base">{number(historyStatus?.supplier_product_pairs)}</div></div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm min-w-[240px]">نوع التاريخ
+          <select value={historyKind} onChange={(event) => setHistoryKind(event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2">
+            {Object.entries(HISTORY_KINDS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
+          </select>
+        </label>
+        <label className="text-sm min-w-[280px]">ملف التاريخ
+          <input type="file" accept=".xlsx,.xls,.csv" disabled={historyLoading} onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) importHistoryFile(file);
+            event.target.value = '';
+          }} className="mt-1 block w-full text-sm disabled:opacity-50" />
+        </label>
+        <div className="text-xs text-slate-500 pb-2">{historyLoading ? 'جاري التجميع والحفظ…' : 'يتم التجميع بالكود، وحفظ الملخص بدل الاحتفاظ بآلاف صفوف التفاصيل داخل عقل الطلبية.'}</div>
+      </div>
+    </section>
+
 
     {showImport && <section className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm space-y-4">
       <h2 className="font-bold flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-teal-600" />إنشاء طلبية من B-Connect أو Excel</h2>
-      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-3">
         <label className="text-sm">اسم الطلبية<input type="text" maxLength="120" value={creationTitle} onChange={(event) => setCreationTitle(event.target.value)} placeholder="مثال: طلبية أول أغسطس — فرع الشامي" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">اسم واضح للمراجعة والبحث، والكود المرجعي سيظهر تحته.</span></label>
-        <label className="text-sm">الفرع<select value={branch} onChange={(event) => setBranch(event.target.value)} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label className="text-sm">التغطية النهائية المطلوبة بالأيام<input type="number" min="1" value={coverageDays} onChange={(event) => setCoverageDays(Math.max(1, number(event.target.value)))} className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">تشمل الرصيد الحالي والمنتظر والطلبية.</span></label>
-        <label className="text-sm">ميزانية الطلبية — اختياري<input type="number" min="1" value={creationBudget} onChange={(event) => setCreationBudget(event.target.value)} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /></label>
+        <label className="text-sm">الفرع<select value={branch} onChange={(event) => { const nextBranch = event.target.value; setBranch(nextBranch); setDemandTransferPreview(null); if (rawRows.length) buildPreview(rawRows, mapping, nextBranch, dualStockMaster); }} className="mt-1 w-full rounded-lg border p-2">{BRANCHES.map((item) => <option key={item}>{item}</option>)}</select></label>
+        <label className="text-sm">الوضع المالي<select value={financialMode} onChange={(event) => { setFinancialMode(event.target.value); setDemandTransferPreview(null); }} className="mt-1 w-full rounded-lg border p-2"><option value="essential">الضروريات فقط — حماية السيولة</option><option value="critical">حرج — الوصول للحد الآمن أولًا</option><option value="medium">متوازن — أولوية للنواقص ونقطة إعادة الطلب</option><option value="comfortable">مريح — يسمح بتعزيز المخزون حسب الأولوية</option></select><span className="text-[11px] text-slate-500">الوضع المالي يحدد شدة التنفيذ والميزانية، وليس عدد أيام ثابت لكل الأصناف. كل صنف له Min / Reorder / Max خاص به.</span></label>
+        <label className="text-sm">الحد الأدنى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationMinimum} onChange={(event) => setCreationMinimum(event.target.value)} placeholder="مثال: 10000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">يمنع إنشاء طلبية أصغر من الحد التشغيلي.</span></label>
+        <label className="text-sm">الحد الأقصى لقيمة الطلبية — اختياري<input type="number" min="0" value={creationBudget} onChange={(event) => { setCreationBudget(event.target.value); setDemandTransferPreview(null); }} placeholder="مثال: 30000" className="mt-1 w-full rounded-lg border p-2" /><span className="text-[11px] text-slate-500">تغيير السقف المالي يتطلب إعادة التحليل حتى يوزع V10 الكميات من جديد.</span></label>
         <label className="text-sm">ملف Excel<input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => event.target.files?.[0] && readFile(event.target.files[0])} className="mt-2 block w-full text-sm" /></label>
       </div>
-      {openOrderForBranch && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">يوجد طلبية مفتوحة للفرع: {openOrderForBranch.order_number}. تم منع إنشاء طلبية مكررة حتى إغلاقها.</div>}
-      {headers.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex justify-between gap-2"><div><h3 className="font-bold">ربط الأعمدة</h3><p className="text-xs text-blue-700">{mappingSource}</p></div><button onClick={saveMapping} className="rounded-lg border bg-white px-3 py-2 flex gap-2"><Save className="w-4 h-4" />حفظ القالب</button></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{Object.entries(FIELD_LABELS).map(([field, label]) => <label key={field} className="text-xs font-semibold">{label}{field === 'product_name' && <span className="text-red-600"> *</span>}<select value={mapping[field] || ''} onChange={(event) => changeMapping(field, event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">غير موجود</option>{headers.map((header) => <option key={header}>{header}</option>)}</select></label>)}</div></div>}
+      <div className="flex flex-wrap items-center gap-2">
+        {dualStockMaster && <button type="button" disabled={loading || dualStockMasterSaved} onClick={() => persistDualStockMaster(false)} className="rounded-lg border border-teal-300 bg-teal-50 px-4 py-2 font-bold text-teal-800 disabled:opacity-50">{dualStockMasterSaved ? 'تم حفظ رصيد الفرعين' : 'حفظ رصيد الفرعين'}</button>}
+        <button type="button" disabled={loading} onClick={runDemandTransferPreview} className="rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 font-bold text-indigo-800 disabled:opacity-50">تحليل ذكي قبل الشراء</button>
+        <span className="text-xs text-slate-500">{dualStockMaster ? 'ملف الرصيد سيُحفظ للفرعين تلقائيًا قبل التحليل، مع الحفاظ على تاريخ المبيعات والأسعار.' : 'يستخدم الحركة الحديثة + ذاكرة 6 شهور + انتشار العملاء، ثم يفحص التحويل الداخلي قبل اقتراح الشراء.'}</span>
+      </div>
+      {demandTransferPreview?.plan?.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/30 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h3 className="font-bold">نتيجة ذكاء الطلبية قبل الشراء</h3><p className="text-xs text-slate-500 mt-1">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10' ? `V10 • احتياج الفترة ${money(demandTransferPreview.summary?.period_need_value)} ج • ميزانية التنفيذ اليوم ${money(demandTransferPreview.summary?.recommended_daily_budget)} ج` : demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9' ? `V9 ديناميكي • متوسط هدف ${number(demandTransferPreview.summary?.avg_dynamic_target_days).toFixed(1)} يوم • نقطة إعادة طلب ${number(demandTransferPreview.summary?.avg_reorder_point_days).toFixed(1)} يوم` : (demandTransferPreview.financial_mode === 'essential' ? 'الضروريات فقط • 7 أيام • أولوية مشددة' : `تغطية ${demandTransferPreview.target_coverage_days} يوم`)} • التحويل الداخلي يُخصم قبل الشراء.</p></div>
+          <div className="text-sm font-bold">{demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10' ? 'طلبية اليوم' : 'شراء مقترح'}: {number(demandTransferPreview.summary?.suggested_buy_units)} وحدة • {money(demandTransferPreview.summary?.suggested_buy_value)} ج</div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+          {(demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v10'
+            ? [
+                ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
+                ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
+                ['شراء اليوم', demandTransferPreview.summary?.buy_now_items || 0],
+                ['مؤجل للدفعة القادمة', demandTransferPreview.summary?.deferred_budget_items || 0],
+                ['ميزانية اليوم', `${money(demandTransferPreview.summary?.recommended_daily_budget)} ج`],
+              ]
+            : demandTransferPreview?.method?.engine === 'smart_purchase_demand_transfer_preview_v9'
+            ? [
+                ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
+                ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
+                ['شراء الآن', demandTransferPreview.summary?.buy_items || 0],
+                ['مراقبة — لم يصل إعادة الطلب', demandTransferPreview.summary?.monitor_items || 0],
+                ['متوقف مؤقتًا', demandTransferPreview.summary?.paused_items || 0],
+              ]
+            : [
+                ['تحويل فقط', demandTransferPreview.summary?.transfer_only_items || 0],
+                ['تحويل ثم شراء', demandTransferPreview.summary?.transfer_then_buy_items || 0],
+                ['شراء مباشر', demandTransferPreview.summary?.buy_items || 0],
+                ['مؤجل — أقل أولوية', demandTransferPreview.summary?.deferred_low_priority_items || 0],
+                ['موقوف بسبب الركود', demandTransferPreview.summary?.blocked_deadstock_items || 0],
+              ]).map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}
+        </div>
+        <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1200px] w-full text-sm"><thead className="bg-slate-50"><tr>{(['smart_purchase_demand_transfer_preview_v9','smart_purchase_demand_transfer_preview_v10'].includes(demandTransferPreview?.method?.engine) ? ['الصنف','الرصيد','توقع/يوم','التغطية','نقطة إعادة الطلب','هدف الصنف','احتياج الفترة','تحويل','شراء اليوم','القرار'] : ['الصنف','الرصيد','متوسط/يوم','التغطية','المستهدف','الاحتياج','تحويل من فرع آخر','شراء','التصنيف','القرار']).map((head)=><th key={head} className="p-2 text-right">{head}</th>)}</tr></thead><tbody>
+          {demandTransferPreview.plan.slice(0, 100).map((row) => <tr key={row.product_code || row.product_name} className="border-t">
+            <td className="p-2 font-semibold">{row.product_name}<div className="text-[11px] text-slate-400">{row.product_code || ''}</div></td>
+            <td className="p-2">{number(row.current_stock)}</td>
+            <td className="p-2">{number(row.forecast_daily ?? row.usage_per_day).toFixed(2)}</td>
+            <td className="p-2">{row.coverage_days == null ? '—' : `${number(row.coverage_days).toFixed(1)} يوم`}</td>
+            <td className="p-2">{['smart_purchase_demand_transfer_preview_v9','smart_purchase_demand_transfer_preview_v10'].includes(demandTransferPreview?.method?.engine) ? `${number(row.reorder_point_days).toFixed(1)} يوم` : number(row.target_stock)}</td>
+            <td className="p-2">{['smart_purchase_demand_transfer_preview_v9','smart_purchase_demand_transfer_preview_v10'].includes(demandTransferPreview?.method?.engine) ? `${number(row.dynamic_target_days).toFixed(0)} يوم / ${number(row.target_stock)} وحدة` : number(row.gross_need)}</td>
+            <td className="p-2 font-bold">{number(row.period_buy_quantity ?? row.need_after_history_cap ?? row.gross_need)}</td>
+            <td className="p-2">{number(row.suggested_transfer_qty) > 0 ? `${number(row.suggested_transfer_qty)} من ${row.transfer_from_branch || 'الفرع الآخر'}` : '—'}</td>
+            <td className="p-2 font-bold">{number(row.buy_quantity)}</td>
+            <td className="p-2">{row.decision === 'transfer_only' ? 'تحويل فقط' : row.decision === 'transfer_then_buy' ? 'تحويل ثم شراء' : row.decision === 'buy_now' ? 'شراء اليوم' : row.decision === 'buy_partial_budget' ? 'شراء جزئي اليوم' : row.decision === 'defer_budget' ? 'مؤجل للدفعة القادمة' : row.decision === 'review_price' ? 'مراجعة سعر' : row.decision === 'buy' ? 'شراء الآن' : row.decision === 'monitor' ? 'مراقبة' : row.decision === 'do_not_buy' ? 'لا شراء الآن' : 'الرصيد كافٍ'}{row.reason ? <div className="text-[11px] text-slate-500 mt-1">{row.reason}</div> : null}</td>
+          </tr>)}
+        </tbody></table></div>
+      </section>}
+
+
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span>{policiesLoading ? 'جاري تحميل سياسات الأصناف…' : `سياسات أصناف محفوظة: ${productPolicies.length}`}</span>
+        <span>{branchPolicyLoading ? 'جاري تحميل سياسة الطلبية…' : branchPolicy ? 'تم تطبيق افتراضي الفرع على الطلبية الجديدة' : 'لا يوجد افتراضي محفوظ للطلبية'}</span>
+        <button type="button" onClick={saveCurrentBranchPolicy} disabled={loading || branchPolicyLoading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-blue-700 disabled:opacity-50">حفظ قيم الطلبية كافتراضي للفرع</button>
+        {plannedCandidates.length > 0 && <button type="button" onClick={saveCurrentProductPolicies} disabled={loading} className="rounded-lg border bg-white px-3 py-1.5 font-semibold text-teal-700 disabled:opacity-50">حفظ حدود الأصناف كسياسات دائمة</button>}
+      </div>
+      {planningOrdersForBranch.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 space-y-2">
+        <div className="font-bold">يوجد {planningOrdersForBranch.length} طلبية في مرحلة التخطيط/الاعتماد للفرع، لذلك تم إيقاف إنشاء طلبية جديدة مؤقتًا.</div>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          {planningOrdersForBranch.map((order) => <button type="button" key={order.id} onClick={() => openOrder(order.id)} className="rounded-lg border border-amber-200 bg-white p-2 text-right hover:border-amber-400">
+            <div className="font-bold">{order.title || order.order_number}</div>
+            <div className="text-xs text-slate-500">{order.order_number} • {normStatus(order.status)}</div>
+            <div className="mt-1 font-semibold">{money(order.calculated_total || order.approved_total || order.expected_total)} ج</div>
+          </button>)}
+        </div>
+        <div className="text-xs">افتح الطلبية المناسبة: كمّلها، أرسلها للمورد، أو استخدم «إلغاء الطلبية» بسبب مسجل لو كانت قديمة/متروكة.</div>
+      </div>}
+      {headers.length > 0 && <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-3"><div className="flex justify-between gap-2"><div><h3 className="font-bold">ربط الأعمدة</h3><p className="text-xs text-blue-700">{mappingSource} • حد الصنف هنا سياسة داخلية لدواء، وليس MOQ المورد.</p></div><button onClick={saveMapping} className="rounded-lg border bg-white px-3 py-2 flex gap-2"><Save className="w-4 h-4" />حفظ القالب</button></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{Object.entries(FIELD_LABELS).map(([field, label]) => <label key={field} className="text-xs font-semibold">{label}{field === 'product_name' && <span className="text-red-600"> *</span>}<select value={mapping[field] || ''} onChange={(event) => changeMapping(field, event.target.value)} className="mt-1 w-full rounded-lg border bg-white p-2"><option value="">غير موجود</option>{headers.map((header) => <option key={header}>{header}</option>)}</select></label>)}</div></div>}
       {preview.length > 0 && <>
         <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[
           ['الأصناف بعد إزالة التكرار', preview.length], ['تحتاج شراء', plannedCandidates.length], ['أخطاء الصفوف', previewErrors.length],
-          ['أصناف الطلبية', rowsForCreation.length], ['التكلفة المتوقعة', `${money(creationTotal)} ج`], ['الميزانية المتبقية', creationBudgetPlan ? `${money(creationBudgetPlan.remaining)} ج` : '—'],
+          ['حدود عدّلت الكمية', adjustedItemLimits.length], ['حدود غير صالحة', invalidItemLimits.length], ['أصناف الطلبية', rowsForCreation.length],
+          ['التكلفة المتوقعة', `${money(creationTotal)} ج`], ['المتبقي للحد الأقصى', creationBudgetPlan ? `${money(creationBudgetPlan.remaining)} ج` : '—'],
         ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="font-bold mt-1">{value}</div></div>)}</div>
-        {creationBudgetPlan && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">داخل الميزانية: {creationBudgetPlan.active_items} صنف، {creationBudgetPlan.total_quantity} وحدة، خُفّض {creationBudgetPlan.reduced_items} صنف، وصُفّر {creationBudgetPlan.zeroed_items} صنف.</div>}
-        <div className="overflow-auto rounded-xl border"><table className="min-w-[1050px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود', 'الصنف', 'الرصيد', 'المتوسط اليومي', 'الاحتياج', 'التغطية بعد الوصول', 'السعر', 'الإجمالي'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{rowsForCreation.slice(0, 30).map((item) => <tr key={item.product_code || item.product_name} className="border-t"><td className="p-2">{item.product_code || '—'}</td><td className="p-2 font-semibold">{item.product_name}</td><td className="p-2">{item.current_stock}</td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2 font-bold">{number(item.approved_quantity || item.suggested_quantity)}</td><td className="p-2">{item.projected_coverage_days?.toFixed?.(1) || coverageDays} يوم</td><td className="p-2">{money(itemPrice(item))}</td><td className="p-2 font-bold">{money(number(item.approved_quantity || item.suggested_quantity) * itemPrice(item))}</td></tr>)}</tbody></table></div>
-        <button disabled={loading || !mapping.product_name || Boolean(openOrderForBranch)} onClick={importAndCreate} className="rounded-lg bg-teal-600 px-5 py-2.5 text-white font-bold flex items-center gap-2 disabled:opacity-50"><ShoppingCart className="w-4 h-4" />إنشاء الطلبية بالمقادير المعروضة</button>
+        {invalidItemLimits.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {invalidItemLimits.length} صنف بحد أدنى أكبر من الحد الأقصى، وتم منع إنشاء الطلبية حتى تصحيحها.</div>}
+        {creationBudgetPlan && <div className={`rounded-xl border p-3 text-sm ${creationBudgetPlan.protected_items_unmet > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>داخل الحد الأقصى: {creationBudgetPlan.active_items} صنف، {creationBudgetPlan.total_quantity} وحدة، خُفّض {creationBudgetPlan.reduced_items} صنف، وصُفّر {creationBudgetPlan.zeroed_items} صنف.{creationBudgetPlan.protected_items_unmet > 0 ? ` يوجد ${creationBudgetPlan.protected_items_unmet} صنف لن يصل للحد الأدنى المحمي.` : ''}</div>}
+        {(creationMinimum || creationBudget) && <div className={`rounded-xl border p-3 text-sm ${creationOrderGuard.invalid_range || creationOrderGuard.above_maximum ? 'border-red-200 bg-red-50 text-red-700' : creationOrderGuard.below_minimum || creationOrderGuard.warning ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+          {creationOrderGuard.invalid_range ? 'راجع الحدود: الحد الأدنى أكبر من الحد الأقصى.'
+            : creationOrderGuard.above_maximum ? `الطلبية أعلى من الحد الأقصى بـ ${money(creationTotal - creationOrderGuard.maximum)} ج.`
+            : creationOrderGuard.below_minimum ? `الطلبية أقل من الحد الأدنى بـ ${money(creationOrderGuard.remaining_to_minimum)} ج.`
+            : `قيمة الطلبية داخل الحدود المحددة. المتبقي حتى الحد الأقصى: ${money(creationOrderGuard.remaining_to_maximum)} ج.`}
+        </div>}
+        <div className="overflow-auto rounded-xl border"><table className="min-w-[1350px] w-full text-sm"><thead className="bg-slate-50"><tr>{['الكود', 'الصنف', 'الرصيد', 'المتوسط اليومي', 'الحد الأدنى', 'الحد الأقصى', 'الاحتياج الخام', 'الكمية النهائية', 'التغطية بعد الوصول', 'تكلفة الوحدة', 'الإجمالي'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{rowsForCreation.slice(0, 30).map((item) => <tr key={item.product_code || item.product_name} className={`border-t ${item.purchase_limit_adjusted ? 'bg-amber-50/40' : ''}`}><td className="p-2">{item.product_code || '—'}</td><td className="p-2 font-semibold">{item.product_name}{item.purchase_limit_adjusted && <div className="text-[11px] text-amber-700">تم ضبط الكمية حسب حدود الصنف</div>}{item.purchase_policy_source === 'saved_policy' && <div className="text-[11px] text-teal-700">سياسة محفوظة للفرع</div>}</td><td className="p-2">{item.current_stock}</td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><input type="number" min="0" value={number(item.minimum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'minimum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2"><input type="number" min="0" value={number(item.maximum_order_quantity)} onChange={(event) => updatePreviewLimit(item, 'maximum_order_quantity', event.target.value)} className="w-20 rounded-lg border bg-white p-1.5" /></td><td className="p-2">{number(item.raw_suggested_quantity)}</td><td className="p-2 font-bold">{number(item.approved_quantity || item.suggested_quantity)}</td><td className="p-2">{item.projected_coverage_days?.toFixed?.(1) || coverageDays} يوم</td><td className="p-2">{money(netUnitPrice(item))}</td><td className="p-2 font-bold">{money(purchaseLineTotal(item, number(item.approved_quantity || item.suggested_quantity)))}</td></tr>)}</tbody></table></div>
+        <button disabled={loading || (!dualStockMaster && !mapping.product_name) || Boolean(openOrderForBranch)} onClick={importAndCreate} className="rounded-lg bg-teal-600 px-5 py-2.5 text-white font-bold flex items-center gap-2 disabled:opacity-50"><ShoppingCart className="w-4 h-4" />إنشاء الطلبية بالمقادير المعروضة</button>
       </>}
     </section>}
 
-    <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-lg">لوحة تشغيل الطلبيات والمشتريات</h2><p className="text-xs text-slate-500">متابعة القيمة والاستلام والفواتير وحالة كل طلبية من مكان واحد.</p></div><div className="flex flex-wrap gap-2"><select value={opsBranch} onChange={(e) => setOpsBranch(e.target.value)} className="rounded-lg border p-2 text-sm"><option value="all">كل الفروع</option>{BRANCHES.map((b) => <option key={b}>{b}</option>)}</select><select value={opsStatus} onChange={(e) => setOpsStatus(e.target.value)} className="rounded-lg border p-2 text-sm"><option value="all">كل الحالات</option>{STATUS_STEPS.map((st) => <option key={st}>{st}</option>)}</select><input value={opsSearch} onChange={(e) => setOpsSearch(e.target.value)} placeholder="بحث بالطلبية أو المورد" className="rounded-lg border p-2 text-sm min-w-[210px]" /></div></div><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['طلبيات مفتوحة', opsOpen.length], ['تنتظر الاستلام', opsAwaiting.length], ['قيمة مفتوحة', money(opsExpected) + ' ج'], ['قيمة فواتير فعلية', money(opsActual) + ' ج'], ['فروق مالية مرتفعة', opsInvoiceIssues.length]].map(([label, value]) => <div key={label} className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>{opsInvoiceIssues.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {opsInvoiceIssues.length} طلبية قيمة فاتورتها الفعلية أعلى من المتوقع فوق السماحية المالية وتحتاج مراجعة.</div>}<div className="overflow-auto rounded-xl border"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-right">الطلبية</th><th className="p-2 text-right">الفرع</th><th className="p-2 text-right">الحالة</th><th className="p-2 text-right">المورد</th><th className="p-2 text-right">المتوقع</th><th className="p-2 text-right">الفعلي</th><th className="p-2 text-right">الفرق</th></tr></thead><tbody>{opsOrders.slice(0, 25).map((o) => { const expected = number(o.approved_total || o.expected_total || o.total_value); const actual = number(o.actual_total || o.invoice_total || o.received_total); const diff = actual - expected; return <tr key={o.id} className="border-t hover:bg-teal-50 cursor-pointer" onClick={() => openOrder(o.id)}><td className="p-2 font-bold">{o.title || o.order_number}</td><td className="p-2">{o.branch || '—'}</td><td className="p-2">{normStatus(o.status)}</td><td className="p-2">{o.supplier_name || o.ordered_supplier || '—'}</td><td className="p-2">{money(expected)} ج</td><td className="p-2">{actual ? money(actual) + ' ج' : '—'}</td><td className={`p-2 font-bold ${diff > Math.max(expected * .02, 100) ? 'text-red-600' : diff > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>{actual ? (diff > 0 ? '+' : '') + money(diff) + ' ج' : '—'}</td></tr>})}</tbody></table></div></section>
+    <section className="rounded-2xl border bg-white p-4 shadow-sm space-y-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-bold text-lg">لوحة تشغيل الطلبيات والمشتريات</h2><p className="text-xs text-slate-500">متابعة القيمة والاستلام والفواتير وحالة كل طلبية من مكان واحد.</p></div><div className="flex flex-wrap gap-2"><select value={opsBranch} onChange={(e) => setOpsBranch(e.target.value)} className="rounded-lg border p-2 text-sm"><option value="all">كل الفروع</option>{BRANCHES.map((b) => <option key={b}>{b}</option>)}</select><select value={opsStatus} onChange={(e) => setOpsStatus(e.target.value)} className="rounded-lg border p-2 text-sm"><option value="all">كل الحالات</option>{STATUS_STEPS.map((st) => <option key={st}>{st}</option>)}</select><input value={opsSearch} onChange={(e) => setOpsSearch(e.target.value)} placeholder="بحث بالطلبية أو المورد" className="rounded-lg border p-2 text-sm min-w-[210px]" /></div></div><div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[['طلبيات مفتوحة', opsOpen.length], ['تنتظر الاستلام', opsAwaiting.length], ['قيمة مفتوحة محسوبة', money(opsExpected) + ' ج'], ['قيمة فواتير فعلية', money(opsActual) + ' ج'], ['فروق مالية مرتفعة', opsInvoiceIssues.length], ['فروق سلامة البيانات', data.pending_actions?.integrity_mismatch || 0]].map(([label, value]) => <div key={label} className="rounded-xl border bg-slate-50 p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>{opsInvoiceIssues.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {opsInvoiceIssues.length} طلبية قيمة فاتورتها الفعلية أعلى من المتوقع فوق السماحية المالية وتحتاج مراجعة.</div>}<div className="overflow-auto rounded-xl border"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-right">الطلبية</th><th className="p-2 text-right">الفرع</th><th className="p-2 text-right">الحالة</th><th className="p-2 text-right">المورد</th><th className="p-2 text-right">المتوقع</th><th className="p-2 text-right">الفعلي</th><th className="p-2 text-right">الفرق</th></tr></thead><tbody>{opsOrders.slice(0, 25).map((o) => { const expected = number(o.calculated_total || o.approved_total || o.expected_total || o.total_value); const actual = number(o.actual_total || o.invoice_total || o.received_total); const diff = actual - expected; return <tr key={o.id} className="border-t hover:bg-teal-50 cursor-pointer" onClick={() => openOrder(o.id)}><td className="p-2 font-bold">{o.title || o.order_number}{o.integrity_ok === false && <div className="mt-1 text-[11px] text-red-600">فرق بيانات: {money(o.header_total_gap)} ج</div>}</td><td className="p-2">{o.branch || '—'}</td><td className="p-2">{normStatus(o.status)}</td><td className="p-2">{o.supplier_name || o.ordered_supplier || '—'}</td><td className="p-2">{money(expected)} ج</td><td className="p-2">{actual ? money(actual) + ' ج' : '—'}</td><td className={`p-2 font-bold ${diff > Math.max(expected * .02, 100) ? 'text-red-600' : diff > 0 ? 'text-amber-600' : 'text-emerald-700'}`}>{actual ? (diff > 0 ? '+' : '') + money(diff) + ' ج' : '—'}</td></tr>})}</tbody></table></div></section>
 
     <div className="grid md:grid-cols-3 gap-3">{[['مسودات تحتاج مراجعة', data.pending_actions?.draft || 0], ['الطلبيات المفتوحة', (data.orders || []).filter((order) => !['مغلقة', 'تمت مطابقة الفاتورة'].includes(normStatus(order.status))).length], ['تنتظر الاستلام', data.pending_actions?.pending_receiving || 0]].map(([label, value]) => <div key={label} className="rounded-2xl border bg-white p-3 shadow-sm"><div className="text-xs text-slate-500">{label}</div><div className="text-2xl font-bold mt-1">{value}</div></div>)}</div>
 
     <div className="grid lg:grid-cols-[250px_minmax(0,1fr)] gap-3">
-      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{(data.orders || []).map((order) => <button key={order.id} onClick={() => openOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold text-base">{order.title || `طلبية ${order.branch}`}</div><div className="text-[11px] text-slate-400 mt-1 font-mono">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {normStatus(order.status)}</div><div className="font-bold mt-1">{money(order.approved_total || order.expected_total)} ج</div></button>)}</div></aside>
+      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{(data.orders || []).map((order) => <button key={order.id} onClick={() => openOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold text-base">{order.title || `طلبية ${order.branch}`}</div><div className="text-[11px] text-slate-400 mt-1 font-mono">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {normStatus(order.status)}</div><div className="font-bold mt-1">{money(order.calculated_total || order.approved_total || order.expected_total)} ج</div>{order.integrity_ok === false && <div className="mt-1 text-[11px] font-semibold text-red-600">فرق Header: {money(order.header_total_gap)} ج</div>}</button>)}</div></aside>
       <main className="min-w-0 space-y-3">{selected ? <>
-        <section className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex flex-wrap justify-between gap-3"><div className="min-w-[260px]"><div className="flex flex-wrap items-center gap-2"><input value={editingTitle || selected.order.title || `طلبية ${selected.order.branch}`} onFocus={() => setEditingTitle(selected.order.title || `طلبية ${selected.order.branch}`)} onChange={(event) => setEditingTitle(event.target.value)} disabled={['مغلقة', 'تمت مطابقة الفاتورة'].includes(status)} className="min-w-[260px] rounded-lg border px-3 py-2 text-xl font-bold disabled:bg-transparent disabled:border-transparent" /><button type="button" disabled={!editingTitle.trim() || editingTitle.trim() === (selected.order.title || `طلبية ${selected.order.branch}`) || ['مغلقة', 'تمت مطابقة الفاتورة'].includes(status)} onClick={() => run(() => unified.updateOrderTitle(selected.order.id, editingTitle.trim()), 'تم تحديث اسم الطلبية.', selected.order.id)} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">حفظ الاسم</button></div><div className="mt-1 text-xs text-slate-400 font-mono">المرجع: {selected.order.order_number}</div><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {status}</p></div><div className="flex gap-2"><button onClick={() => exportSendFile(selected)} className="rounded-lg bg-teal-600 text-white px-3 py-2 flex gap-2"><Download className="w-4 h-4" />ملف جاهز للإرسال</button><button onClick={() => exportWorkbook(selected)} className="rounded-lg border px-3 py-2 flex gap-2"><FileSpreadsheet className="w-4 h-4" />مراجعة داخلية</button>{status === 'معتمدة' && <button onClick={() => run(() => unified.markSent(selected.order.id), 'تم تسجيل إرسال الطلبية.')} className="rounded-lg bg-blue-600 text-white px-3 py-2 flex gap-2"><Send className="w-4 h-4" />تم الإرسال</button>}</div></div><div className="mt-4 flex overflow-x-auto">{STATUS_STEPS.map((step, index) => <div key={step} className="min-w-[115px] flex-1"><div className={`h-2 ${index <= stepIndex ? 'bg-teal-500' : 'bg-slate-200'}`} /><div className={`text-[11px] mt-1 ${index <= stepIndex ? 'font-bold text-teal-700' : 'text-slate-400'}`}>{step}</div></div>)}</div></section>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['الأصناف', totals.items], ['الكميات', totals.quantity], ['متوسط الخصم', `${money(totals.average_discount)}%`], ['سعر الجمهور قبل الخصم', `${money(items.reduce((sum, item) => sum + itemQuantity(item) * itemPrice(item), 0))} ج`], ['تكلفة الصيدلية بعد الخصم', `${money(totals.total)} ج`]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>
-        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3"><h3 className="font-bold flex items-center gap-2"><WalletCards className="w-5 h-5" />التحكم المالي الذكي</h3><div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3"><label className="text-sm">الحد الأقصى لقيمة الطلبية / الفاتورة<input type="number" value={budgetLimit} onChange={(event) => { setBudgetLimit(event.target.value); setBudgetPreviewVisible(false); }} className="mt-1 w-full rounded-lg border bg-white p-2" /></label><div className="rounded-xl bg-white border p-3"><div className="text-xs text-slate-500">التكلفة الحالية</div><div className="font-bold text-lg">{money(totals.total)} ج</div></div><button onClick={() => setBudgetPreviewVisible(true)} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold flex justify-center items-center gap-2"><Eye className="w-5 h-5" />معاينة التوزيع</button><button onClick={applyBudgetPlan} disabled={!budgetPreviewVisible || loading || ['معتمدة', 'تم الإرسال للمورد'].includes(status)} className="rounded-xl bg-emerald-700 text-white px-4 py-3 font-bold flex justify-center items-center gap-2 disabled:opacity-50"><Calculator className="w-5 h-5" />تطبيق الخطة</button></div>{budgetPreviewVisible && budgetPlan && <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[['التكلفة بعد الضبط', `${money(budgetPlan.total)} ج`], ['المتبقي', `${money(budgetPlan.remaining)} ج`], ['الأصناف', budgetPlan.active_items], ['الكميات', budgetPlan.total_quantity], ['المخفضة', budgetPlan.reduced_items], ['المصفرة', budgetPlan.zeroed_items]].map(([label, value]) => <div key={label} className="rounded-lg bg-white border p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}</section>
+        <section className="rounded-2xl border bg-white p-4 shadow-sm"><div className="flex flex-wrap justify-between gap-3"><div className="min-w-[260px]"><div className="flex flex-wrap items-center gap-2"><input value={editingTitle || selected.order.title || `طلبية ${selected.order.branch}`} onFocus={() => setEditingTitle(selected.order.title || `طلبية ${selected.order.branch}`)} onChange={(event) => setEditingTitle(event.target.value)} disabled={!statusEditable || loading} className="min-w-[260px] rounded-lg border px-3 py-2 text-xl font-bold disabled:bg-transparent disabled:border-transparent" /><button type="button" disabled={loading || !editingTitle.trim() || editingTitle.trim() === (selected.order.title || `طلبية ${selected.order.branch}`) || !statusEditable} onClick={() => run(() => unified.updateOrderTitle(selected.order.id, editingTitle.trim()), 'تم تحديث اسم الطلبية.', selected.order.id)} className="rounded-lg border px-3 py-2 text-sm disabled:opacity-40">حفظ الاسم</button></div><div className="mt-1 text-xs text-slate-400 font-mono">المرجع: {selected.order.order_number}</div><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {status}</p></div><div className="flex gap-2"><button
+          onClick={() => {
+            try { exportSendFiles(selected); setError(''); setMessage(`تم تجهيز ${supplierGroups(selected).size} ملف — ملف مستقل لكل مورد.`); }
+            catch (err) { setError(err.message); }
+          }}
+          disabled={!['معتمدة', 'تم الإرسال للمورد'].includes(status)}
+          className="rounded-lg bg-teal-600 text-white px-3 py-2 flex gap-2 disabled:opacity-40"
+        ><Download className="w-4 h-4" />{supplierGroups(selected).size > 1 ? 'ملفات الموردين' : 'ملف المورد'}</button><button onClick={() => exportWorkbook(selected)} className="rounded-lg border px-3 py-2 flex gap-2"><FileSpreadsheet className="w-4 h-4" />مراجعة داخلية</button>
+        {statusReceivable && <a href="/smart-purchase-receiving" className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-bold text-teal-800">فتح الاستلام والمطابقة</a>}</div></div><div className="mt-4 flex overflow-x-auto">{STATUS_STEPS.map((step, index) => <div key={step} className="min-w-[115px] flex-1"><div className={`h-2 ${index <= stepIndex ? 'bg-teal-500' : 'bg-slate-200'}`} /><div className={`text-[11px] mt-1 ${index <= stepIndex ? 'font-bold text-teal-700' : 'text-slate-400'}`}>{step}</div></div>)}</div></section>
+        <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[['الأصناف', totals.items], ['الكميات', totals.quantity], ['متوسط الخصم', `${money(totals.average_discount)}%`], ['القيمة المرجعية', `${money(items.reduce((sum, item) => sum + itemQuantity(item) * itemPrice(item), 0))} ج`], ['تكلفة الشراء المتوقعة', `${money(totals.total)} ج`]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-3"><div className="text-xs text-slate-500">{label}</div><div className="text-xl font-bold mt-1">{value}</div></div>)}</div>
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3"><h3 className="font-bold flex items-center gap-2"><WalletCards className="w-5 h-5" />التحكم المالي الذكي</h3><div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3"><label className="text-sm">الحد الأدنى لقيمة الطلبية<input type="number" min="0" value={orderMinimum} onChange={(event) => setOrderMinimum(event.target.value)} disabled={!statusEditable || loading} className="mt-1 w-full rounded-lg border bg-white p-2 disabled:bg-slate-100" /></label><label className="text-sm">الحد الأقصى لقيمة الطلبية<input type="number" min="0" value={budgetLimit} onChange={(event) => { setBudgetLimit(event.target.value); setBudgetPreviewVisible(false); }} disabled={!statusEditable || loading} className="mt-1 w-full rounded-lg border bg-white p-2 disabled:bg-slate-100" /></label><div className="rounded-xl bg-white border p-3"><div className="text-xs text-slate-500">التكلفة الحالية</div><div className="font-bold text-lg">{money(totals.total)} ج</div></div><button onClick={saveOrderPolicy} disabled={loading || !statusEditable} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold disabled:opacity-50">حفظ الحدود</button><button onClick={() => setBudgetPreviewVisible(true)} className="rounded-xl border border-emerald-300 bg-white px-4 py-3 font-bold flex justify-center items-center gap-2"><Eye className="w-5 h-5" />معاينة التوزيع</button></div><div className="flex justify-end"><button onClick={applyBudgetPlan} disabled={!budgetPreviewVisible || loading || !statusEditable} className="rounded-xl bg-emerald-700 text-white px-4 py-3 font-bold flex justify-center items-center gap-2 disabled:opacity-50"><Calculator className="w-5 h-5" />تطبيق خطة الكميات</button></div>{orderPolicyGuard.invalid_range && <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">الحد الأدنى أكبر من الحد الأقصى.</div>}{orderPolicyGuard.below_minimum && <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800">القيمة الحالية أقل من الحد الأدنى بـ {money(orderPolicyGuard.remaining_to_minimum)} ج.</div>}{budgetPreviewVisible && budgetPlan && <div className="grid sm:grid-cols-2 xl:grid-cols-6 gap-2">{[['التكلفة بعد الضبط', `${money(budgetPlan.total)} ج`], ['المتبقي', `${money(budgetPlan.remaining)} ج`], ['الأصناف', budgetPlan.active_items], ['الكميات', budgetPlan.total_quantity], ['المخفضة', budgetPlan.reduced_items], ['المصفرة', budgetPlan.zeroed_items]].map(([label, value]) => <div key={label} className="rounded-lg bg-white border p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}</section>
         
-        {financialGuard.blocked && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">لا يمكن اعتماد الطلبية: القيمة الحالية أعلى من الحد المالي بمقدار {money(financialGuard.over)} ج.</div>}
-        {financialGuard.warning && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">تنبيه: تم استخدام {money(financialGuard.usage)}% من الحد المالي المحدد.</div>}
-        <div className="flex gap-2">{!['معتمدة', 'تم الإرسال للمورد'].includes(status) ? <button onClick={() => run(() => unified.approveOrder(selected.order.id), 'تم اعتماد الطلبية.')} disabled={loading || totals.total <= 0 || financialGuard.blocked} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" />اعتماد الطلبية</button> : <button onClick={() => run(() => unified.returnToReview(selected.order.id), 'تمت إعادة الطلبية للمراجعة.')} className="rounded-lg border border-amber-300 px-4 py-2">إعادة للمراجعة</button>}</div>
-        <section className="rounded-2xl border bg-white overflow-auto"><table className="min-w-[1500px] w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">الرصيد</th><th className="p-2 text-right">المنتظر</th><th className="p-2 text-right">المطلوب</th><SortableHeader label="المعتمد" field="quantity" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">متوسط يومي</th><th className="p-2 text-right">التغطية النهائية</th><SortableHeader label="سعر الجمهور" field="public_price" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">الخصم %</th><SortableHeader label="سعر الصيدلية" field="net_price" sortConfig={sortConfig} onSort={toggleSort} /><SortableHeader label="الإجمالي" field="total" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">طلبات العملاء</th></tr></thead><tbody>{visibleItems.map((item) => <tr key={item.id} className="border-t"><td className="p-2"><div className="font-semibold">{item.product_name}</div><div className="text-xs text-slate-400">{item.product_code || 'بدون كود'}</div></td><td className="p-2">{number(item.current_stock)}</td><td className="p-2">{number(item.pending_incoming)}</td><td className="p-2">{number(item.requested_quantity)}</td><td className="p-2"><input type="number" min="0" defaultValue={item.approved_quantity} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.approved_quantity)) run(() => updateOne(item, { approved_quantity: value }), 'تم تحديث الكمية.'); }} className="w-20 rounded-lg border p-2 font-bold" /></td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs ${finalCoverage(item) < 3 ? 'bg-red-50 text-red-700' : finalCoverage(item) > 14 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{finalCoverage(item).toFixed(1)} يوم</span></td><td className="p-2"><input type="number" min="0" step="0.01" defaultValue={item.expected_unit_cost} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.expected_unit_cost)) run(() => updateOne(item, { expected_unit_cost: value }), 'تم تحديث سعر الجمهور.'); }} className="w-24 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min="0" max="100" step="0.1" defaultValue={itemDiscount(item)} disabled={['معتمدة', 'تم الإرسال للمورد'].includes(status)} onBlur={(event) => { const value = Math.min(100, Math.max(0, number(event.target.value))); if (value !== itemDiscount(item)) run(() => updateOne(item, { expected_discount: value }), 'تم تحديث خصم الصنف.'); }} className="w-20 rounded-lg border p-2" /></td><td className="p-2 font-semibold">{money(netUnitPrice(item))} ج</td><td className="p-2 font-bold text-teal-800">{money(itemTotal(item))} ج</td><td className="p-2">{number(item.customer_requests_count)}</td></tr>)}</tbody></table></section>
+        <section className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h3 className="font-bold text-blue-950">قرار الموردين</h3><p className="text-xs text-blue-700 mt-1">مقارنة التكلفة الفعلية بعد البونص وMOQ والتوافر ومدة التوريد وأداء المورد السابق.</p></div>
+            <div className="flex gap-2">
+              <button type="button" onClick={reviewSupplierOffers} disabled={loading || !statusEditable} className="rounded-lg border border-blue-300 bg-white px-4 py-2 font-bold text-blue-800 disabled:opacity-50">تحليل عروض الموردين</button>
+              {supplierDecision?.items?.length > 0 && <button type="button" onClick={applySupplierRecommendations} disabled={loading || !statusEditable} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-50">تطبيق التوصيات الصالحة</button>}
+            </div>
+          </div>
+          {supplierDecision?.summary && <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">{[
+            ['الأصناف', supplierDecision.summary.items || 0],
+            ['جاهزة', supplierDecision.summary.ready || 0],
+            ['بدون عرض', supplierDecision.summary.without_offers || 0],
+            ['فجوات توافر', supplierDecision.summary.availability_gaps || 0],
+            ['تكلفة مقترحة', `${money(supplierDecision.summary.recommended_cash_cost)} ج`],
+          ].map(([label, value]) => <div key={label} className="rounded-lg border bg-white p-2"><div className="text-[11px] text-slate-500">{label}</div><div className="font-bold">{value}</div></div>)}</div>}
+          {supplierDecision?.items?.length > 0 && <div className="overflow-auto rounded-xl border bg-white"><table className="min-w-[1250px] w-full text-xs"><thead className="bg-slate-50"><tr>{['الصنف','الحالة','المورد المقترح','الكمية','MOQ','المتاح','البونص','تكلفة فعالة','مدة التوريد','أداء المورد','السبب'].map((header) => <th key={header} className="p-2 text-right">{header}</th>)}</tr></thead><tbody>{supplierDecision.items.map((decision) => { const rec = decision.recommended || {}; const current = items.find((item) => String(item.id) === String(decision.item_id)); const resolved = resolveSupplierRecommendationQuantity(current, rec, decision.needed_qty); const qty = resolved.qty; const max = number(current?.maximum_order_quantity); const min = number(current?.minimum_order_quantity); const internalConflict = resolved.conflict || (qty > 0 && min > 0 && qty < min) || (qty > 0 && max > 0 && qty > max); return <tr key={decision.item_id} className={`border-t ${decision.status === 'no_offer' || decision.status === 'availability_gap' || internalConflict ? 'bg-red-50/50' : decision.status === 'moq_overbuy' ? 'bg-amber-50/50' : ''}`}><td className="p-2 font-bold">{decision.product_name}</td><td className="p-2">{internalConflict ? 'يتعارض مع حد الصنف' : decision.status === 'no_offer' ? 'بدون عرض' : decision.status === 'availability_gap' ? 'المتاح لا يكفي' : decision.status === 'moq_overbuy' ? 'MOQ يزيد الكمية' : 'جاهز'}</td><td className="p-2 font-semibold">{rec.supplier_name || '—'}</td><td className="p-2">{internalConflict ? '—' : qty}{resolved.packageMultiple > 1 && !internalConflict ? <div className="text-[10px] text-slate-400">مضاعف عبوة {resolved.packageMultiple}</div> : null}</td><td className="p-2">{rec.minimum_order_quantity ?? '—'}</td><td className="p-2">{rec.availability_unknown ? 'غير محدد' : (rec.available_quantity ?? '—')}</td><td className="p-2">{rec.earned_bonus_units || 0}</td><td className="p-2">{rec.effective_unit_cost ? `${money(rec.effective_unit_cost)} ج` : '—'}</td><td className="p-2">{rec.lead_time_days != null ? `${rec.lead_time_days} يوم` : '—'}</td><td className="p-2">{rec.performance_score != null ? `${money(rec.performance_score)}/100` : 'بدون تاريخ'}</td><td className="p-2 max-w-[320px]">{rec.reason || '—'}</td></tr>; })}</tbody></table></div>}
+        </section>
+
+        {orderMissingSupplierItems.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {orderMissingSupplierItems.length} صنف بكميات معتمدة بدون مورد. لن يسمح النظام بالاعتماد قبل تحديد المورد.</div>}
+        {orderMissingCostItems.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {orderMissingCostItems.length} صنف بكميات معتمدة بدون تكلفة شراء موجبة. لن يسمح النظام بالاعتماد قبل إدخال التكلفة.</div>}
+        {orderUnverifiedCostItems.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 flex flex-wrap items-center justify-between gap-3">
+          <div><strong>مراجعة الأسعار:</strong> يوجد {orderUnverifiedCostItems.length} صنف سعره الحالي مرجعي ولم يتم تأكيده بعد. تعديل تكلفة الصنف يدويًا أو اختيار عرض مورد يؤكد السعر تلقائيًا.</div>
+          {statusEditable && orderMissingCostItems.length === 0 && <button type="button" onClick={() => run(() => management.verifyOrderCosts(selected.order.id), 'تم اعتماد الأسعار الحالية بعد المراجعة.', selected.order.id)} disabled={loading} className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-bold disabled:opacity-50">اعتماد الأسعار الحالية بعد المراجعة</button>}
+        </div>}
+        {orderItemLimitViolations.length > 0 && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">يوجد {orderItemLimitViolations.length} صنف كميته الحالية تخالف الحد الأدنى أو الأقصى. لن يسمح النظام باعتماد الطلبية قبل تصحيحها.</div>}
+        {orderTotalMismatch && <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800 flex flex-wrap items-center justify-between gap-3">
+          <div><strong>تنبيه سلامة البيانات:</strong> القيمة المخزنة للطلبية {money(storedOrderTotal)} ج بينما مجموع البنود الحالي {money(totals.total)} ج، والفرق {money(Math.abs(orderTotalDifference))} ج.</div>
+          {['مسودة', 'تم التحليل'].includes(status) && <button type="button" onClick={reconcileOrderTotal} disabled={loading} className="rounded-lg border border-orange-300 bg-white px-3 py-2 font-bold disabled:opacity-50">مزامنة القيمة بدون تغيير الكميات</button>}
+        </div>}
+        {orderPolicyGuard.blocked && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">لا يمكن اعتماد الطلبية: القيمة الحالية أعلى من الحد المالي بمقدار {money(Math.max(0, totals.total - orderPolicyGuard.maximum))} ج.</div>}
+        {orderPolicyGuard.warning && !orderPolicyGuard.below_minimum && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">تنبيه: تم استخدام {money(orderPolicyGuard.usage_percent)}% من الحد المالي المحدد.</div>}
+        {['معتمدة', 'تم الإرسال للمورد', 'وصلت جزئيًا'].includes(status) && supplierDispatches.length > 0 && <section className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 space-y-3">
+          <div>
+            <h3 className="font-bold text-indigo-950">إرسال الطلبية للموردين</h3>
+            <p className="text-xs text-indigo-700 mt-1">كل مورد له ملف مستقل وحالة إرسال مستقلة. تتحول الطلبية كلها إلى “تم الإرسال للمورد” فقط بعد تسجيل إرسال كل الموردين.</p>
+          </div>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+            {supplierDispatches.map((dispatch) => <div key={dispatch.supplier_name} className="rounded-xl border bg-white p-3">
+              <div className="font-black">{dispatch.supplier_name}</div>
+              <div className="mt-1 text-xs text-slate-500">{dispatch.items_count} صنف • {money(dispatch.total_value)} ج</div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className={`rounded-full px-2 py-1 text-xs font-bold ${dispatch.sent ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{dispatch.sent ? 'تم الإرسال' : 'لم يُرسل بعد'}</span>
+                {!dispatch.sent && <button
+                  type="button"
+                  onClick={() => run(() => unified.markSupplierSent(selected.order.id, dispatch.supplier_name), `تم تسجيل إرسال ملف ${dispatch.supplier_name}.`, selected.order.id)}
+                  disabled={loading}
+                  className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                >تسجيل تم الإرسال</button>}
+              </div>
+              {dispatch.sent_at && <div className="mt-2 space-y-1 text-[11px] text-slate-400">
+                <div>{new Date(dispatch.sent_at).toLocaleString('ar-EG')} {dispatch.sent_by_name ? `• ${dispatch.sent_by_name}` : ''}</div>
+                {dispatch.snapshot_items_count != null && <div>{dispatch.snapshot_items_count} صنف • {number(dispatch.snapshot_quantity)} وحدة • {money(dispatch.snapshot_total)} ج</div>}
+                {dispatch.snapshot_hash && <div className={`font-semibold ${dispatch.snapshot_matches_current === false ? 'text-red-600' : 'text-emerald-700'}`}>{dispatch.snapshot_matches_current === false ? 'تحذير: النسخة الحالية تختلف عن Snapshot الإرسال' : 'Snapshot الإرسال مطابق للطلبية الحالية'}</div>}
+              </div>}
+            </div>)}
+          </div>
+        </section>}
+
+        {statusEditable && <section className="rounded-2xl border bg-white p-4">
+          <div className="font-bold mb-3">جاهزية الاعتماد النهائي</div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-2 text-sm">
+            {[
+              ['المورد لكل صنف', orderMissingSupplierItems.length === 0, orderMissingSupplierItems.length ? `${orderMissingSupplierItems.length} ناقص` : 'جاهز'],
+              ['تكلفة الشراء', orderMissingCostItems.length === 0, orderMissingCostItems.length ? `${orderMissingCostItems.length} ناقص` : 'جاهز'],
+              ['التحقق من الأسعار', orderUnverifiedCostItems.length === 0, orderUnverifiedCostItems.length ? `${orderUnverifiedCostItems.length} غير مؤكد` : 'جاهز'],
+              ['Min/Max والعبوة', orderItemLimitViolations.length === 0, orderItemLimitViolations.length ? `${orderItemLimitViolations.length} مخالفة` : 'جاهز'],
+              ['الحد المالي', !orderPolicyGuard.blocked && !orderPolicyGuard.below_minimum && !orderPolicyGuard.invalid_range, orderPolicyGuard.invalid_range ? 'حدود غير صالحة' : orderPolicyGuard.below_minimum ? 'أقل من الحد الأدنى' : orderPolicyGuard.blocked ? 'أعلى من الحد الأقصى' : 'جاهز'],
+              ['إجمالي Header', !orderTotalMismatch, orderTotalMismatch ? `فرق ${money(Math.abs(orderTotalDifference))} ج` : 'متطابق'],
+            ].map(([label, ok, detail]) => <div key={label} className={`rounded-xl border p-3 ${ok ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}><div className="font-semibold">{label}</div><div className={`text-xs mt-1 ${ok ? 'text-emerald-700' : 'text-red-700'}`}>{detail}</div></div>)}
+          </div>
+        </section>}
+
+        <div className="flex flex-wrap gap-2">
+          {statusEditable && <button onClick={() => run(() => management.approveOrder(selected.order.id), 'تم اعتماد الطلبية وفق حدود الشراء.')} disabled={loading || totals.total <= 0 || orderPolicyGuard.blocked || orderPolicyGuard.below_minimum || orderPolicyGuard.invalid_range || orderItemLimitViolations.length > 0 || orderMissingSupplierItems.length > 0 || orderMissingCostItems.length > 0 || orderUnverifiedCostItems.length > 0 || orderTotalMismatch} className="rounded-lg bg-teal-600 text-white px-4 py-2 font-semibold flex gap-2 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" />اعتماد الطلبية</button>}
+          {statusReturnable && <button onClick={() => run(() => unified.returnToReview(selected.order.id), 'تمت إعادة الطلبية للمراجعة.')} disabled={loading} className="rounded-lg border border-amber-300 px-4 py-2 disabled:opacity-50">إعادة للمراجعة</button>}
+          {statusCancelable && <button type="button" onClick={() => setShowCancelOrder((value) => !value)} disabled={loading} className="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50">إلغاء الطلبية</button>}
+          {!statusEditable && !statusReturnable && !statusCancelable && <div className="rounded-lg border bg-slate-50 px-4 py-2 text-sm text-slate-600">{anySupplierSent && status === 'معتمدة' ? 'تم إرسال جزء من الطلبية لمورد واحد على الأقل — تم قفل الرجوع للمراجعة حتى لا تختلف النسخة المرسلة عن النظام.' : `الطلبية في مرحلة ${status} — التعديلات المالية والكميات مقفولة.`}</div>}
+        </div>
+        {showCancelOrder && statusCancelable && <div className="rounded-xl border border-red-200 bg-red-50 p-3 space-y-2">
+          <div className="text-sm font-bold text-red-800">إلغاء الطلبية قبل التنفيذ</div>
+          <div className="text-xs text-red-700">الإلغاء لا يحذف البيانات؛ يسجل الحالة القديمة والسبب واسم منفذ القرار في سجل الحالات. لا يمكن الإلغاء بعد إرسال أو استلام أي جزء.</div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input value={cancelOrderReason} onChange={(event) => setCancelOrderReason(event.target.value)} placeholder="سبب الإلغاء — مثال: طلبية قديمة تجريبية / تم استبدالها بطلبية أحدث" className="flex-1 rounded-lg border bg-white p-2 text-sm" />
+            <button type="button" disabled={loading || cancelOrderReason.trim().length < 3} onClick={() => run(() => unified.cancelOrder(selected.order.id, cancelOrderReason.trim()), 'تم إلغاء الطلبية وتسجيل السبب في سجل الحالات.', selected.order.id)} className="rounded-lg bg-red-700 px-4 py-2 font-bold text-white disabled:opacity-40">تأكيد الإلغاء</button>
+          </div>
+        </div>}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-white px-3 py-2 text-sm">
+          <span>عرض {visibleItems.length ? ((safeItemPage - 1) * itemPageSize) + 1 : 0}–{Math.min(safeItemPage * itemPageSize, visibleItems.length)} من {visibleItems.length} بند</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={safeItemPage <= 1} onClick={() => setItemPage((page) => Math.max(1, page - 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">السابق</button>
+            <span className="text-xs text-slate-500">صفحة {safeItemPage} / {itemPageCount}</span>
+            <button type="button" disabled={safeItemPage >= itemPageCount} onClick={() => setItemPage((page) => Math.min(itemPageCount, page + 1))} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">التالي</button>
+          </div>
+        </div>
+        <section className="rounded-2xl border bg-white overflow-auto"><table className="min-w-[1940px] w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">المورد</th><th className="p-2 text-right">الرصيد</th><th className="p-2 text-right">المنتظر</th><th className="p-2 text-right">المطلوب</th><th className="p-2 text-right">حد أدنى</th><th className="p-2 text-right">حد أقصى</th><SortableHeader label="المعتمد" field="quantity" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">متوسط يومي</th><th className="p-2 text-right">التغطية النهائية</th><SortableHeader label="السعر المرجعي" field="public_price" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">خصم مرجعي %</th><SortableHeader label="تكلفة الوحدة" field="net_price" sortConfig={sortConfig} onSort={toggleSort} /><SortableHeader label="الإجمالي" field="total" sortConfig={sortConfig} onSort={toggleSort} /><th className="p-2 text-right">طلبات العملاء</th></tr></thead><tbody>{pagedVisibleItems.map((item) => <tr key={item.id} className="border-t"><td className="p-2"><div className="font-semibold">{item.product_name}</div><div className="text-xs text-slate-400">{item.product_code || 'بدون كود'}</div></td><td className="p-2"><input type="text" defaultValue={item.supplier_name || ''} disabled={!statusEditable || loading} placeholder="اختر/اكتب المورد" onBlur={(event) => { const value = String(event.target.value || '').trim(); if (value !== String(item.supplier_name || '').trim()) run(() => management.assignSupplier(selected.order.id, item.id, value), value ? 'تم تحديث مورد الصنف كاختيار يدوي.' : 'تم مسح مورد الصنف.'); }} className="w-40 rounded-lg border p-2 disabled:bg-slate-100" />{item.supplier_reason && <div className="mt-1 max-w-[170px] text-[11px] text-slate-400">{item.supplier_reason}</div>}</td><td className="p-2">{number(item.current_stock)}</td><td className="p-2">{number(item.pending_incoming)}</td><td className="p-2">{number(item.requested_quantity)}</td><td className="p-2"><input type="number" min="0" defaultValue={number(item.minimum_order_quantity)} disabled={!statusEditable || loading} onBlur={(event) => { const value = Math.max(0, Math.floor(number(event.target.value))); if (value !== number(item.minimum_order_quantity)) run(() => updateOne(item, { minimum_order_quantity: value }), 'تم تحديث الحد الأدنى للصنف.'); }} className="w-20 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min="0" defaultValue={number(item.maximum_order_quantity)} disabled={!statusEditable || loading} onBlur={(event) => { const value = Math.max(0, Math.floor(number(event.target.value))); if (value !== number(item.maximum_order_quantity)) run(() => updateOne(item, { maximum_order_quantity: value }), 'تم تحديث الحد الأقصى للصنف.'); }} className="w-20 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min={number(item.minimum_order_quantity) || 0} max={number(item.maximum_order_quantity) || undefined} defaultValue={item.approved_quantity} disabled={!statusEditable || loading} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.approved_quantity)) run(() => updateOne(item, { approved_quantity: value }), 'تم تحديث الكمية.'); }} className="w-20 rounded-lg border p-2 font-bold" /></td><td className="p-2">{estimateDailyUsage(item).toFixed(2)}</td><td className="p-2"><span className={`rounded-full px-2 py-1 text-xs ${finalCoverage(item) < 3 ? 'bg-red-50 text-red-700' : finalCoverage(item) > 14 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{finalCoverage(item).toFixed(1)} يوم</span></td><td className="p-2"><div className="font-semibold">{money(itemPrice(item))} ج</div><div className="text-[11px] text-slate-400">مرجع التحليل</div></td><td className="p-2"><input type="number" min="0" max="100" step="0.1" defaultValue={itemDiscount(item)} disabled={!statusEditable || loading} onBlur={(event) => {
+  const value = Math.min(100, Math.max(0, number(event.target.value)));
+  if (value !== itemDiscount(item)) {
+    const reference = independentReferenceUnitPrice(item);
+    const nextCost = reference > 0 ? Number((reference * (1 - value / 100)).toFixed(4)) : number(item.expected_unit_cost);
+    run(
+      () => updateOne(item, { expected_discount: value, expected_unit_cost: nextCost }),
+      reference > 0 ? 'تم تحديث الخصم وإعادة حساب تكلفة الوحدة من السعر المرجعي.' : 'تم حفظ الخصم بدون إعادة خصم تكلفة الوحدة لعدم وجود سعر مرجعي مستقل.',
+    );
+  }
+}} className="w-20 rounded-lg border p-2" /></td><td className="p-2"><input type="number" min="0" step="0.01" defaultValue={item.expected_unit_cost} disabled={!statusEditable || loading} onBlur={(event) => { const value = number(event.target.value); if (value !== number(item.expected_unit_cost)) run(() => updateOne(item, { expected_unit_cost: value }), 'تم تحديث تكلفة الوحدة المتوقعة.'); }} className="w-24 rounded-lg border p-2" /></td><td className="p-2 font-bold text-teal-800">{money(itemTotal(item))} ج</td><td className="p-2">{number(item.customer_requests_count)}</td></tr>)}</tbody></table></section>
       </> : <section className="rounded-2xl border border-dashed bg-white p-12 text-center text-slate-400"><FileSpreadsheet className="w-10 h-10 mx-auto mb-3" />اختر طلبية أو أنشئ طلبية جديدة.</section>}</main>
     </div>
   </div>;

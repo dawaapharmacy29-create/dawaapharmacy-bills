@@ -1,0 +1,3 @@
+-- Operational data load marker only.
+-- Source: Shokry product/customer sales history.
+-- Business/customer data is intentionally not committed to source control.

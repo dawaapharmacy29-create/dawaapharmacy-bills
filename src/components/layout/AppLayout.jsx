@@ -45,14 +45,11 @@ const navGroups = [
         { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badgeKey: "invoices" },
         { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks },
       ]},
-      { label: "الأداة الموحدة (ابدأ من هنا)", items: [
-        { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap },
-      ]},
-      { label: "خطوات الطلبية بالتفصيل", items: [
-        { path: "/smart-purchase-orders", label: "1. رفع وتحليل ملف الطلبية", icon: BrainCircuit },
-        { path: "/smart-purchase-orders/manage", label: "2. مراجعة العروض واعتماد الطلبية", icon: FileSearch },
-        { path: "/smart-purchase-receiving", label: "3. الاستلام والمطابقة", icon: PackageCheck },
-        { path: "/smart-purchase-insights", label: "4. تقييم الأداء بعد التنفيذ", icon: BarChart3 },
+      { label: "المشتريات", items: [
+        { path: "/purchase-center", label: "مركز المشتريات والطلبية", icon: BrainCircuit, permission: "canPlanPurchases" },
+        { path: "/smart-purchase-receiving", label: "الاستلام والمطابقة", icon: PackageCheck },
+        { path: "/purchase-shortages", label: "الأصناف الناقصة", icon: PackageX },
+        { path: "/smart-purchase-insights", label: "تقييم الأداء بعد التنفيذ", icon: BarChart3 },
       ]},
       { label: "مراقبة ومراجعة الطلبيات", items: [
         { path: "/purchase-workflow", label: "متابعة الاختناقات والنواقص", icon: GitBranch },
@@ -138,7 +135,8 @@ export default function AppLayout() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const { isAdmin, isManager } = useUserRole();
+  const role = useUserRole();
+  const { isAdmin, isManager } = role;
   const canReviewShifts = isAdmin || isManager;
   const { user, logout, isLoggingOut } = useAuth();
 
@@ -146,9 +144,9 @@ export default function AppLayout() {
     ...group,
     sections: group.sections.map((section) => ({
       ...section,
-      items: section.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts)),
+      items: section.items.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts) && (!item.permission || Boolean(role[item.permission]))),
     })).filter((section) => section.items.length),
-  })).filter((group) => group.sections.length), [isAdmin, canReviewShifts]);
+  })).filter((group) => group.sections.length), [isAdmin, canReviewShifts, role]);
 
   const groupForPath = useMemo(() => visibleGroups.find((group) => group.sections.some((section) => section.items.some((item) => location.pathname === item.path.split("?")[0])))?.key || "home", [location.pathname, visibleGroups]);
   const [openGroup, setOpenGroup] = useState(() => localStorage.getItem(NAV_STORAGE_KEY) || groupForPath);
@@ -216,7 +214,7 @@ export default function AppLayout() {
 
   const renderNav = (closeMobile = false) => <div className="space-y-3">
     <div className="grid grid-cols-2 gap-1.5 rounded-xl border bg-gray-50 p-2">
-      {quickLinks.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts)).map((item) => renderLink(item, closeMobile, true))}
+      {quickLinks.filter((item) => (!item.adminOnly || isAdmin) && (!item.managerOnly || canReviewShifts) && (!item.permission || Boolean(role[item.permission]))).map((item) => renderLink(item, closeMobile, true))}
     </div>
 
     <div className="relative">

@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, experiment/purchase-architecture-v2, refactor/purchase-center-clean-v1]
   pull_request:
 
 jobs:
@@ -16,5 +16,7 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install --ignore-scripts
+      - name: Run purchase regression tests
+        run: npm run test
       - name: Build application
         run: npm run build
