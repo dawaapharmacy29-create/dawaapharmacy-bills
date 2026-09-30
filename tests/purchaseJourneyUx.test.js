@@ -53,3 +53,11 @@ test('final readiness requires persisted historical allocation', () => {
   assert.ok(source.includes("جاهزة لتثبيت التحليل التاريخي"));
   assert.ok(source.includes("جاهزة للمراجعة قبل الاعتماد"));
 });
+
+
+test('final screen has one primary historical persistence action in the sticky action bar', () => {
+  assert.ok(source.includes("onApplyHistorical"));
+  assert.ok(source.includes("تثبيت المورد والتكلفة التاريخية"));
+  assert.ok(source.includes("زر التثبيت موجود أسفل الشاشة"));
+  assert.ok(source.includes("تم التثبيت ✓"));
+});

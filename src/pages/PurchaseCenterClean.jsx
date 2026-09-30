@@ -361,9 +361,13 @@ function JourneyActionBar({
   saveResult,
   draftResult,
   supplierReady,
+  historicalApplied,
+  historicalReady,
+  applying,
   onStepChange,
   onReplan,
   onCreateDrafts,
+  onApplyHistorical,
 }) {
   if (step === 1) return null;
 
@@ -419,13 +423,31 @@ function JourneyActionBar({
           )}
 
           {step === 5 && (
-            <button
-              type="button"
-              onClick={() => onStepChange(4)}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700"
-            >
-              رجوع للتحليل التاريخي
-            </button>
+            <>
+              {!historicalApplied ? (
+                <button
+                  type="button"
+                  disabled={!historicalReady || Boolean(applying)}
+                  onClick={onApplyHistorical}
+                  className="rounded-xl bg-amber-700 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
+                >
+                  {applying === 'historical-allocation'
+                    ? 'جاري تثبيت التحليل التاريخي...'
+                    : 'تثبيت المورد والتكلفة التاريخية'}
+                </button>
+              ) : (
+                <span className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-800">
+                  تم التثبيت ✓
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onStepChange(4)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700"
+              >
+                رجوع للتحليل التاريخي
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1957,23 +1979,11 @@ export default function PurchaseCenterClean() {
                     ✓ تم تثبيت أفضل مورد وتكلفة تاريخية على المسودتين. لم يتم اعتماد أو إرسال أي طلبية.
                   </div>
                 ) : (
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="font-black text-amber-950">التحليل التاريخي ما زال اقتراحًا ولم يُكتب داخل المسودتين بعد.</div>
-                      <div className="mt-1 text-sm text-amber-900">
-                        التثبيت سيغيّر المورد والتكلفة المتوقعة فقط إلى القيم التاريخية المعروضة، مع الحفاظ على نفس 130 صنف ونفس الكميات. لا يوجد اعتماد أو إرسال تلقائي.
-                      </div>
+                  <div>
+                    <div className="font-black text-amber-950">التحليل التاريخي ما زال اقتراحًا ولم يُكتب داخل المسودتين بعد.</div>
+                    <div className="mt-1 text-sm text-amber-900">
+                      زر التثبيت موجود أسفل الشاشة. سيغيّر المورد والتكلفة المتوقعة فقط، مع الحفاظ على نفس الأصناف والكميات، وبدون اعتماد أو إرسال.
                     </div>
-                    <button
-                      type="button"
-                      disabled={!supplierDecision.readyForHistoricalReview || Boolean(supplierWorkspace.applying)}
-                      onClick={applyHistoricalAllocationToDrafts}
-                      className="rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-black text-white shadow-sm disabled:opacity-40"
-                    >
-                      {supplierWorkspace.applying === 'historical-allocation'
-                        ? 'جاري التثبيت...'
-                        : 'تثبيت المورد والتكلفة التاريخية على المسودتين'}
-                    </button>
                   </div>
                 )}
               </section>
@@ -2067,9 +2077,13 @@ export default function PurchaseCenterClean() {
         saveResult={saveResult}
         draftResult={draftResult}
         supplierReady={supplierReady}
+        historicalApplied={supplierWorkspace.historicalApplied}
+        historicalReady={supplierDecision.readyForHistoricalReview}
+        applying={supplierWorkspace.applying}
         onStepChange={setActiveStep}
         onReplan={replan}
         onCreateDrafts={createDrafts}
+        onApplyHistorical={applyHistoricalAllocationToDrafts}
       />
     </div>
   );
