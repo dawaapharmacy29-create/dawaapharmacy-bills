@@ -151,8 +151,6 @@ declare
   v_allocated numeric:=0;
   v_received numeric:=0;
   v_shortage numeric:=0;
-  v_basis text:='sourcing';
-  v_coverage numeric:=0;
   v_key text;
 begin
   if p_order_item_id is null then
@@ -297,6 +295,8 @@ declare
   v_allocated numeric:=0;
   v_received numeric:=0;
   v_shortage numeric:=0;
+  v_basis text:='sourcing';
+  v_coverage numeric:=0;
   v_key text;
   v_created integer:=0;
   v_existing integer:=0;

@@ -78,3 +78,12 @@ test('internal shortage helper and trigger functions are not exposed as client R
   assert.match(sql, /smart_purchase_ensure_receipt_shortage_event_v1\(uuid\) from public,anon,authenticated/);
   assert.match(sql, /purchase_shortage_allocation_sync_trigger_v1\(\) from public,anon,authenticated/);
 });
+
+test('shortage registry declares every basis variable used by register_order', () => {
+  const registry = sql.slice(sql.indexOf('create or replace function public.smart_purchase_shortage_registry_v1'));
+  const declaration = registry.slice(0, registry.indexOf('begin'));
+  assert.match(declaration, /v_basis text:='sourcing'/);
+  assert.match(declaration, /v_coverage numeric:=0/);
+  assert.match(registry, /v_basis:=case when v_received>0 then 'receipt' else 'sourcing' end/);
+  assert.match(registry, /v_shortage:=greatest\(0,v_requested-v_coverage\)/);
+});
