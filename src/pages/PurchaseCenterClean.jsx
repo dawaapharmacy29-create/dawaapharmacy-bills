@@ -1743,6 +1743,28 @@ export default function PurchaseCenterClean() {
 
           {activeStep === 5 && draftResult && (
             <section className="space-y-4">
+              {supplierWorkspace.loading ? (
+                <div className="flex min-h-48 items-center justify-center rounded-2xl border border-teal-200 bg-teal-50 p-6 text-teal-800 shadow-sm">
+                  <div className="text-center">
+                    <Loader2 className="mx-auto h-7 w-7 animate-spin" />
+                    <div className="mt-3 font-black">جاري تحليل تاريخ المشتريات وتجهيز الموردين...</div>
+                    <div className="mt-1 text-sm opacity-70">لن يتم اعتماد أو إرسال أي طلبية أثناء التحليل.</div>
+                  </div>
+                </div>
+              ) : supplierWorkspace.error ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-red-800 shadow-sm">
+                  <div className="font-black">تعذر تحميل تحليل الموردين والتكلفة التاريخية.</div>
+                  <div className="mt-1 text-sm">{supplierWorkspace.error}</div>
+                  <button
+                    type="button"
+                    onClick={() => loadSupplierWorkspace(draftResult)}
+                    className="mt-3 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-black text-red-700"
+                  >
+                    إعادة المحاولة
+                  </button>
+                </div>
+              ) : (
+                <>
               <div className={`rounded-2xl border p-5 shadow-sm ${
                 finalReviewReady
                   ? 'border-emerald-200 bg-emerald-50/60'
@@ -1750,9 +1772,9 @@ export default function PurchaseCenterClean() {
               }`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-black text-slate-950">المراجعة النهائية للطلبية</h2>
+                    <h2 className="text-xl font-black text-slate-950">نتيجة الطلبية</h2>
                     <p className="mt-1 text-sm text-slate-700">
-                      راجع القرار في شاشة واحدة. لا يوجد اعتماد أو إرسال تلقائي من هذه الخطوة.
+                      راجع الأرقام الأساسية والموردين والثقة. لا يوجد اعتماد أو إرسال تلقائي.
                     </p>
                   </div>
                   <span className={`rounded-full border bg-white px-3 py-1 text-xs font-black ${
@@ -1782,19 +1804,24 @@ export default function PurchaseCenterClean() {
                     )}
                   </div>
                 )}
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                  <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
-                  <Metric
-                    label={supplierWorkspace.historicalApplied ? 'القيمة التاريخية المثبتة' : 'القيمة التاريخية المرجعية'}
-                    value={`${money(liveReferenceTotal)} ج`}
-                  />
-                  <Metric
-                    label={supplierWorkspace.historicalApplied ? 'فرق بعد التثبيت' : 'فرق تقديري'}
-                    value={`${money(estimatedPurchaseGap)} ج`}
-                  />
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} tone="teal" emphasis />
                   <Metric label="أصناف الطلبية" value={plan?.totals?.buy_items || 0} />
-                  <Metric label="تغطية التحليل التاريخي" value={`${supplierDecision.historicalItems}/${supplierDecision.totalItems}`} />
-                  <Metric label="ثقة تاريخية عالية" value={`${supplierDecision.highConfidenceItems}/${supplierDecision.totalItems}`} />
+                  <Metric label="تغطية تاريخ المشتريات" value={`${supplierDecision.historicalItems}/${supplierDecision.totalItems}`} />
+                  <Metric
+                    label="مراجعة اختيارية"
+                    value={supplierDecision.lowConfidenceItems ? `${supplierDecision.lowConfidenceItems} أصناف` : 'لا يوجد'}
+                    tone={supplierDecision.lowConfidenceItems ? 'amber' : 'emerald'}
+                  />
+                </div>
+                <div className={`mt-3 rounded-xl border px-4 py-3 text-sm font-bold ${
+                  supplierWorkspace.historicalApplied
+                    ? 'border-emerald-200 bg-white/80 text-emerald-800'
+                    : 'border-blue-200 bg-white/80 text-blue-900'
+                }`}>
+                  {supplierWorkspace.historicalApplied
+                    ? `القيمة التاريخية المثبتة: ${money(draftOrderTotal)} ج • الفرق بعد التثبيت: 0 ج`
+                    : `القيمة التاريخية المقترحة: ${money(liveReferenceTotal)} ج • فرق عن المسودتين: ${money(estimatedPurchaseGap)} ج`}
                 </div>
 
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -1815,12 +1842,6 @@ export default function PurchaseCenterClean() {
                   ))}
                 </div>
 
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <Metric label="موردون تاريخيون" value={supplierWorkspace.groups.filter((group) => group.supplier_name !== 'غير محدد').length} />
-                  <Metric label="بدون مورد تاريخي" value={supplierDecision.missingSupplierItems} />
-                  <Metric label="بدون تكلفة" value={supplierDecision.missingCostItems} />
-                  <Metric label="مطابقة المسودتين للخطة" value={draftResult.content_verified ? 'مؤكدة ✓' : 'تحتاج مراجعة'} />
-                </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
                   <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">ثقة عالية {supplierDecision.highConfidenceItems}</span>
                   <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-800">ثقة متوسطة {supplierDecision.mediumConfidenceItems}</span>
@@ -1850,9 +1871,11 @@ export default function PurchaseCenterClean() {
                 )}
               </div>
 
-              <section className="rounded-2xl border bg-white p-4 shadow-sm">
-                <div className="mb-3 font-black text-slate-900">قائمة الجاهزية</div>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+              <details className="rounded-2xl border bg-white shadow-sm">
+                <summary className="cursor-pointer select-none px-4 py-3 font-black text-slate-800">
+                  تفاصيل التحقق والجاهزية • 5 نقاط
+                </summary>
+                <div className="grid gap-2 border-t p-4 md:grid-cols-2 xl:grid-cols-5">
                   {[
                     {
                       label: 'مطابقة المسودتين للخطة',
@@ -1912,7 +1935,7 @@ export default function PurchaseCenterClean() {
                     </div>
                   ))}
                 </div>
-              </section>
+              </details>
 
               <section className={`rounded-2xl border p-4 shadow-sm ${
                 supplierWorkspace.historicalApplied
@@ -2003,6 +2026,8 @@ export default function PurchaseCenterClean() {
                     : 'أكمل تثبيت التحليل التاريخي أولًا؛ لا يوجد اعتماد أو إرسال تلقائي.'}
                 </div>
               </div>
+                </>
+              )}
             </section>
           )}
         </>

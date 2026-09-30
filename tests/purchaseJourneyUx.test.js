@@ -76,3 +76,12 @@ test('blocking drafts are resolved inside review-and-create instead of a separat
   assert.ok(source.includes("إلغاء المسودة"));
   assert.ok(source.includes("إنشاء مسودتي شكري والشامي"));
 });
+
+
+test('final result hides loading noise and collapses audit details by default', () => {
+  assert.ok(source.includes("جاري تحليل تاريخ المشتريات وتجهيز الموردين"));
+  assert.ok(source.includes("إعادة المحاولة"));
+  assert.ok(source.includes("تفاصيل التحقق والجاهزية • 5 نقاط"));
+  assert.ok(source.includes("القيمة التاريخية المقترحة"));
+  assert.ok(source.includes("نتيجة الطلبية"));
+});
