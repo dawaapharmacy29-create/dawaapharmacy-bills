@@ -187,6 +187,82 @@ function Metric({ label, value, tone = 'slate', emphasis = false, helper = '' })
   );
 }
 
+function SupplierDispatchBranchCard({
+  branchLabel,
+  orderDetail,
+  suppliers = [],
+  sendingKey,
+  onSend,
+}) {
+  const order = orderDetail?.order || {};
+  const sentCount = suppliers.filter((supplier) => supplier.sent).length;
+  const allSent = suppliers.length > 0 && sentCount === suppliers.length;
+
+  return (
+    <section className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-black text-slate-900">{branchLabel}</h3>
+          <div className="mt-1 text-xs text-slate-500">
+            {order.order_number || 'الطلبية المعتمدة'} • {money(order.approved_total || order.expected_total)} ج
+          </div>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-black ${
+          allSent ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+        }`}>
+          {allSent ? 'تم إرسال كل الموردين' : `${sentCount}/${suppliers.length} مورد تم إرساله`}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {suppliers.map((supplier) => {
+          const key = `${order.id || orderDetail?.order?.id || branchLabel}:${supplier.supplier_name}`;
+          const sending = sendingKey === key;
+          return (
+            <div key={supplier.supplier_name} className="rounded-xl border bg-slate-50/70 p-3">
+              <div className="font-black text-slate-900">{supplier.supplier_name}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                {supplier.items_count} صنف • {qty(supplier.total_quantity)} وحدة • {money(supplier.total_value)} ج
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className={`rounded-full px-2 py-1 text-xs font-bold ${
+                  supplier.sent
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {supplier.sent ? 'تم الإرسال' : 'لم يُرسل بعد'}
+                </span>
+                {!supplier.sent && (
+                  <button
+                    type="button"
+                    disabled={Boolean(sendingKey)}
+                    onClick={() => onSend(order.id, supplier.supplier_name)}
+                    className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40"
+                  >
+                    {sending ? 'جاري التسجيل...' : 'تسجيل تم الإرسال'}
+                  </button>
+                )}
+              </div>
+              {supplier.sent_at && (
+                <div className="mt-2 text-[11px] text-slate-400">
+                  {new Date(supplier.sent_at).toLocaleString('ar-EG')}
+                  {supplier.sent_by_name ? ` • ${supplier.sent_by_name}` : ''}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {!suppliers.length && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          لا يوجد موردون جاهزون للإرسال لهذه الطلبية.
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PurchaseJourneyTabs({
   activeStep,
   onStepChange,
@@ -233,8 +309,8 @@ function PurchaseJourneyTabs({
     {
       id: 3,
       target: 5,
-      label: 'الموردين والتكلفة',
-      note: 'راجع ثم ثبّت التحليل التاريخي',
+      label: approved ? 'إرسال الموردين' : 'الموردين والتكلفة',
+      note: approved ? 'سجل الإرسال موردًا بمورد' : 'راجع ثم ثبّت التحليل التاريخي',
       ready: Boolean(draftResult),
       done: Boolean(approved),
       status: approved
@@ -397,13 +473,15 @@ function JourneyActionBar({
                   {approvalBusy ? 'جاري اعتماد المسودتين...' : 'اعتماد مسودتي شكري والشامي'}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => onStepChange(4)}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700"
-              >
-                تفاصيل الموردين
-              </button>
+              {!approved && (
+                <button
+                  type="button"
+                  onClick={() => onStepChange(4)}
+                  className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700"
+                >
+                  تفاصيل الموردين
+                </button>
+              )}
             </>
           )}
         </div>
@@ -778,8 +856,8 @@ export default function PurchaseCenterClean() {
 
   function startNewJourney() {
     if (runRef.current) return;
-    if (draftResult && !approvalState.approved) {
-      setError('يوجد مسودتان مفتوحتان للطلبية الحالية. أكمل أو ألغِ المسودتين قبل بدء طلبية جديدة حتى لا يحدث تكرار.');
+    if (draftResult) {
+      setError('يوجد طلبية حالية لم تكتمل دورتها بعد. أكملها قبل بدء طلبية جديدة.');
       return;
     }
     clearJourneyResume();
@@ -1128,6 +1206,29 @@ export default function PurchaseCenterClean() {
     }
   }
 
+  async function markHistoricalSupplierSent(orderId, supplierName) {
+    if (!orderId || !supplierName || dispatchState.sendingKey) return;
+
+    const confirmed = window.confirm(
+      `هل تم بالفعل إرسال طلبية المورد «${supplierName}»؟\n\nسيتم تسجيل وقت الإرسال فقط، ولن يتم إرسال رسالة أو ملف تلقائيًا.`
+    );
+    if (!confirmed) return;
+
+    const key = `${orderId}:${supplierName}`;
+    setDispatchState((current) => ({ ...current, sendingKey: key, error: '' }));
+
+    try {
+      await purchaseApi.markHistoricalSupplierSent(orderId, supplierName);
+      await loadDispatchWorkspace(draftResult);
+    } catch (err) {
+      setDispatchState((current) => ({
+        ...current,
+        sendingKey: '',
+        error: err?.message || 'تعذر تسجيل إرسال المورد.',
+      }));
+    }
+  }
+
   async function approveReviewedDrafts() {
     if (
       !finalReviewReady
@@ -1334,7 +1435,14 @@ export default function PurchaseCenterClean() {
               <ShoppingCart className="h-5 w-5" />
               <span className="text-sm font-bold">مركز المشتريات والطلبية</span>
             </div>
-            {!plan ? (
+            {!plan && approvalState.approved ? (
+              <>
+                <h1 className="mt-2 text-2xl font-black text-slate-900 md:text-3xl">متابعة إرسال الطلبية المعتمدة</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
+                  سجل إرسال كل مورد بعد ما يتم الإرسال فعليًا. لا يوجد إرسال تلقائي من الصفحة.
+                </p>
+              </>
+            ) : !plan ? (
               <>
                 <h1 className="mt-2 text-2xl font-black text-slate-900 md:text-3xl">ارفع الرصيد مرة واحدة — استلم خطتي الفرعين فورًا</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
@@ -1362,9 +1470,9 @@ export default function PurchaseCenterClean() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={busy || Boolean(draftResult && !approvalState.approved)}
+              disabled={busy || Boolean(draftResult)}
               onClick={startNewJourney}
-              title={draftResult && !approvalState.approved ? 'أكمل أو ألغِ المسودتين الحاليتين أولًا' : 'بدء طلبية جديدة'}
+              title={draftResult ? 'أكمل دورة الطلبية الحالية أولًا' : 'بدء طلبية جديدة'}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:border-teal-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               بدء طلبية جديدة
@@ -1898,7 +2006,7 @@ export default function PurchaseCenterClean() {
             />
           )}
 
-          {activeStep === 5 && draftResult && (
+          {activeStep === 5 && draftResult && !approvalState.approved && (
             <section className="space-y-4">
               {supplierWorkspace.loading ? (
                 <div className="flex min-h-48 items-center justify-center rounded-2xl border border-teal-200 bg-teal-50 p-6 text-teal-800 shadow-sm">
@@ -2205,6 +2313,58 @@ export default function PurchaseCenterClean() {
             </section>
           )}
         </>
+      )}
+
+      {activeStep === 5 && approvalState.approved && draftResult && (
+        <section className="space-y-4">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+            <div className="font-black text-emerald-900">تم اعتماد مسودتي شكري والشامي ✓</div>
+            <div className="mt-1 text-sm text-emerald-800">
+              المرحلة الحالية: تسجيل إرسال الطلبات للموردين. اضغط «تسجيل تم الإرسال» فقط بعد الإرسال الفعلي للمورد.
+            </div>
+          </div>
+
+          {dispatchState.loading ? (
+            <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">
+              <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
+              جاري تحميل حالة الموردين...
+            </div>
+          ) : (
+            <>
+              <SupplierDispatchBranchCard
+                branchLabel="دواء شكري"
+                orderDetail={dispatchState.orders.shokry}
+                suppliers={dispatchState.suppliers.shokry}
+                sendingKey={dispatchState.sendingKey}
+                onSend={markHistoricalSupplierSent}
+              />
+              <SupplierDispatchBranchCard
+                branchLabel="دواء الشامي"
+                orderDetail={dispatchState.orders.shamy}
+                suppliers={dispatchState.suppliers.shamy}
+                sendingKey={dispatchState.sendingKey}
+                onSend={markHistoricalSupplierSent}
+              />
+            </>
+          )}
+
+          {dispatchState.error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+              {dispatchState.error}
+            </div>
+          )}
+
+          {!dispatchState.loading
+            && dispatchState.suppliers.shokry.length > 0
+            && dispatchState.suppliers.shamy.length > 0
+            && dispatchState.suppliers.shokry.every((supplier) => supplier.sent)
+            && dispatchState.suppliers.shamy.every((supplier) => supplier.sent) && (
+              <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900 shadow-sm">
+                <div className="font-black">تم تسجيل إرسال كل الموردين للفرعين ✓</div>
+                <div className="mt-1 text-sm">المرحلة التالية هي الاستلام ومطابقة الفاتورة.</div>
+              </div>
+            )}
+        </section>
       )}
 
       {activeStep === 1 && !plan && !busy && !error && (

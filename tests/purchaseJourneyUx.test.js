@@ -226,3 +226,13 @@ test('approved journey resumes directly into supplier dispatch without replannin
   assert.ok(source.includes("persistDispatchJourneyResume"));
   assert.ok(source.includes("تم استكمال الطلبية المعتمدة من السيرفر"));
 });
+
+
+test('approved clean journey renders supplier-by-supplier dispatch cards', () => {
+  assert.ok(source.includes("function SupplierDispatchBranchCard"));
+  assert.ok(source.includes("تسجيل تم الإرسال"));
+  assert.ok(source.includes("markHistoricalSupplierSent"));
+  assert.ok(source.includes("لن يتم إرسال رسالة أو ملف تلقائيًا"));
+  assert.ok(source.includes("تم تسجيل إرسال كل الموردين للفرعين"));
+  assert.ok(source.includes("المرحلة التالية هي الاستلام ومطابقة الفاتورة"));
+});
