@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { smartPurchaseUnifiedApi as purchaseApi } from '@/api/smartPurchaseUnifiedApi';
 import { normalizeDualBranchStockRows } from '@/lib/dualBranchStockMaster';
+import { normalizeMovementWorkbookRows } from '@/lib/purchaseMovementImport';
 import { orderMatchesPurchasePlan } from '@/lib/purchaseDraftRecovery';
 import CleanSupplierFinancialWorkspace from '@/components/purchases/CleanSupplierFinancialWorkspace';
 import {
@@ -487,6 +488,10 @@ export default function PurchaseCenterClean() {
   const [error, setError] = useState('');
   const [cancellingOrderId, setCancellingOrderId] = useState('');
   const [activeStep, setActiveStep] = useState(1);
+  const [movementPreviewState, setMovementPreviewState] = useState({
+    shokry: { fileName: '', parsed: null, loading: false, preview: null, error: '' },
+    shamy: { fileName: '', parsed: null, loading: false, preview: null, error: '' },
+  });
   const runRef = useRef(false);
   const supplierLoadRef = useRef(false);
   const resumeAttemptedRef = useRef(false);
@@ -616,6 +621,65 @@ export default function PurchaseCenterClean() {
   }, [draftOrderTotal, financialReferenceTotal, supplierWorkspace.historicalApplied, supplierWorkspace.rows]);
 
   const estimatedPurchaseGap = Math.max(0, draftOrderTotal - liveReferenceTotal);
+
+  async function readMovementWorkbook(file) {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error('ملف Excel لا يحتوي على Sheet قابلة للقراءة.');
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: '', raw: false });
+    return normalizeMovementWorkbookRows(rows, file.name);
+  }
+
+  async function selectMovementFile(branchKey, file) {
+    if (!file) return;
+    setMovementPreviewState((current) => ({
+      ...current,
+      [branchKey]: { fileName: file.name, parsed: null, loading: true, preview: null, error: '' },
+    }));
+    try {
+      const movement = await readMovementWorkbook(file);
+      setMovementPreviewState((current) => ({
+        ...current,
+        [branchKey]: { fileName: file.name, parsed: movement, loading: false, preview: null, error: '' },
+      }));
+    } catch (err) {
+      setMovementPreviewState((current) => ({
+        ...current,
+        [branchKey]: { fileName: file.name, parsed: null, loading: false, preview: null, error: err?.message || 'تعذر قراءة ملف الحركة.' },
+      }));
+    }
+  }
+
+  async function runMovementPreview(branchKey) {
+    const current = movementPreviewState[branchKey];
+    if (!current?.parsed?.rows?.length || current.loading) return;
+    const branch = branchKey === 'shokry' ? 'دواء شكري' : 'دواء الشامي';
+    setMovementPreviewState((state) => ({
+      ...state,
+      [branchKey]: { ...state[branchKey], loading: true, preview: null, error: '' },
+    }));
+    try {
+      const started = await purchaseApi.beginMovementPreview({
+        branch,
+        fileName: current.fileName,
+        expectedRows: current.parsed.rows.length,
+      });
+      const importId = started?.import_id;
+      if (!importId) throw new Error('لم يتم إنشاء جلسة معاينة الحركة.');
+      await purchaseApi.stageMovementPreviewRows({ importId, rows: current.parsed.rows });
+      const preview = await purchaseApi.movementPreview(importId);
+      setMovementPreviewState((state) => ({
+        ...state,
+        [branchKey]: { ...state[branchKey], loading: false, preview, error: '' },
+      }));
+    } catch (err) {
+      setMovementPreviewState((state) => ({
+        ...state,
+        [branchKey]: { ...state[branchKey], loading: false, preview: null, error: err?.message || 'تعذر تجهيز معاينة الحركة.' },
+      }));
+    }
+  }
 
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
@@ -1474,6 +1538,78 @@ export default function PurchaseCenterClean() {
             </label>
           </div>
         )}
+
+        <div className="mt-5 border-t pt-5">
+          <div className="mb-3">
+            <h2 className="font-black text-slate-900">معاينة حركة المبيعات — بدون اعتماد</h2>
+            <p className="mt-1 text-xs text-slate-500">ارفع ملف شكري وملف الشامي كل واحد في مكانه. اختيار الملف يقرأه محليًا فقط؛ المعاينة لا تغيّر الرصيد ولا تعتمد الحركة.</p>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {[
+              ['shokry', 'شكري'],
+              ['shamy', 'الشامي'],
+            ].map(([branchKey, branchLabel]) => {
+              const movement = movementPreviewState[branchKey];
+              const preview = movement.preview || {};
+              return (
+                <div key={branchKey} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-black text-slate-900">حركة {branchLabel}</div>
+                      <div className="mt-1 text-xs text-slate-500">{movement.fileName || 'لم يتم اختيار ملف'}</div>
+                    </div>
+                    <label className="cursor-pointer rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-700">
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        className="hidden"
+                        disabled={movement.loading}
+                        onChange={(event) => {
+                          const selected = event.target.files?.[0];
+                          event.target.value = '';
+                          void selectMovementFile(branchKey, selected);
+                        }}
+                      />
+                      اختيار ملف {branchLabel}
+                    </label>
+                  </div>
+                  {movement.parsed && (
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                      <Metric label="الأصناف" value={movement.parsed.rows.length} />
+                      <Metric label="30 يوم" value={qty(movement.parsed.totals.sales_30)} />
+                      <Metric label="60 يوم" value={qty(movement.parsed.totals.sales_60)} />
+                      <Metric label="90 يوم" value={qty(movement.parsed.totals.sales_90)} />
+                    </div>
+                  )}
+                  {movement.parsed && !movement.preview && (
+                    <button
+                      type="button"
+                      disabled={movement.loading}
+                      onClick={() => void runMovementPreview(branchKey)}
+                      className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50"
+                    >
+                      {movement.loading ? 'جاري تجهيز المعاينة...' : 'فحص المطابقة فقط'}
+                    </button>
+                  )}
+                  {movement.preview && (
+                    <div className={`mt-3 rounded-xl border p-3 text-sm ${movement.preview.ready_to_finalize ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                      <div className="font-black">{movement.preview.ready_to_finalize ? 'المعاينة اجتازت حواجز الأمان' : 'المعاينة تحتاج مراجعة'}</div>
+                      <div className="mt-2 grid grid-cols-2 gap-1 text-xs">
+                        <span>مطابق: {movement.preview.matched_rows ?? 0}</span>
+                        <span>غير مطابق: {movement.preview.unmatched_rows ?? 0}</span>
+                        <span>نسبة المطابقة: {money(Number(movement.preview.match_rate || 0) * 100)}%</span>
+                        <span>تكرار الهدف: {movement.preview.duplicate_target_matches ?? 0}</span>
+                      </div>
+                      <div className="mt-2 text-[11px] font-bold">لا يوجد زر اعتماد في هذه المرحلة.</div>
+                    </div>
+                  )}
+                  {movement.loading && !movement.parsed && <div className="mt-3 text-xs text-slate-500">جاري قراءة الملف...</div>}
+                  {movement.error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs font-bold text-red-700">{movement.error}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {parsed && !plan && (
           <>
