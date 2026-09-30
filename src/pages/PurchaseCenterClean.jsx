@@ -271,8 +271,8 @@ function PurchaseJourneyTabs({
     {
       id: 3,
       target: 5,
-      label: approved ? 'إرسال الموردين' : 'الموردين والتكلفة',
-      note: approved ? 'سجل الإرسال موردًا بمورد' : 'راجع ثم ثبّت التحليل التاريخي',
+      label: approved ? 'دورة الموردين' : 'الموردين والتكلفة',
+      note: approved ? 'ابدأ كل فرع بطلب كامل ثم اكمل بالنواقص' : 'راجع ثم ثبّت التحليل التاريخي',
       ready: Boolean(draftResult),
       done: Boolean(approved),
       status: approved

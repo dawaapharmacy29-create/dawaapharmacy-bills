@@ -16,7 +16,7 @@ test('clean purchase journey exposes three simple stages and one fixed action ba
     'الرصيد',
     'الطلبية',
     'الموردين والتكلفة',
-    'إرسال الموردين',
+    'دورة الموردين',
   ]) {
     assert.ok(source.includes(label), `missing journey stage: ${label}`);
   }
@@ -336,4 +336,10 @@ test('single-branch supplier journey has singular completion copy', () => {
   assert.ok(receivingSource.includes("طلبية الفرع الحالية"));
   assert.ok(receivingSource.includes("تم إغلاق طلبية الفرع ✓"));
   assert.ok(receivingSource.includes("تم إنهاء استلام طلبية الفرع ✓"));
+});
+
+test('approved stage describes sequential supplier sourcing instead of historical dispatch', () => {
+  assert.ok(source.includes("label: approved ? 'دورة الموردين'"));
+  assert.ok(source.includes("ابدأ كل فرع بطلب كامل ثم اكمل بالنواقص"));
+  assert.doesNotMatch(source, /سجل الإرسال موردًا بمورد/);
 });
