@@ -64,14 +64,14 @@ test('clean page does not fall back to legacy purchase creation paths', () => {
 
 test('clean page freezes replan after dual drafts are created', () => {
   assert.match(cleanPageSource, /if \(runRef\.current \|\| !saveResult \|\| draftResult\) return/);
-  assert.match(cleanPageSource, /disabled=\{busy \|\| !saveResult \|\| Boolean\(draftResult\)\}/);
+  assert.match(cleanPageSource, /\{step === 2 && !draftResult && \(/);
 });
 
 
 test('negative stock remains review-only instead of blocking dual draft creation', async () => {
   assert.doesNotMatch(cleanPageSource, /hasNegativeStock/);
   assert.doesNotMatch(cleanPageSource, /إنشاء المسودتين متوقف لأن ملف الرصيد يحتوي على أرصدة سالبة/);
-  assert.match(cleanPageSource, /تمت معاملة الأرصدة السالبة كصفر في الفرع المتأثر فقط/);
+  assert.match(cleanPageSource, /يوجد رصيد سالب في الملف؛ تم التعامل معه كصفر في الفرع المتأثر فقط وسيستمر التحليل/);
 });
 
 
@@ -106,7 +106,7 @@ test('clean stock upload retries transport failure once on the same sync identit
   assert.match(unifiedApiSource, /async function withOneTransportRetry/);
   assert.match(unifiedApiSource, /withOneTransportRetry\(\(\) => standaloneRpc\('smart_purchase_stage_dual_stock_master_v1'/);
   assert.match(unifiedApiSource, /withOneTransportRetry\(\(\) => standaloneRpc\('smart_purchase_finalize_dual_stock_master_v1'/);
-  assert.match(unifiedApiSource, /const syncId = `dual-stock-${syncNonce}`/);
+  assert.ok(unifiedApiSource.includes('const syncId = `dual-stock-${syncNonce}`;'));
 });
 
 test('clean historical persistence contract points at snapshot-checked v2', () => {
