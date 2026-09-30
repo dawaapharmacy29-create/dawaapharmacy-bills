@@ -1086,7 +1086,6 @@ export default function PurchaseCenterClean() {
       missingCostItems,
       supplierCount: validGroups.length,
       topGroups,
-      readyForFinalReview: rows.length > 0 && missingCostItems === 0,
       readyForHistoricalReview: rows.length > 0
         && historicalCoverageComplete
         && missingSupplierItems === 0
@@ -1109,10 +1108,15 @@ export default function PurchaseCenterClean() {
           .map((row) => String(row.supplier_name || '').trim())
           .filter(Boolean)
       );
+      const persistedBranchTotal = branchName === 'دواء شكري'
+        ? Number(supplierWorkspace.draftTotals?.shokry || 0)
+        : Number(supplierWorkspace.draftTotals?.shamy || 0);
       return {
         branch: branchName,
         items: branchRows.length,
-        value: branchRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0),
+        value: supplierWorkspace.historicalApplied && persistedBranchTotal > 0
+          ? persistedBranchTotal
+          : branchRows.reduce((sum, row) => sum + Number(row.cash_cost || 0), 0),
         historical: branchRows.filter((row) =>
           row.cost_source === 'historical_average' || row.cost_source === 'historical_last'
         ).length,
@@ -1126,7 +1130,7 @@ export default function PurchaseCenterClean() {
         suppliers: suppliers.size,
       };
     });
-  }, [supplierWorkspace.rows]);
+  }, [supplierWorkspace.draftTotals, supplierWorkspace.historicalApplied, supplierWorkspace.rows]);
 
   const supplierMissingRows = useMemo(() => (
     (supplierWorkspace.rows || [])

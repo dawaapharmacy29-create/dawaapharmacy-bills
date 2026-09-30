@@ -92,3 +92,10 @@ test('supplier distribution is collapsed by default on the final result', () => 
   assert.ok(source.includes("فتح التفاصيل الكاملة"));
   assert.ok(source.includes("مورد إضافي موجود في التفاصيل الكاملة"));
 });
+
+
+test('branch totals reconcile to persisted draft totals after historical allocation', () => {
+  assert.ok(source.includes("persistedBranchTotal"));
+  assert.ok(source.includes("supplierWorkspace.historicalApplied && persistedBranchTotal > 0"));
+  assert.doesNotMatch(source, /readyForFinalReview:/);
+});
