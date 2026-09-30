@@ -188,7 +188,9 @@ begin
     encode(
       extensions.digest(
         string_agg(
-          item_id::text||'|'||supplier_name||'|'||unit_cost::text||'|'||historical_confidence||'|'||historical_cost_source,
+          item_id::text||'|'||quantity::text||'|'||supplier_name||'|'||unit_cost::text||'|'||
+          historical_confidence||'|'||historical_cost_source||'|'||
+          coalesce(purchase_events,0)::text||'|'||coalesce(last_purchase_date::text,''),
           E'\n' order by item_id
         ),
         'sha256'
@@ -228,13 +230,46 @@ security definer
 set search_path to 'pg_catalog','public','extensions'
 as $function$
 declare
+  a record;
   v_preview jsonb;
   v_hash text;
   v_total numeric;
+  v_expected_total numeric;
+  v_expected_items int;
+  v_updated_items int;
 begin
+  select sa.* into a
+  from public.staff_sessions ss
+  join public.staff_accounts sa on sa.id=ss.account_id
+  where ss.token_hash=encode(extensions.digest(coalesce(p_session_token,''),'sha256'),'hex')
+    and ss.revoked_at is null
+    and ss.expires_at>now()
+    and sa.status='active'
+  order by ss.created_at desc
+  limit 1;
+
+  if not found then
+    return jsonb_build_object('ok',false,'error','invalid_session');
+  end if;
+
+  if a.role not in ('general_manager','branch_manager','purchasing') then
+    return jsonb_build_object('ok',false,'error','forbidden');
+  end if;
   if nullif(trim(coalesce(p_expected_hash,'')),'') is null then
     return jsonb_build_object('ok',false,'error','historical_allocation_hash_required');
   end if;
+
+  -- Lock the reviewed drafts and their active rows before rebuilding the snapshot.
+  perform 1
+  from public.smart_purchase_orders
+  where id=any(p_order_ids)
+  for update;
+
+  perform 1
+  from public.smart_purchase_order_items
+  where order_id=any(p_order_ids)
+    and coalesce(approved_quantity,0)>0
+  for update;
 
   v_preview := public.smart_purchase_historical_allocation_preview_v1(p_session_token,p_order_ids);
 
@@ -243,6 +278,8 @@ begin
   end if;
 
   v_hash := v_preview#>>'{data,allocation_hash}';
+  v_expected_total := coalesce((v_preview#>>'{data,grand_total}')::numeric,0);
+  v_expected_items := coalesce((v_preview#>>'{data,items_count}')::int,0);
 
   if v_hash is distinct from p_expected_hash then
     return jsonb_build_object(
@@ -278,6 +315,11 @@ begin
   from p
   where i.id=p.item_id and i.order_id=p.order_id;
 
+  get diagnostics v_updated_items = row_count;
+  if v_updated_items<>v_expected_items then
+    raise exception 'historical_allocation_apply_count_mismatch:%/%',v_updated_items,v_expected_items;
+  end if;
+
   update public.smart_purchase_orders o
   set expected_total=x.total,
       approved_total=x.total,
@@ -296,6 +338,10 @@ begin
   from public.smart_purchase_orders
   where id=any(p_order_ids);
 
+  if abs(v_total-v_expected_total)>0.01 then
+    raise exception 'historical_allocation_total_mismatch:%/%',v_total,v_expected_total;
+  end if;
+
   insert into public.purchase_status_history(
     source_type,record_id,old_status,new_status,reason,
     changed_by_account_id,changed_by_name,changed_at
@@ -306,8 +352,8 @@ begin
     o.status,
     o.status,
     'Applied reviewed historical allocation snapshot '||v_hash,
-    o.created_by_account_id,
-    o.created_by_name,
+    a.id,
+    a.display_name,
     now()
   from public.smart_purchase_orders o
   where o.id=any(p_order_ids);

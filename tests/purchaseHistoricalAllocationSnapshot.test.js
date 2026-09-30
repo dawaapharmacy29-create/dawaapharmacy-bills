@@ -28,3 +28,16 @@ test('snapshot apply remains draft-only and does not approve, send, or receive',
   assert.doesNotMatch(sql, /sent_at\s*=\s*now/);
   assert.doesNotMatch(sql, /purchase_order_receipts\s*\(/);
 });
+
+
+test('snapshot hash covers quantity and evidence, and apply is transactionally verified', () => {
+  assert.match(sql, /quantity::text/);
+  assert.match(sql, /purchase_events,0/);
+  assert.match(sql, /last_purchase_date::text/);
+  assert.match(sql, /for update/);
+  assert.match(sql, /get diagnostics v_updated_items = row_count/);
+  assert.match(sql, /historical_allocation_apply_count_mismatch/);
+  assert.match(sql, /historical_allocation_total_mismatch/);
+  assert.match(sql, /a\.id/);
+  assert.match(sql, /a\.display_name/);
+});
