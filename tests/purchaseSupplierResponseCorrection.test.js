@@ -78,5 +78,7 @@ test('two suppliers cannot concurrently validate against the same stale capacity
     sql.indexOf('create or replace function public.smart_purchase_receiving_read_v3')
   );
   assert.match(saveFn, /pg_advisory_xact_lock\(hashtext\(v_order_id::text\|\|':supplier-response'\)\)/);
-  assert.ok(saveFn.indexOf('pg_advisory_xact_lock') < saveFn.indexOf('v_other_allocated'));
+  const capacityRead = saveFn.indexOf('into v_other_allocated');
+  assert.ok(capacityRead > 0);
+  assert.ok(saveFn.indexOf('pg_advisory_xact_lock') < capacityRead);
 });
