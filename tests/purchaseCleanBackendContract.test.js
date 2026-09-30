@@ -82,3 +82,10 @@ test('clean path never auto-approves or auto-dispatches after historical persist
   assert.doesNotMatch(cleanPageSource, /approveAndReserve\s*\(/);
   assert.doesNotMatch(cleanPageSource, /markSupplierSent\s*\(/);
 });
+
+
+test('clean historical path contains no current-offer workspace state and exposes draft identity', () => {
+  assert.doesNotMatch(cleanPageSource, /currentOfferPlans/);
+  assert.match(cleanPageSource, /draftMeta/);
+  assert.match(cleanPageSource, /ثقة منخفضة/);
+});

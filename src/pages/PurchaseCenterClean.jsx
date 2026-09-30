@@ -449,8 +449,8 @@ export default function PurchaseCenterClean() {
     rows: [],
     groups: [],
     scenarios: [],
-    currentOfferPlans: {},
-    draftTotals: {},
+        draftTotals: {},
+    draftMeta: {},
     historicalApplied: false,
   });
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
@@ -730,7 +730,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {}, historicalApplied: false });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, historicalApplied: false });
 
     try {
       setPhase('saving');
@@ -788,8 +788,8 @@ export default function PurchaseCenterClean() {
       rows: [],
       groups: [],
       scenarios: [],
-      currentOfferPlans: {},
-      draftTotals: {},
+            draftTotals: {},
+      draftMeta: {},
       historicalApplied: false,
     });
     setTimings({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
@@ -856,7 +856,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], currentOfferPlans: {}, draftTotals: {}, historicalApplied: false });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, historicalApplied: false });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -889,8 +889,7 @@ export default function PurchaseCenterClean() {
       rows: [],
       groups: [],
       scenarios: [],
-      currentOfferPlans: {},
-      draftTotals: {},
+            draftTotals: {},
     }));
     try {
       const [shokryDecision, shamyDecision, shokryOrder, shamyOrder] = await Promise.all([
@@ -942,8 +941,7 @@ export default function PurchaseCenterClean() {
         }),
       ]);
 
-      const currentOfferPlans = {};
-      const historicalApplied = [shokryOrder, shamyOrder].every((order) => {
+            const historicalApplied = [shokryOrder, shamyOrder].every((order) => {
         const activeItems = (order?.items || []).filter((item) => Number(item.approved_quantity || 0) > 0);
         return activeItems.length > 0 && activeItems.every((item) =>
           String(item.supplier_reason || '').startsWith('historical_purchase_v1:')
@@ -960,10 +958,19 @@ export default function PurchaseCenterClean() {
         rows,
         groups: buildSupplierGroups(rows),
         scenarios,
-        currentOfferPlans,
-        draftTotals: {
+                draftTotals: {
           shokry: Number(shokryOrder?.order?.approved_total || shokryOrder?.order?.expected_total || 0),
           shamy: Number(shamyOrder?.order?.approved_total || shamyOrder?.order?.expected_total || 0),
+        },
+        draftMeta: {
+          shokry: {
+            order_number: shokryOrder?.order?.order_number || '',
+            status: shokryOrder?.order?.status || '',
+          },
+          shamy: {
+            order_number: shamyOrder?.order?.order_number || '',
+            status: shamyOrder?.order?.status || '',
+          },
         },
         historicalApplied,
       });
@@ -976,8 +983,7 @@ export default function PurchaseCenterClean() {
         rows: [],
         groups: [],
         scenarios: [],
-        currentOfferPlans: {},
-        draftTotals: {},
+                draftTotals: {},
       });
     }
   }
@@ -1793,6 +1799,20 @@ export default function PurchaseCenterClean() {
                   </span>
                 </div>
 
+                {draftResult && (
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
+                    {supplierWorkspace.draftMeta?.shokry?.order_number && (
+                      <span className="rounded-full border bg-white px-2.5 py-1">
+                        شكري • {supplierWorkspace.draftMeta.shokry.order_number} • {supplierWorkspace.draftMeta.shokry.status || 'draft'}
+                      </span>
+                    )}
+                    {supplierWorkspace.draftMeta?.shamy?.order_number && (
+                      <span className="rounded-full border bg-white px-2.5 py-1">
+                        الشامي • {supplierWorkspace.draftMeta.shamy.order_number} • {supplierWorkspace.draftMeta.shamy.status || 'draft'}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                   <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} />
                   <Metric
@@ -1832,6 +1852,11 @@ export default function PurchaseCenterClean() {
                   <Metric label="بدون تكلفة" value={supplierDecision.missingCostItems} />
                   <Metric label="مطابقة المسودتين للخطة" value={draftResult.content_verified ? 'مؤكدة ✓' : 'تحتاج مراجعة'} />
                 </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-800">ثقة عالية {supplierDecision.highConfidenceItems}</span>
+                  <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-800">ثقة متوسطة {supplierDecision.mediumConfidenceItems}</span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">ثقة منخفضة {supplierDecision.lowConfidenceItems}</span>
+                </div>
 
                 {!supplierDecision.readyForHistoricalReview && (
                   <div className="mt-4 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-amber-900">
@@ -1866,9 +1891,11 @@ export default function PurchaseCenterClean() {
                       note: draftResult.content_verified ? 'مطابقة مؤكدة' : 'تحتاج مراجعة',
                     },
                     {
-                      label: 'التكلفة مكتملة',
+                      label: supplierWorkspace.historicalApplied ? 'التكلفة مثبتة' : 'التكلفة التاريخية متاحة',
                       ok: supplierDecision.missingCostItems === 0,
-                      note: supplierDecision.missingCostItems === 0 ? 'لا توجد تكلفة مفقودة' : `${supplierDecision.missingCostItems} صنف ناقص تكلفة`,
+                      note: supplierDecision.missingCostItems === 0
+                        ? (supplierWorkspace.historicalApplied ? 'تم تثبيت التكلفة على المسودتين' : 'كل الأصناف لها تكلفة تاريخية للمراجعة')
+                        : `${supplierDecision.missingCostItems} صنف ناقص تكلفة`,
                     },
                     {
                       label: supplierWorkspace.historicalApplied ? 'الموردون مثبتون' : 'الموردون مقترحون',
@@ -1961,6 +1988,8 @@ export default function PurchaseCenterClean() {
                         <div className="mt-1 text-slate-500">
                           {row.branch} • {row.supplier_name || 'بدون مورد'} • {row.historical_purchase_events || 0} عملية شراء
                           {row.historical_last_purchase_date ? ` • آخر شراء ${row.historical_last_purchase_date}` : ''}
+                          {Number(row.unit_cost || 0) > 0 ? ` • تكلفة تاريخية ${money(row.unit_cost)} ج` : ''}
+                          <span className="font-bold text-amber-700"> • للمراجعة فقط لأنها عملية شراء واحدة وقديمة</span>
                         </div>
                       </div>
                     ))}
