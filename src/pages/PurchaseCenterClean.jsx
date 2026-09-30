@@ -1739,8 +1739,6 @@ export default function PurchaseCenterClean() {
           {draftResult && activeStep === 4 && (
             <CleanSupplierFinancialWorkspace
               rows={supplierWorkspace.rows}
-              groups={supplierWorkspace.groups}
-              scenarios={supplierWorkspace.scenarios}
               loading={supplierWorkspace.loading}
               error={supplierWorkspace.error}
               message={supplierWorkspace.message}

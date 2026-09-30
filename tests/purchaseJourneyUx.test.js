@@ -99,3 +99,16 @@ test('branch totals reconcile to persisted draft totals after historical allocat
   assert.ok(source.includes("supplierWorkspace.historicalApplied && persistedBranchTotal > 0"));
   assert.doesNotMatch(source, /readyForFinalReview:/);
 });
+
+
+test('historical supplier details contain only decision-useful columns', async () => {
+  const workspace = await readFile(
+    new URL('../src/components/purchases/CleanSupplierFinancialWorkspace.jsx', import.meta.url),
+    'utf8'
+  );
+  assert.ok(workspace.includes("['الفرع','الصنف','الكمية','المورد','الثقة','مرات الشراء','آخر شراء','تكلفة الوحدة','القيمة']"));
+  assert.doesNotMatch(workspace, /مقارنة مخزن واحد/);
+  assert.doesNotMatch(workspace, /خصم أساسي/);
+  assert.doesNotMatch(workspace, /بونص متوقع/);
+  assert.doesNotMatch(workspace, /بدائل مسجلة/);
+});
