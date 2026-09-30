@@ -7,12 +7,13 @@ const sql = await readFile(
   'utf8'
 );
 
-test('server resume is user-scoped, recent, draft-only and non-executing', () => {
+test('server resume is user-scoped, recent, and supports draft or dispatch stage', () => {
   assert.match(sql, /created_by_account_id=a\.id/);
   assert.match(sql, /interval '12 hours'/);
   assert.match(sql, /in \('draft','مسودة'\)/);
-  assert.match(sql, /sent_at is null/);
-  assert.match(sql, /purchase_order_supplier_dispatches/);
+  assert.match(sql, /تم الإرسال للمورد/);
+  assert.match(sql, /'stage',case/);
+  assert.match(sql, /'dispatch'/);
   assert.match(sql, /purchase_order_receipts/);
   assert.match(sql, /'found',false/);
   assert.match(sql, /'found',true/);

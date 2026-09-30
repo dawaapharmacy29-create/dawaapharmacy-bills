@@ -1,5 +1,6 @@
 -- Server-side resume for the clean purchase journey.
--- Returns only the current user's latest still-open dual draft run within 12 hours.
+-- Returns the current user's latest still-open clean journey within 12 hours.
+-- Supports draft review and approved/supplier-dispatch stages, but stops once receiving starts.
 create or replace function public.smart_purchase_resume_clean_journey_v1(
   p_session_token text
 )
@@ -37,22 +38,24 @@ begin
     d.shamy_order_id,
     d.created_at,
     os.order_number shokry_order_number,
-    om.order_number shamy_order_number
+    om.order_number shamy_order_number,
+    os.status shokry_status,
+    om.status shamy_status
   into r
   from public.smart_purchase_dual_plan_runs d
   join public.smart_purchase_orders os on os.id=d.shokry_order_id
   join public.smart_purchase_orders om on om.id=d.shamy_order_id
   where d.created_by_account_id=a.id
     and d.created_at>=now()-interval '12 hours'
-    and coalesce(os.status,'') in ('draft','مسودة')
-    and coalesce(om.status,'') in ('draft','مسودة')
-    and os.sent_at is null
-    and om.sent_at is null
-    and not exists (
-      select 1
-      from public.purchase_order_supplier_dispatches x
-      where x.order_id in (d.shokry_order_id,d.shamy_order_id)
-        and x.sent_at is not null
+    and (
+      (
+        coalesce(os.status,'') in ('draft','مسودة')
+        and coalesce(om.status,'') in ('draft','مسودة')
+      )
+      or (
+        coalesce(os.status,'') in ('معتمدة','approved','تم الإرسال للمورد','sent')
+        and coalesce(om.status,'') in ('معتمدة','approved','تم الإرسال للمورد','sent')
+      )
     )
     and not exists (
       select 1
@@ -74,6 +77,13 @@ begin
     'shamy_order_id',r.shamy_order_id,
     'shokry_order_number',r.shokry_order_number,
     'shamy_order_number',r.shamy_order_number,
+    'shokry_status',r.shokry_status,
+    'shamy_status',r.shamy_status,
+    'stage',case
+      when r.shokry_status in ('draft','مسودة')
+       and r.shamy_status in ('draft','مسودة') then 'draft'
+      else 'dispatch'
+    end,
     'created_at',r.created_at
   ));
 end
