@@ -51,6 +51,8 @@ declare
   v_details jsonb;
   v_snapshot_id uuid;
   v_existing_snapshot uuid;
+  v_existing_response_type text;
+  v_existing_details jsonb;
   v_item_id uuid;
   v_confirmed numeric;
   v_other_allocated numeric;
@@ -129,18 +131,19 @@ begin
 
   perform pg_advisory_xact_lock(hashtext(v_order_id::text||':supplier-response:'||v_supplier_key));
 
-  select ws.id into v_existing_snapshot
+  select ws.id,ws.response_type,ws.details
+  into v_existing_snapshot,v_existing_response_type,v_existing_details
   from public.smart_purchase_workflow_snapshots ws
   where ws.order_id=v_order_id
     and ws.workflow_type='supplier_response'
     and lower(trim(coalesce(ws.supplier_name,'')))=v_supplier_key
     and coalesce(ws.summary->>'scope','')='branch_remaining_v1'
-    and coalesce(ws.response_type,'')=coalesce(v_response_type,'')
-    and ws.details=v_details
   order by ws.created_at desc,ws.id desc
   limit 1;
 
-  if v_existing_snapshot is not null then
+  if v_existing_snapshot is not null
+     and coalesce(v_existing_response_type,'')=coalesce(v_response_type,'')
+     and v_existing_details=v_details then
     return jsonb_build_object(
       'ok',true,
       'data',jsonb_build_object(

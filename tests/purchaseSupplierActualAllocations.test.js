@@ -84,3 +84,22 @@ test('latest corrected supplier response keeps the supplier original round order
   assert.match(sql, /min\(ws\.created_at\) over/);
   assert.match(sql, /order by latest_response\.first_created_at asc/);
 });
+
+test('idempotency compares only with the supplier latest saved response', () => {
+  const saveFn = sql.slice(
+    sql.indexOf('create or replace function public.smart_purchase_save_supplier_response_v1'),
+    sql.indexOf('create or replace function public.smart_purchase_receiving_read_v3')
+  );
+  assert.match(saveFn, /select ws\.id,ws\.response_type,ws\.details/);
+  assert.match(saveFn, /order by ws\.created_at desc,ws\.id desc/);
+  assert.match(saveFn, /limit 1/);
+  assert.match(saveFn, /v_existing_details=v_details/);
+  assert.doesNotMatch(saveFn, /and ws\.details=v_details[\s\S]{0,120}order by ws\.created_at desc/);
+});
+
+test('an old historical response can be deliberately restored after a later correction', () => {
+  assert.match(sql, /v_existing_response_type/);
+  assert.match(sql, /v_existing_details/);
+  assert.match(sql, /and coalesce\(v_existing_response_type,''\)=coalesce\(v_response_type,''\)/);
+  assert.match(sql, /and v_existing_details=v_details then/);
+});
