@@ -13,13 +13,14 @@ const receivingSource = await readFile(
 
 test('clean purchase journey exposes three simple stages and one fixed action bar', () => {
   for (const label of [
-    'رفع الرصيد',
-    'راجع وأنشئ',
-    'المورد والنتيجة',
+    'الرصيد',
+    'الطلبية',
+    'الموردين والتكلفة',
+    'إرسال الموردين',
   ]) {
     assert.ok(source.includes(label), `missing journey stage: ${label}`);
   }
-  assert.ok(source.includes('مرحلة {item.id} من 3'));
+  assert.doesNotMatch(source, /مرحلة \{item\.id\} من 3/);
   assert.ok(source.includes('function JourneyActionBar'));
   assert.ok(source.includes('fixed inset-x-3 bottom-3'));
 });
@@ -27,20 +28,21 @@ test('clean purchase journey exposes three simple stages and one fixed action ba
 test('clean purchase journey safely resumes the last atomic stock sync after refresh', () => {
   assert.ok(source.includes("JOURNEY_RESUME_KEY = 'purchase-center-clean-resume-v1'"));
   assert.ok(source.includes('writeJourneyResume({'));
-  assert.ok(source.includes('runPlannerOnly(resume.stock_sync_id)'));
+  assert.ok(source.includes("runPlannerOnly(resume.stock_sync_id, resume.plan_hash || '')"));
   assert.ok(source.includes('clearJourneyResume()'));
   assert.ok(source.includes('بدء طلبية جديدة'));
 });
 
-test('fast path only skips detailed review when guards are green and quick review is empty', () => {
-  assert.ok(source.includes("result?.creation_guard?.can_create_dual === true && quickReviewCount === 0"));
-  assert.ok(source.includes('setActiveStep(fastPathReady ? 3 : 2)'));
-  assert.ok(source.includes('لا توجد مراجعات سريعة مطلوبة؛ الطلبية جاهزة لإنشاء المسودتين.'));
+test('new plans enter review while exact recovered drafts resume at supplier result', () => {
+  assert.ok(source.includes('if (recoveredDrafts) {'));
+  assert.ok(source.includes('setActiveStep(2)'));
+  assert.ok(source.includes('setActiveStep(5)'));
+  assert.doesNotMatch(source, /fastPathReady/);
 });
 
-test('heavy plan content renders only while the review step is active', () => {
+test('heavy content stays scoped to review, supplier details, and final result steps', () => {
   assert.ok(source.includes('{activeStep === 2 && ('));
-  assert.ok(source.includes('{activeStep === 3 && ('));
+  assert.doesNotMatch(source, /\{activeStep === 3 && \(/);
   assert.ok(source.includes('draftResult && activeStep === 4'));
   assert.ok(source.includes('activeStep === 5 && draftResult'));
 });
@@ -63,7 +65,7 @@ test('final screen has one primary historical persistence action in the sticky a
   assert.ok(source.includes("onApplyHistorical"));
   assert.ok(source.includes("تثبيت المورد والتكلفة التاريخية"));
   assert.ok(source.includes("زر التثبيت موجود أسفل الشاشة"));
-  assert.ok(source.includes("تم التثبيت ✓"));
+  assert.ok(source.includes("✓ تم تثبيت أفضل مورد وتكلفة تاريخية على المسودتين"));
 });
 
 
@@ -141,12 +143,13 @@ test('draft creation recovers exact matching drafts when the create response is 
 });
 
 
-test('refresh can resume an exact open journey from the server when local storage is missing', () => {
+test('refresh treats the server as authoritative and resumes the exact open journey safely', () => {
   assert.ok(source.includes("purchaseApi.resumeCleanJourney()"));
-  assert.ok(source.includes("if (!serverResume?.found) return"));
-  assert.ok(source.includes("expectedPlanHash"));
+  assert.ok(source.includes("serverResumeResolved = true"));
+  assert.ok(source.includes("serverResumeResolved && serverResume?.found === false"));
+  assert.ok(source.includes("clearJourneyResume();"));
+  assert.ok(source.includes("runPlannerOnly(resume.stock_sync_id, resume.plan_hash || '')"));
   assert.ok(source.includes("result?.plan_hash !== expectedPlanHash"));
-  assert.ok(source.includes("آخر طلبية مفتوحة محفوظة على السيرفر"));
 });
 
 
@@ -155,7 +158,7 @@ test('plan review keeps the primary decision compact and user-facing', () => {
   assert.ok(source.includes('label="مراجعة اختيارية"'));
   assert.ok(source.includes('تفاصيل إضافية للطلبية'));
   assert.doesNotMatch(source, /تفاصيل تقنية وتشغيلية/);
-  assert.doesNotMatch(source, /Watchlist/);
+  assert.doesNotMatch(source, />Watchlist</);
   assert.doesNotMatch(source, />Smart Monthly</);
   assert.doesNotMatch(source, /قيمة V10/);
 });
@@ -183,7 +186,8 @@ test('stock upload keeps technical file diagnostics collapsed and hides internal
 test('journey navigation is one compact three-stage control without a repeated guide', () => {
   assert.ok(source.includes("label: 'الرصيد'"));
   assert.ok(source.includes("label: 'الطلبية'"));
-  assert.ok(source.includes("label: 'الموردين والتكلفة'"));
+  assert.ok(source.includes("'الموردين والتكلفة'"));
+  assert.ok(source.includes("'إرسال الموردين'"));
   assert.doesNotMatch(source, /function CurrentStepGuide/);
   assert.doesNotMatch(source, /المطلوب منك الآن:/);
   assert.doesNotMatch(source, /مرحلة \{item\.id\} من 3/);
@@ -193,7 +197,7 @@ test('journey navigation is one compact three-stage control without a repeated g
 test('navigation and fixed actions do not repeat stage chrome', () => {
   assert.doesNotMatch(source, /مسار مبسط/);
   assert.doesNotMatch(source, /المرحلة \{step === 1/);
-  assert.ok(source.includes('تحديث الخطة'));
+  assert.ok(source.includes('إعادة التحليل'));
 });
 
 
