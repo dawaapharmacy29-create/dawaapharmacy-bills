@@ -144,3 +144,14 @@ test('refresh can resume an exact open journey from the server when local storag
   assert.ok(source.includes("result?.plan_hash !== expectedPlanHash"));
   assert.ok(source.includes("آخر طلبية مفتوحة محفوظة على السيرفر"));
 });
+
+
+test('plan review keeps the primary decision compact and user-facing', () => {
+  assert.ok(source.includes('label="إجمالي الطلبية"'));
+  assert.ok(source.includes('label="مراجعة اختيارية"'));
+  assert.ok(source.includes('تفاصيل إضافية للطلبية'));
+  assert.doesNotMatch(source, /تفاصيل تقنية وتشغيلية/);
+  assert.doesNotMatch(source, /Watchlist/);
+  assert.doesNotMatch(source, />Smart Monthly</);
+  assert.doesNotMatch(source, /قيمة V10/);
+});

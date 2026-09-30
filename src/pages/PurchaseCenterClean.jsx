@@ -101,7 +101,7 @@ function BranchPlanCard({ branchKey, data, mode }) {
           <div className="rounded-xl border bg-white px-4 py-2 text-left">
             <div className="text-xs text-slate-500">تكلفة مرجعية محسّنة</div>
             <div className="text-xl font-black text-teal-700">{money(financialReferenceValue)} ج</div>
-            <div className="mt-1 text-[10px] text-slate-400">V10: {money(summary.suggested_buy_value)} ج</div>
+            <div className="mt-1 text-[10px] text-slate-400">الخطة الأصلية: {money(summary.suggested_buy_value)} ج</div>
           </div>
         </div>
       </div>
@@ -110,10 +110,10 @@ function BranchPlanCard({ branchKey, data, mode }) {
         <Metric label="أصناف شراء" value={summary.buy_now_items || 0} />
         <Metric label="نواقص حرجة" value={(summary.stockout_items || 0) + (summary.below_min_items || 0)} />
         <Metric label="احتياج الفترة" value={`${money(summary.period_need_value)} ج`} />
-        <Metric label="قيمة V10" value={`${money(summary.suggested_buy_value)} ج`} />
+        <Metric label="قيمة الخطة" value={`${money(summary.suggested_buy_value)} ج`} />
         <Metric label="تكلفة مرجعية" value={`${money(financialReferenceValue)} ج`} />
         <Metric label="بتاريخ تكلفة" value={historicalReferenceItems} />
-        <Metric label="Safe Order Today" value={`${money(mode?.safe_order_today)} ج`} />
+        <Metric label="حد شراء آمن اليوم" value={`${money(mode?.safe_order_today)} ج`} />
       </div>
       <div className="mx-4 mb-4 flex flex-wrap gap-2 text-xs">
         <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.stock_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
@@ -1394,51 +1394,33 @@ export default function PurchaseCenterClean() {
                 {draftResult ? 'المسودتان جاهزتان للمراجعة' : 'الخطة جاهزة للمراجعة'}
               </span>
             </div>
-            <div className="grid gap-3 lg:grid-cols-12">
-              <div className="lg:col-span-4">
-                <Metric
-                  label="إجمالي الطلبية"
-                  value={`${money(draftOrderTotal)} ج`}
-                  tone="teal"
-                  emphasis
-                  helper={`${plan.totals?.buy_items || 0} صنف شراء`}
-                />
-              </div>
-              <div className="lg:col-span-4">
-                <Metric
-                  label="شكري"
-                  value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`}
-                  tone="indigo"
-                  emphasis
-                  helper={`${(plan.shokry?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0).length} صنف`}
-                />
-              </div>
-              <div className="lg:col-span-4">
-                <Metric
-                  label="الشامي"
-                  value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`}
-                  tone="indigo"
-                  emphasis
-                  helper={`${(plan.shamy?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0).length} صنف`}
-                />
-              </div>
-              <div className="lg:col-span-4">
-                <Metric label="مرجع التكلفة" value={`${money(liveReferenceTotal)} ج`} tone="slate" />
-              </div>
-              <div className="lg:col-span-4">
-                <Metric
-                  label="فرق تقديري"
-                  value={`${money(estimatedPurchaseGap)} ج`}
-                  tone={estimatedPurchaseGap > 0 ? 'amber' : 'emerald'}
-                />
-              </div>
-              <div className="lg:col-span-4">
-                <Metric
-                  label="مراجعات داخل الطلبية"
-                  value={quickReviewRows.length}
-                  tone={quickReviewRows.length ? 'amber' : 'emerald'}
-                />
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <Metric
+                label="إجمالي الطلبية"
+                value={`${money(draftOrderTotal)} ج`}
+                tone="teal"
+                emphasis
+                helper={`${plan.totals?.buy_items || 0} صنف شراء`}
+              />
+              <Metric
+                label="شكري"
+                value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`}
+                tone="indigo"
+                emphasis
+                helper={`${(plan.shokry?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0).length} صنف`}
+              />
+              <Metric
+                label="الشامي"
+                value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`}
+                tone="indigo"
+                emphasis
+                helper={`${(plan.shamy?.plan || []).filter((row) => Number(row.buy_quantity || 0) > 0).length} صنف`}
+              />
+              <Metric
+                label="مراجعة اختيارية"
+                value={quickReviewRows.length ? `${quickReviewRows.length} صنف` : 'لا يوجد'}
+                tone={quickReviewRows.length ? 'amber' : 'emerald'}
+              />
             </div>
             {plan.creation_guard?.can_create_dual === true && quickReviewRows.length === 0 && (
               <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
@@ -1490,33 +1472,29 @@ export default function PurchaseCenterClean() {
             )}
           </section>
 
-          <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm`}>
+          <details className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-700">
-              تفاصيل تقنية وتشغيلية
+              تفاصيل إضافية للطلبية
             </summary>
-            <div className="border-t p-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <Metric label="أصناف التحويل" value={plan.totals?.transfer_items || 0} />
-                <Metric label="في الطريق" value={`${qty(executionPendingUnits)} وحدة`} />
-                <Metric
-                  label="تغطية تاريخ التكلفة"
-                  value={financialHistoryCoverage.total ? `${financialHistoryCoverage.history}/${financialHistoryCoverage.total}` : '0/0'}
-                />
-                <Metric label="تاريخ إنشاء الخطة" value={new Date(plan.generated_at).toLocaleString('ar-EG')} />
-                <Metric label="معرّف الخطة" value={String(plan.plan_hash || '').slice(0, 12) || '—'} />
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <Metric label="قراءة الملف" value={`${timings.readMs} ms`} />
-                <Metric label="حفظ الفرعين" value={`${timings.saveMs} ms`} />
-                <Metric label="بناء الخطة" value={`${timings.planMs} ms`} />
-                <Metric label="الزمن الكلي" value={timings.totalMs ? `${(timings.totalMs / 1000).toFixed(2)} ثانية` : '—'} />
-              </div>
+            <div className="grid gap-3 border-t p-4 sm:grid-cols-2 xl:grid-cols-5">
+              <Metric label="القيمة المرجعية" value={`${money(liveReferenceTotal)} ج`} />
+              <Metric
+                label="الفرق المرجعي"
+                value={`${money(estimatedPurchaseGap)} ج`}
+                tone={estimatedPurchaseGap > 0 ? 'amber' : 'emerald'}
+              />
+              <Metric label="أصناف التحويل بين الفرعين" value={plan.totals?.transfer_items || 0} />
+              <Metric label="كميات في الطريق" value={`${qty(executionPendingUnits)} وحدة`} />
+              <Metric
+                label="تغطية تاريخ التكلفة"
+                value={financialHistoryCoverage.total ? `${financialHistoryCoverage.history}/${financialHistoryCoverage.total}` : '0/0'}
+              />
             </div>
           </details>
 
           <details className={`rounded-2xl border border-amber-200 bg-white shadow-sm`}>
             <summary className="cursor-pointer select-none px-4 py-3 font-bold text-slate-800">
-              مراجعات لا تعطل الطلبية • داخل الطلبية {quickReviewRows.length} • Watchlist خارجي {reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy + movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy}
+              مراجعات اختيارية • داخل الطلبية {quickReviewRows.length} • خارج الطلبية {reviewWatchlistCounts.shokry + reviewWatchlistCounts.shamy + movementOnlyWatchlistCounts.shokry + movementOnlyWatchlistCounts.shamy}
             </summary>
             <div className="space-y-4 border-t p-4">
           {(Number(plan.execution_pending?.shokry?.items || 0) > 0 || Number(plan.execution_pending?.shamy?.items || 0) > 0) && (
@@ -1542,9 +1520,9 @@ export default function PurchaseCenterClean() {
             <section className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 shadow-sm">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-black text-sky-900">Movement-only Watchlist — حركة 3 شهور بدون دليل عملاء كافٍ</h2>
+                  <h2 className="font-black text-sky-900">أصناف لها حركة متكررة وتحتاج مراجعة</h2>
                   <p className="mt-1 text-sm leading-6 text-sky-700">
-                    الأصناف دي رصيدها صفر ولها حركة متكررة في B-Connect، لكن لسه مش عندنا Customer Intelligence كافي يسمح بشراء آلي. تظهر للمراجعة فقط ولا تدخل كميات المسودتين.
+                    رصيدها صفر ولها حركة متكررة خلال الشهور الأخيرة، لكن الدليل الحالي غير كافٍ لإضافتها تلقائيًا. تظهر للمراجعة فقط ولا تدخل كميات المسودتين.
                   </p>
                 </div>
                 <div className="flex gap-2 text-xs font-bold">
@@ -1559,7 +1537,7 @@ export default function PurchaseCenterClean() {
                       <th className="p-2 text-right">الفرع</th>
                       <th className="p-2 text-right">الصنف</th>
                       <th className="p-2 text-right">الوحدة</th>
-                      <th className="p-2 text-right">Smart Monthly</th>
+                      <th className="p-2 text-right">الاستهلاك الشهري الذكي</th>
                       <th className="p-2 text-right">الثبات</th>
                       <th className="p-2 text-right">الثقة</th>
                       <th className="p-2 text-right">آخر تكلفة</th>
@@ -1595,9 +1573,9 @@ export default function PurchaseCenterClean() {
             <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 shadow-sm">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="font-black text-violet-900">Watchlist — أصناف تحتاج عين بشرية وليست شراء آلي</h2>
+                  <h2 className="font-black text-violet-900">أصناف عليها طلب حديث وتحتاج مراجعة</h2>
                   <p className="mt-1 text-sm text-violet-700">
-                    رصيدها صفر وعليها طلب حديث، لكن ثقة السياسة لم تصل لمستوى الشراء التلقائي. لا يتم إضافة أي كمية منها للمسودتين.
+                    رصيدها صفر وعليها طلب حديث، لكن الدليل الحالي لا يكفي لإضافتها تلقائيًا. لا يتم إضافة أي كمية منها للمسودتين.
                   </p>
                 </div>
                 <div className="flex gap-2 text-xs font-bold">
@@ -1612,7 +1590,7 @@ export default function PurchaseCenterClean() {
                       <th className="p-2 text-right">الفرع</th>
                       <th className="p-2 text-right">الصنف</th>
                       <th className="p-2 text-right">الوحدة</th>
-                      <th className="p-2 text-right">Smart Monthly</th>
+                      <th className="p-2 text-right">الاستهلاك الشهري الذكي</th>
                       <th className="p-2 text-right">عملاء 30 يوم</th>
                       <th className="p-2 text-right">فواتير 30 يوم</th>
                       <th className="p-2 text-right">الثقة</th>
@@ -1657,7 +1635,7 @@ export default function PurchaseCenterClean() {
                       <th className="p-2 text-right">الصنف</th>
                       <th className="p-2 text-right">الشراء</th>
                       <th className="p-2 text-right">القيمة</th>
-                      <th className="p-2 text-right">Smart Monthly</th>
+                      <th className="p-2 text-right">الاستهلاك الشهري الذكي</th>
                       <th className="p-2 text-right">السبب</th>
                     </tr>
                   </thead>
@@ -1667,7 +1645,7 @@ export default function PurchaseCenterClean() {
                         high_line_value: 'قيمة السطر مرتفعة',
                         qty_above_smart_monthly: 'الكمية أعلى من الاستهلاك الشهري الذكي',
                         dominant_customer: 'اعتماد مرتفع على عميل واحد',
-                        high_outlier_share: 'نسبة Outlier مرتفعة',
+                        high_outlier_share: 'نسبة طلبات غير معتادة مرتفعة',
                       }[reason] || reason));
                       return (
                         <tr key={`${row.branch}-${row.product_key || row.product_code || row.product_name}`} className="border-t">
