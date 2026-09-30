@@ -1269,9 +1269,6 @@ export default function PurchaseCenterClean() {
                 )}
               </div>
               <div className="mt-1 truncate text-sm text-slate-500">{fileName || 'ملف الرصيد الحالي'}</div>
-              {saveResult?.stock_sync_id && (
-                <div className="mt-1 font-mono text-[10px] text-slate-400">{saveResult.stock_sync_id}</div>
-              )}
             </div>
             <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-bold text-teal-800 ${busy ? 'pointer-events-none opacity-50' : 'hover:bg-teal-100'}`}>
               <input
@@ -1293,28 +1290,29 @@ export default function PurchaseCenterClean() {
 
         {parsed && !plan && (
           <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Metric label="صفوف المصدر" value={parsed.source_rows_count ?? parsed.rows_count} />
-              <Metric label="صفوف معتمدة" value={parsed.rows_count} />
-              <Metric label="أصناف مخزنية" value={parsed.inventory_rows} />
-              <Metric label="آخر تعديل للملف" value={fileModifiedAt ? fileModifiedAt.toLocaleString('ar-EG') : 'غير متاح'} />
-            </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 text-xs">
-              <div className="rounded-lg border bg-slate-50 p-2">كسور شكري: <strong>{parsed.quality?.fractional_shokry || 0}</strong></div>
-              <div className="rounded-lg border bg-slate-50 p-2">كسور الشامي: <strong>{parsed.quality?.fractional_shamy || 0}</strong></div>
-              <div className={`rounded-lg border p-2 ${parsed.quality?.negative_shokry ? 'border-amber-300 bg-amber-50 text-amber-800' : 'bg-slate-50'}`}>
-                رصيد سالب شكري: <strong>{parsed.quality?.negative_shokry || 0}</strong>
-              </div>
-              <div className={`rounded-lg border p-2 ${parsed.quality?.negative_shamy ? 'border-amber-300 bg-amber-50 text-amber-800' : 'bg-slate-50'}`}>
-                رصيد سالب الشامي: <strong>{parsed.quality?.negative_shamy || 0}</strong>
-              </div>
-            </div>
             {(parsed.quality?.negative_shokry > 0 || parsed.quality?.negative_shamy > 0) && (
               <div className="mt-3 flex gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
                 <AlertTriangle className="h-5 w-5 shrink-0" />
-                <span>تمت معاملة الأرصدة السالبة كصفر في الفرع المتأثر فقط، وسيستمر التحليل وإنشاء المسودتين. الحالات محفوظة بعلامة للمراجعة في B-Connect.</span>
+                <span>
+                  يوجد رصيد سالب في الملف؛ تم التعامل معه كصفر في الفرع المتأثر فقط وسيستمر التحليل.
+                  {' '}شكري {parsed.quality?.negative_shokry || 0} • الشامي {parsed.quality?.negative_shamy || 0}
+                </span>
               </div>
             )}
+
+            <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60">
+              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-bold text-slate-600">
+                تفاصيل الملف
+              </summary>
+              <div className="grid gap-2 border-t p-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
+                <div>صفوف المصدر: <strong>{parsed.source_rows_count ?? parsed.rows_count}</strong></div>
+                <div>الصفوف المعتمدة: <strong>{parsed.rows_count}</strong></div>
+                <div>أصناف مخزنية: <strong>{parsed.inventory_rows}</strong></div>
+                <div>آخر تعديل: <strong>{fileModifiedAt ? fileModifiedAt.toLocaleString('ar-EG') : 'غير متاح'}</strong></div>
+                <div>كسور شكري: <strong>{parsed.quality?.fractional_shokry || 0}</strong></div>
+                <div>كسور الشامي: <strong>{parsed.quality?.fractional_shamy || 0}</strong></div>
+              </div>
+            </details>
           </>
         )}
 
@@ -1346,12 +1344,9 @@ export default function PurchaseCenterClean() {
         )}
 
         {saveResult && !plan && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-            <div className="flex items-center gap-2 font-bold">
-              <CheckCircle2 className="h-5 w-5" />
-              تم حفظ رصيد شكري {saveResult.shokry_saved} صف • الشامي {saveResult.shamy_saved} صف
-            </div>
-            <div className="font-mono text-[11px] opacity-70">{saveResult.stock_sync_id}</div>
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
+            <CheckCircle2 className="h-5 w-5" />
+            تم حفظ رصيد الفرعين بنجاح وجاري تجهيز الخطة.
           </div>
         )}
       </section>

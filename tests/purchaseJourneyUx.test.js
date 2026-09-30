@@ -166,3 +166,11 @@ test('branch detail cards keep only decision-useful metrics and columns', () => 
   assert.doesNotMatch(source, /مزامنة الرصيد \{/);
   assert.doesNotMatch(source, /حد شراء آمن اليوم/);
 });
+
+
+test('stock upload keeps technical file diagnostics collapsed and hides internal sync ids', () => {
+  assert.ok(source.includes('تفاصيل الملف'));
+  assert.ok(source.includes('تم حفظ رصيد الفرعين بنجاح وجاري تجهيز الخطة'));
+  assert.doesNotMatch(source, /font-mono text-\[10px\].*stock_sync_id/);
+  assert.doesNotMatch(source, /الحالات محفوظة بعلامة للمراجعة في B-Connect/);
+});
