@@ -16,10 +16,7 @@ import { normalizeDualBranchStockRows } from '@/lib/dualBranchStockMaster';
 import { orderMatchesPurchasePlan } from '@/lib/purchaseDraftRecovery';
 import CleanSupplierFinancialWorkspace from '@/components/purchases/CleanSupplierFinancialWorkspace';
 import {
-  buildSingleSupplierScenarios,
-  buildSupplierFinancialRows,
   buildSupplierGroups,
-  combineSingleSupplierScenarioSets,
   mergePlanWithHistory,
 } from '@/lib/purchaseSupplierFinancials';
 
@@ -461,6 +458,7 @@ export default function PurchaseCenterClean() {
     scenarios: [],
         draftTotals: {},
     draftMeta: {},
+    allocationHash: '',
     historicalApplied: false,
   });
   const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
@@ -739,7 +737,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, historicalApplied: false });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
 
     try {
       setPhase('saving');
@@ -799,6 +797,7 @@ export default function PurchaseCenterClean() {
       scenarios: [],
             draftTotals: {},
       draftMeta: {},
+      allocationHash: '',
       historicalApplied: false,
     });
     setTimings({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
@@ -865,7 +864,7 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setHistoryByBranch({ shokry: [], shamy: [] });
-    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, historicalApplied: false });
+    setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], scenarios: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
@@ -899,65 +898,39 @@ export default function PurchaseCenterClean() {
       rows: [],
       groups: [],
       scenarios: [],
-            draftTotals: {},
+      allocationHash: '',
     }));
+
     try {
-      const [shokryDecision, shamyDecision, shokryOrder, shamyOrder] = await Promise.all([
-        purchaseApi.supplierDecision(shokryOrderId),
-        purchaseApi.supplierDecision(shamyOrderId),
+      const orderIds = [shokryOrderId, shamyOrderId];
+      const [preview, shokryOrder, shamyOrder] = await Promise.all([
+        purchaseApi.historicalAllocationPreview(orderIds),
         purchaseApi.getOrder(shokryOrderId),
         purchaseApi.getOrder(shamyOrderId),
       ]);
 
-      const [shokryHistory, shamyHistory] = await Promise.all([
-        purchaseApi.historyEnrichRows('دواء شكري', shokryOrder?.items || []),
-        purchaseApi.historyEnrichRows('دواء الشامي', shamyOrder?.items || []),
-      ]);
-      const freshHistory = {
-        shokry: shokryHistory?.rows || [],
-        shamy: shamyHistory?.rows || [],
-      };
-      setHistoryByBranch(freshHistory);
+      const rows = (preview?.rows || []).map((row) => ({
+        ...row,
+        quantity: Number(row.quantity || 0),
+        unit_cost: Number(row.unit_cost || 0),
+        cash_cost: Number(row.cash_cost || 0),
+        historical_purchase_events: Number(row.historical_purchase_events || 0),
+        historical_confidence: row.historical_confidence || 'missing',
+        cost_source: row.cost_source || 'missing',
+      }));
 
-      const rows = [
-        ...buildSupplierFinancialRows({
-          decision: shokryDecision,
-          historyRows: freshHistory.shokry,
-          orderItems: shokryOrder?.items || [],
-          branch: 'دواء شكري',
-          historicalOnly: true,
-        }),
-        ...buildSupplierFinancialRows({
-          decision: shamyDecision,
-          historyRows: freshHistory.shamy,
-          orderItems: shamyOrder?.items || [],
-          branch: 'دواء الشامي',
-          historicalOnly: true,
-        }),
-      ];
-
-      const scenarios = combineSingleSupplierScenarioSets([
-        buildSingleSupplierScenarios({
-          decision: shokryDecision,
-          historyRows: freshHistory.shokry,
-          branch: 'دواء شكري',
-          historicalOnly: true,
-        }),
-        buildSingleSupplierScenarios({
-          decision: shamyDecision,
-          historyRows: freshHistory.shamy,
-          branch: 'دواء الشامي',
-          historicalOnly: true,
-        }),
-      ]);
-
-            const historicalApplied = [shokryOrder, shamyOrder].every((order) => {
+      const previewByItemId = new Map(rows.map((row) => [String(row.item_id), row]));
+      const historicalApplied = [shokryOrder, shamyOrder].every((order) => {
         const activeItems = (order?.items || []).filter((item) => Number(item.approved_quantity || 0) > 0);
-        return activeItems.length > 0 && activeItems.every((item) =>
-          String(item.supplier_reason || '').startsWith('historical_purchase_v1:')
-          && String(item.supplier_name || '').trim()
-          && Number(item.expected_unit_cost || 0) > 0
-        );
+        return activeItems.length > 0 && activeItems.every((item) => {
+          const choice = previewByItemId.get(String(item.id));
+          if (!choice) return false;
+          const historicalReason = String(item.supplier_reason || '').startsWith('historical_purchase_v1:')
+            || String(item.supplier_reason || '').startsWith('historical_purchase_v2:');
+          return historicalReason
+            && String(item.supplier_name || '').trim() === String(choice.supplier_name || '').trim()
+            && Math.abs(Number(item.expected_unit_cost || 0) - Number(choice.unit_cost || 0)) <= 0.0001;
+        });
       });
 
       setSupplierWorkspace({
@@ -967,8 +940,8 @@ export default function PurchaseCenterClean() {
         error: '',
         rows,
         groups: buildSupplierGroups(rows),
-        scenarios,
-                draftTotals: {
+        scenarios: [],
+        draftTotals: {
           shokry: Number(shokryOrder?.order?.approved_total || shokryOrder?.order?.expected_total || 0),
           shamy: Number(shamyOrder?.order?.approved_total || shamyOrder?.order?.expected_total || 0),
         },
@@ -982,6 +955,7 @@ export default function PurchaseCenterClean() {
             status: shamyOrder?.order?.status || '',
           },
         },
+        allocationHash: preview?.allocation_hash || '',
         historicalApplied,
       });
     } catch (err) {
@@ -993,7 +967,10 @@ export default function PurchaseCenterClean() {
         rows: [],
         groups: [],
         scenarios: [],
-                draftTotals: {},
+        draftTotals: {},
+        draftMeta: {},
+        allocationHash: '',
+        historicalApplied: false,
       });
     } finally {
       supplierLoadRef.current = false;
@@ -1001,18 +978,37 @@ export default function PurchaseCenterClean() {
   }
 
   async function applyHistoricalAllocationToDrafts() {
-    if (!draftResult?.shokry_order_id || !draftResult?.shamy_order_id || supplierWorkspace.applying) return;
-    setSupplierWorkspace((current) => ({ ...current, applying: 'historical-allocation', message: '', error: '' }));
+    if (
+      !draftResult?.shokry_order_id
+      || !draftResult?.shamy_order_id
+      || supplierWorkspace.applying
+    ) return;
+
+    if (!supplierWorkspace.allocationHash) {
+      setSupplierWorkspace((current) => ({
+        ...current,
+        error: 'راجع التحليل التاريخي من جديد قبل التثبيت.',
+      }));
+      return;
+    }
+
+    setSupplierWorkspace((current) => ({
+      ...current,
+      applying: 'historical-allocation',
+      message: '',
+      error: '',
+    }));
+
     try {
-      await purchaseApi.applyHistoricalAllocation([
-        draftResult.shokry_order_id,
-        draftResult.shamy_order_id,
-      ]);
+      await purchaseApi.applyHistoricalAllocation(
+        [draftResult.shokry_order_id, draftResult.shamy_order_id],
+        supplierWorkspace.allocationHash
+      );
       await loadSupplierWorkspace(draftResult);
       setSupplierWorkspace((current) => ({
         ...current,
-        message: 'تم تثبيت المورد والتكلفة التاريخية على المسودتين فقط — بدون اعتماد أو إرسال.',
-        historicalApplied: true,
+        applying: '',
+        message: 'تم تثبيت نفس المورد والتكلفة التاريخية التي تمت مراجعتها — بدون اعتماد أو إرسال.',
       }));
     } catch (err) {
       setSupplierWorkspace((current) => ({
