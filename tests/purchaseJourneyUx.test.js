@@ -155,3 +155,14 @@ test('plan review keeps the primary decision compact and user-facing', () => {
   assert.doesNotMatch(source, />Smart Monthly</);
   assert.doesNotMatch(source, /قيمة V10/);
 });
+
+
+test('branch detail cards keep only decision-useful metrics and columns', () => {
+  assert.ok(source.includes('بيانات الفرع جاهزة للطلبية'));
+  assert.ok(source.includes('المورد التاريخي'));
+  assert.doesNotMatch(source, /<th className="p-2 text-right">Min<\/th>/);
+  assert.doesNotMatch(source, /<th className="p-2 text-right">Reorder<\/th>/);
+  assert.doesNotMatch(source, /<th className="p-2 text-right">Max<\/th>/);
+  assert.doesNotMatch(source, /مزامنة الرصيد \{/);
+  assert.doesNotMatch(source, /حد شراء آمن اليوم/);
+});

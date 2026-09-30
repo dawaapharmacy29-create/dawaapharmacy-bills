@@ -71,7 +71,7 @@ function clearJourneyResume() {
 
 function modeLabel(mode) {
   if (mode === 'critical') return 'حرج — حماية الحد الأدنى';
-  if (mode === 'comfortable') return 'مريح — يسمح بالتعزيز حتى Max';
+  if (mode === 'comfortable') return 'مريح — يسمح بالتعزيز حتى الحد الأعلى';
   return 'متوازن — الوصول لنقطة إعادة الطلب';
 }
 
@@ -82,13 +82,7 @@ function BranchPlanCard({ branchKey, data, mode }) {
   const buyRows = plan
     .filter((row) => Number(row.buy_quantity || 0) > 0)
     .sort((a, b) => Number(b.planning_reference_total || b.buy_estimated_cost || 0) - Number(a.planning_reference_total || a.buy_estimated_cost || 0));
-  const financialReferenceValue = buyRows.reduce(
-    (sum, row) => sum + Number(row.planning_reference_total || row.buy_estimated_cost || 0),
-    0
-  );
-  const historicalReferenceItems = buyRows.filter((row) =>
-    ['historical_average', 'historical_last'].includes(row.planning_cost_source)
-  ).length;
+  const branchReady = data?.method?.data_quality?.analysis_ready_for_order === true;
 
   return (
     <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
@@ -99,37 +93,25 @@ function BranchPlanCard({ branchKey, data, mode }) {
             <p className="mt-1 text-sm text-slate-500">{modeLabel(mode?.mode)}</p>
           </div>
           <div className="rounded-xl border bg-white px-4 py-2 text-left">
-            <div className="text-xs text-slate-500">تكلفة مرجعية محسّنة</div>
-            <div className="text-xl font-black text-teal-700">{money(financialReferenceValue)} ج</div>
-            <div className="mt-1 text-[10px] text-slate-400">الخطة الأصلية: {money(summary.suggested_buy_value)} ج</div>
+            <div className="text-xs text-slate-500">قيمة خطة الفرع</div>
+            <div className="text-xl font-black text-teal-700">{money(summary.suggested_buy_value)} ج</div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-7">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="أصناف شراء" value={summary.buy_now_items || 0} />
         <Metric label="نواقص حرجة" value={(summary.stockout_items || 0) + (summary.below_min_items || 0)} />
         <Metric label="احتياج الفترة" value={`${money(summary.period_need_value)} ج`} />
-        <Metric label="قيمة الخطة" value={`${money(summary.suggested_buy_value)} ج`} />
-        <Metric label="تكلفة مرجعية" value={`${money(financialReferenceValue)} ج`} />
-        <Metric label="بتاريخ تكلفة" value={historicalReferenceItems} />
-        <Metric label="حد شراء آمن اليوم" value={`${money(mode?.safe_order_today)} ج`} />
+        <Metric label="قيمة الخطة" value={`${money(summary.suggested_buy_value)} ج`} tone="teal" />
       </div>
-      <div className="mx-4 mb-4 flex flex-wrap gap-2 text-xs">
-        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.stock_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
-          مزامنة الرصيد {data?.method?.data_quality?.stock_snapshot_fresh ? 'حديثة' : 'قديمة'}
-        </span>
-        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.movement_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
-          الحركة {data?.method?.data_quality?.movement_snapshot_fresh ? 'حديثة' : 'قديمة'}
-        </span>
-        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.financial_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
-          الوضع المالي {data?.method?.data_quality?.financial_snapshot_fresh ? 'حديث' : 'قديم'}
-        </span>
-        <span className={`rounded-full border px-2 py-1 ${data?.method?.data_quality?.profile_snapshot_fresh ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
-          Min / Reorder / Max {data?.method?.data_quality?.profile_snapshot_fresh ? 'حديثة' : 'قديمة'}
-        </span>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">
-          الهدف المالي: {summary.financial_target === 'min' ? 'Min' : summary.financial_target === 'max' ? 'Max' : 'Reorder'}
+      <div className="mx-4 mb-4">
+        <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold ${
+          branchReady
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            : 'border-red-200 bg-red-50 text-red-700'
+        }`}>
+          {branchReady ? 'بيانات الفرع جاهزة للطلبية' : 'بيانات الفرع تحتاج تحديث قبل الإنشاء'}
         </span>
       </div>
 
@@ -143,17 +125,13 @@ function BranchPlanCard({ branchKey, data, mode }) {
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="p-2 text-right">الصنف</th>
-                <th className="p-2 text-right">الوحدة</th>
                 <th className="p-2 text-right">الرصيد</th>
-                <th className="p-2 text-right">Min</th>
-                <th className="p-2 text-right">Reorder</th>
-                <th className="p-2 text-right">Max</th>
                 <th className="p-2 text-right">الشراء</th>
                 <th className="p-2 text-right">التحويل</th>
-                <th className="p-2 text-right">المورد المرجعي</th>
+                <th className="p-2 text-right">المورد التاريخي</th>
                 <th className="p-2 text-right">تكلفة الوحدة</th>
-                <th className="p-2 text-right">القيمة المرجعية</th>
-                <th className="p-2 text-right">القرار</th>
+                <th className="p-2 text-right">القيمة</th>
+                <th className="p-2 text-right">السبب</th>
               </tr>
             </thead>
             <tbody>
@@ -163,12 +141,11 @@ function BranchPlanCard({ branchKey, data, mode }) {
                     <div className="font-semibold text-slate-800">{row.product_name}</div>
                     <div className="text-xs text-slate-400">{row.product_code || 'بدون كود'}</div>
                   </td>
-                  <td className="p-2">{row.stock_unit || '—'}</td>
                   <td className="p-2">{qty(row.current_stock)}</td>
-                  <td className="p-2">{qty(row.min_stock)}</td>
-                  <td className="p-2">{qty(row.reorder_stock)}</td>
-                  <td className="p-2">{qty(row.max_stock)}</td>
-                  <td className="p-2 font-bold text-teal-700">{qty(row.buy_quantity)}</td>
+                  <td className="p-2 font-bold text-teal-700">
+                    {qty(row.buy_quantity)}
+                    {row.stock_unit ? <div className="text-[10px] font-normal text-slate-400">{row.stock_unit}</div> : null}
+                  </td>
                   <td className="p-2">{qty(row.suggested_transfer_qty)}</td>
                   <td className="p-2 text-xs font-bold text-indigo-800">{row.historical_supplier || '—'}</td>
                   <td className="p-2">
@@ -184,7 +161,7 @@ function BranchPlanCard({ branchKey, data, mode }) {
                 </tr>
               ))}
               {!buyRows.length && (
-                <tr><td colSpan="12" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
+                <tr><td colSpan="8" className="p-8 text-center text-slate-400">لا يوجد شراء خارجي مقترح لهذا الفرع.</td></tr>
               )}
             </tbody>
           </table>
@@ -1477,7 +1454,7 @@ export default function PurchaseCenterClean() {
               تفاصيل إضافية للطلبية
             </summary>
             <div className="grid gap-3 border-t p-4 sm:grid-cols-2 xl:grid-cols-5">
-              <Metric label="القيمة المرجعية" value={`${money(liveReferenceTotal)} ج`} />
+              <Metric label="القيمة" value={`${money(liveReferenceTotal)} ج`} />
               <Metric
                 label="الفرق المرجعي"
                 value={`${money(estimatedPurchaseGap)} ج`}
