@@ -188,16 +188,19 @@ function Metric({ label, value, tone = 'slate', emphasis = false, helper = '' })
   );
 }
 
-function SupplierDispatchBranchCard({
+function SupplierSourcingBranchCard({
+  branchKey,
   branchLabel,
   orderDetail,
-  suppliers = [],
-  sendingKey,
-  onSend,
+  orderId,
 }) {
   const order = orderDetail?.order || {};
-  const sentCount = suppliers.filter((supplier) => supplier.sent).length;
-  const allSent = suppliers.length > 0 && sentCount === suppliers.length;
+  const items = (orderDetail?.items || []).filter((item) => Number(item.approved_quantity || item.requested_quantity || 0) > 0);
+  const approvedQuantity = items.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.approved_quantity || item.requested_quantity || 0)),
+    0
+  );
+  const href = `/smart-purchase-receiving?orderIds=${encodeURIComponent(orderId || '')}&selectedOrderId=${encodeURIComponent(orderId || '')}`;
 
   return (
     <section className="rounded-2xl border bg-white p-4 shadow-sm">
@@ -205,61 +208,19 @@ function SupplierDispatchBranchCard({
         <div>
           <h3 className="font-black text-slate-900">{branchLabel}</h3>
           <div className="mt-1 text-xs text-slate-500">
-            {order.order_number || 'الطلبية المعتمدة'} • {money(order.approved_total || order.expected_total)} ج
+            {order.order_number || 'الطلبية المعتمدة'} • {items.length} صنف • {qty(approvedQuantity)} وحدة
           </div>
+          <div className="mt-1 text-xs text-slate-400">القيمة المعتمدة: {money(order.approved_total || order.expected_total)} ج</div>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-black ${
-          allSent ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-        }`}>
-          {allSent ? 'تم إرسال كل الموردين' : `${sentCount}/${suppliers.length} مورد تم إرساله`}
-        </span>
+        <span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-black text-teal-800">دورة مستقلة</span>
       </div>
-
-      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {suppliers.map((supplier) => {
-          const key = `${order.id || orderDetail?.order?.id || branchLabel}:${supplier.supplier_name}`;
-          const sending = sendingKey === key;
-          return (
-            <div key={supplier.supplier_name} className="rounded-xl border bg-slate-50/70 p-3">
-              <div className="font-black text-slate-900">{supplier.supplier_name}</div>
-              <div className="mt-1 text-xs text-slate-500">
-                {supplier.items_count} صنف • {qty(supplier.total_quantity)} وحدة • {money(supplier.total_value)} ج
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <span className={`rounded-full px-2 py-1 text-xs font-bold ${
-                  supplier.sent
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-amber-100 text-amber-800'
-                }`}>
-                  {supplier.sent ? 'تم الإرسال' : 'لم يُرسل بعد'}
-                </span>
-                {!supplier.sent && (
-                  <button
-                    type="button"
-                    disabled={Boolean(sendingKey)}
-                    onClick={() => onSend(order.id, supplier.supplier_name)}
-                    className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40"
-                  >
-                    {sending ? 'جاري التسجيل...' : 'تسجيل تم الإرسال'}
-                  </button>
-                )}
-              </div>
-              {supplier.sent_at && (
-                <div className="mt-2 text-[11px] text-slate-400">
-                  {new Date(supplier.sent_at).toLocaleString('ar-EG')}
-                  {supplier.sent_by_name ? ` • ${supplier.sent_by_name}` : ''}
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
+        ابدأ بطلبية الفرع كاملة مع المورد الأول، ثم ارفع رده ليتم تثبيت المتاح وتصدير النواقص للمورد التالي.
+        المورد التاريخي يظل مرجعًا تحليليًا فقط ولا يفرض ترتيب التنفيذ.
       </div>
-
-      {!suppliers.length && (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          لا يوجد موردون جاهزون للإرسال لهذه الطلبية.
-        </div>
-      )}
+      <Link to={href} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-teal-700 px-4 py-3 text-sm font-black text-white shadow-sm">
+        فتح دورة موردي {branchKey === 'shokry' ? 'شكري' : 'الشامي'}
+      </Link>
     </section>
   );
 }
@@ -504,12 +465,10 @@ export default function PurchaseCenterClean() {
     message: '',
     error: '',
   });
-  const [dispatchState, setDispatchState] = useState({
+  const [sourcingLaunchState, setSourcingLaunchState] = useState({
     loading: false,
     error: '',
-    sendingKey: '',
     orders: { shokry: null, shamy: null },
-    suppliers: { shokry: [], shamy: [] },
   });
   const [supplierWorkspace, setSupplierWorkspace] = useState({
     loading: false,
@@ -817,12 +776,10 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setApprovalState({ loading: false, approved: false, message: '', error: '' });
-    setDispatchState({
+    setSourcingLaunchState({
       loading: false,
       error: '',
-      sendingKey: '',
       orders: { shokry: null, shamy: null },
-      suppliers: { shokry: [], shamy: [] },
     });
         setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
 
@@ -870,12 +827,10 @@ export default function PurchaseCenterClean() {
     setPlan(null);
     setDraftResult(null);
     setApprovalState({ loading: false, approved: false, message: '', error: '' });
-    setDispatchState({
+    setSourcingLaunchState({
       loading: false,
       error: '',
-      sendingKey: '',
       orders: { shokry: null, shamy: null },
-      suppliers: { shokry: [], shamy: [] },
     });
         setSupplierWorkspace({
       loading: false,
@@ -960,7 +915,7 @@ export default function PurchaseCenterClean() {
           setActiveStep(5);
           setPhase('ready');
           persistDispatchJourneyResume(resume, resumedDrafts);
-          await loadDispatchWorkspace(resumedDrafts);
+          await loadSourcingLaunchWorkspace(resumedDrafts);
           return;
         }
 
@@ -1002,12 +957,10 @@ export default function PurchaseCenterClean() {
     setDraftResult(null);
     setSaveResult(null);
     setApprovalState({ loading: false, approved: false, message: '', error: '' });
-    setDispatchState({
+    setSourcingLaunchState({
       loading: false,
       error: '',
-      sendingKey: '',
       orders: { shokry: null, shamy: null },
-      suppliers: { shokry: [], shamy: [] },
     });
         setSupplierWorkspace({ loading: false, applying: '', message: '', error: '', rows: [], groups: [], draftTotals: {}, draftMeta: {}, allocationHash: '', historicalApplied: false });
     setError('');
@@ -1024,39 +977,26 @@ export default function PurchaseCenterClean() {
     }
   }
 
-  async function loadDispatchWorkspace(result) {
+  async function loadSourcingLaunchWorkspace(result) {
     const shokryOrderId = result?.shokry_order_id;
     const shamyOrderId = result?.shamy_order_id;
     if (!shokryOrderId || !shamyOrderId) return;
-
-    setDispatchState((current) => ({ ...current, loading: true, error: '' }));
-
+    setSourcingLaunchState((current) => ({ ...current, loading: true, error: '' }));
     try {
-      const [shokryOrder, shamyOrder, shokryDispatch, shamyDispatch] = await Promise.all([
+      const [shokryOrder, shamyOrder] = await Promise.all([
         purchaseApi.getOrder(shokryOrderId),
         purchaseApi.getOrder(shamyOrderId),
-        purchaseApi.supplierDispatches(shokryOrderId),
-        purchaseApi.supplierDispatches(shamyOrderId),
       ]);
-
-      setDispatchState({
+      setSourcingLaunchState({
         loading: false,
         error: '',
-        sendingKey: '',
-        orders: {
-          shokry: shokryOrder,
-          shamy: shamyOrder,
-        },
-        suppliers: {
-          shokry: shokryDispatch?.suppliers || [],
-          shamy: shamyDispatch?.suppliers || [],
-        },
+        orders: { shokry: shokryOrder, shamy: shamyOrder },
       });
     } catch (err) {
-      setDispatchState((current) => ({
+      setSourcingLaunchState((current) => ({
         ...current,
         loading: false,
-        error: err?.message || 'تعذر تحميل حالة إرسال الموردين.',
+        error: err?.message || 'تعذر تحميل الطلبات المعتمدة لبدء دورة الموردين.',
       }));
     }
   }
@@ -1214,28 +1154,6 @@ export default function PurchaseCenterClean() {
     }
   }
 
-  async function markHistoricalSupplierSent(orderId, supplierName) {
-    if (!orderId || !supplierName || dispatchState.sendingKey) return;
-
-    const confirmed = window.confirm(
-      `هل تم بالفعل إرسال طلبية المورد «${supplierName}»؟\n\nسيتم تسجيل وقت الإرسال فقط، ولن يتم إرسال رسالة أو ملف تلقائيًا.`
-    );
-    if (!confirmed) return;
-
-    const key = `${orderId}:${supplierName}`;
-    setDispatchState((current) => ({ ...current, sendingKey: key, error: '' }));
-
-    try {
-      await purchaseApi.markHistoricalSupplierSent(orderId, supplierName);
-      await loadDispatchWorkspace(draftResult);
-    } catch (err) {
-      setDispatchState((current) => ({
-        ...current,
-        sendingKey: '',
-        error: err?.message || 'تعذر تسجيل إرسال المورد.',
-      }));
-    }
-  }
 
   async function approveReviewedDrafts() {
     if (
@@ -1273,7 +1191,7 @@ export default function PurchaseCenterClean() {
         error: '',
       });
       persistDispatchJourneyResume(plan, draftResult);
-      void loadDispatchWorkspace(draftResult);
+      void loadSourcingLaunchWorkspace(draftResult);
     } catch (err) {
       if (
         err?.code === 'historical_allocation_changed'
@@ -2328,58 +2246,26 @@ export default function PurchaseCenterClean() {
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
             <div className="font-black text-emerald-900">تم اعتماد مسودتي شكري والشامي ✓</div>
             <div className="mt-1 text-sm text-emerald-800">
-              المرحلة الحالية: تسجيل إرسال الطلبات للموردين. اضغط «تسجيل تم الإرسال» فقط بعد الإرسال الفعلي للمورد.
+              كل فرع له دورة موردين مستقلة. ابدأ بالفرع المطلوب، أرسل طلبية الفرع كاملة للمورد الأول، ثم ارفع رده واكمل بالنواقص.
             </div>
           </div>
-
-          {dispatchState.loading ? (
+          {sourcingLaunchState.loading ? (
             <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">
               <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
-              جاري تحميل حالة الموردين...
+              جاري تجهيز طلبيتي الفرعين لدورة الموردين...
             </div>
           ) : (
-            <>
-              <SupplierDispatchBranchCard
-                branchLabel="دواء شكري"
-                orderDetail={dispatchState.orders.shokry}
-                suppliers={dispatchState.suppliers.shokry}
-                sendingKey={dispatchState.sendingKey}
-                onSend={markHistoricalSupplierSent}
-              />
-              <SupplierDispatchBranchCard
-                branchLabel="دواء الشامي"
-                orderDetail={dispatchState.orders.shamy}
-                suppliers={dispatchState.suppliers.shamy}
-                sendingKey={dispatchState.sendingKey}
-                onSend={markHistoricalSupplierSent}
-              />
-            </>
-          )}
-
-          {dispatchState.error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
-              {dispatchState.error}
+            <div className="grid gap-4 lg:grid-cols-2">
+              <SupplierSourcingBranchCard branchKey="shokry" branchLabel="دواء شكري" orderDetail={sourcingLaunchState.orders.shokry} orderId={draftResult.shokry_order_id} />
+              <SupplierSourcingBranchCard branchKey="shamy" branchLabel="دواء الشامي" orderDetail={sourcingLaunchState.orders.shamy} orderId={draftResult.shamy_order_id} />
             </div>
           )}
-
-          {!dispatchState.loading
-            && dispatchState.suppliers.shokry.length > 0
-            && dispatchState.suppliers.shamy.length > 0
-            && dispatchState.suppliers.shokry.every((supplier) => supplier.sent)
-            && dispatchState.suppliers.shamy.every((supplier) => supplier.sent) && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900 shadow-sm">
-                <div>
-                  <div className="font-black">تم تسجيل إرسال كل الموردين للفرعين ✓</div>
-                  <div className="mt-1 text-sm">المرحلة التالية هي الاستلام ومطابقة الفاتورة.</div>
-                </div>
-                <Link
-                  to={`/smart-purchase-receiving?orderIds=${encodeURIComponent([draftResult.shokry_order_id, draftResult.shamy_order_id].join(','))}&selectedOrderId=${encodeURIComponent(draftResult.shokry_order_id)}`}
-                  className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-black text-white shadow-sm"
-                >
-                  الانتقال للاستلام
-                </Link>
-              </div>
-            )}
+          {sourcingLaunchState.error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{sourcingLaunchState.error}</div>
+          )}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            توزيع الموردين التاريخي محفوظ للتحليل والتكلفة فقط، ولم يعد شرطًا لبدء التنفيذ أو الانتقال للاستلام.
+          </div>
         </section>
       )}
 

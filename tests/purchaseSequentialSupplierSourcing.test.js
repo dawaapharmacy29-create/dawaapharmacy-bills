@@ -42,3 +42,12 @@ test('correcting the same supplier excludes its previous commitment before recal
   assert.match(source, /supplierKey === excludedSupplierKey/);
   assert.match(source, /sourcingRemainingQuantity\(item, supplierCommitmentsBySupplier, currentSupplierKey\)/);
 });
+
+test('purchase center launches supplier sourcing independently for each branch', async () => {
+  const purchaseSource = await readFile(new URL('../src/pages/PurchaseCenterClean.jsx', import.meta.url), 'utf8');
+  assert.match(purchaseSource, /SupplierSourcingBranchCard/);
+  assert.match(purchaseSource, /فتح دورة موردي/);
+  assert.match(purchaseSource, /ابدأ بطلبية الفرع كاملة مع المورد الأول/);
+  assert.doesNotMatch(purchaseSource, /dispatchState\.suppliers/);
+  assert.doesNotMatch(purchaseSource, /markHistoricalSupplierSent/);
+});

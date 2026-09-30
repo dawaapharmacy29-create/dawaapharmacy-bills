@@ -252,13 +252,15 @@ test('receiving handoff appears only after all supplier sends are recorded and c
   assert.ok(source.includes('draftResult.shamy_order_id'));
   assert.ok(source.includes('selectedOrderId='));
   assert.ok(source.includes('الانتقال للاستلام'));
-  assert.ok(source.includes('dispatchState.suppliers.shokry.every((supplier) => supplier.sent)'));
-  assert.ok(source.includes('dispatchState.suppliers.shamy.every((supplier) => supplier.sent)'));
+  assert.ok(source.includes('SupplierSourcingBranchCard'));
+  assert.ok(source.includes('فتح دورة موردي'));
+  assert.doesNotMatch(source, /dispatchState\.suppliers/);
+  assert.doesNotMatch(source, /markHistoricalSupplierSent/);
   assert.ok(receivingSource.includes("searchParams.get('orderIds')"));
   assert.ok(receivingSource.includes("searchParams.get('selectedOrderId')"));
   assert.ok(receivingSource.includes('api.getScopedOrderStates(scopedOrderIds)'));
   assert.ok(receivingSource.includes("states.filter((entry) => entry.state === 'active')"));
-  assert.ok(receivingSource.includes("تم فتح شكري والشامي مباشرة من رحلة المشتريات الحالية."));
+  assert.ok(receivingSource.includes("تم فتح طلبية الفرع مباشرة من مركز المشتريات."));
 });
 
 
@@ -327,4 +329,11 @@ test('manual receiving refresh reloads the selected order and server readiness w
 
 test('scoped receiving ids are deduplicated before status resolution', () => {
   assert.ok(receivingSource.includes('useMemo(() => [...new Set(scopedOrderIdsParam'));
+});
+
+test('single-branch supplier journey has singular completion copy', () => {
+  assert.ok(receivingSource.includes("const scopedSingleOrder = scopedOrderIds.length === 1"));
+  assert.ok(receivingSource.includes("طلبية الفرع الحالية"));
+  assert.ok(receivingSource.includes("تم إغلاق طلبية الفرع ✓"));
+  assert.ok(receivingSource.includes("تم إنهاء استلام طلبية الفرع ✓"));
 });
