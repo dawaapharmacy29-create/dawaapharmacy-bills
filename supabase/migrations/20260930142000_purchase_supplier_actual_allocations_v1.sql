@@ -400,10 +400,16 @@ begin
         where r.order_id=v_order_id
       ),'[]'::jsonb),
       'supplier_responses',coalesce((
-        select jsonb_agg(to_jsonb(latest_response) order by latest_response.created_at asc)
+        select jsonb_agg(
+          to_jsonb(latest_response)
+          order by latest_response.first_created_at asc,latest_response.created_at asc
+        )
         from (
           select distinct on (lower(trim(ws.supplier_name)))
-            ws.id,ws.response_type,ws.supplier_name,ws.file_name,ws.summary,ws.details,ws.created_at
+            ws.id,ws.response_type,ws.supplier_name,ws.file_name,ws.summary,ws.details,ws.created_at,
+            min(ws.created_at) over (
+              partition by lower(trim(ws.supplier_name))
+            ) as first_created_at
           from public.smart_purchase_workflow_snapshots ws
           where ws.order_id=v_order_id
             and ws.workflow_type='supplier_response'

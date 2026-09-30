@@ -62,3 +62,19 @@ test('a new purchase cycle supersedes the previous open shortage without inflati
   assert.match(sql, /when e\.status='superseded' then 'superseded'/);
   assert.match(sql, /sum\(e\.current_shortage_quantity\) filter\(where e\.status='open'\)/);
 });
+
+test('physical partial receipt becomes the authoritative current shortage after receiving starts', () => {
+  assert.match(sql, /shortage_basis text not null default 'sourcing'/);
+  assert.match(sql, /shortage_basis in \('sourcing','receipt'\)/);
+  assert.match(sql, /smart_purchase_ensure_receipt_shortage_event_v1/);
+  assert.match(sql, /v_coverage:=case when v_basis='receipt' then v_received else v_allocated end/);
+  assert.match(sql, /coalesce\(new\.received_quantity,0\)>coalesce\(old\.received_quantity,0\)/);
+  assert.match(sql, /shortage_basis='receipt'/);
+});
+
+test('internal shortage helper and trigger functions are not exposed as client RPCs', () => {
+  assert.match(sql, /smart_purchase_shortage_product_key_v1\(text,text\) from public,anon,authenticated/);
+  assert.match(sql, /smart_purchase_sync_shortage_event_for_item_v1\(uuid\) from public,anon,authenticated/);
+  assert.match(sql, /smart_purchase_ensure_receipt_shortage_event_v1\(uuid\) from public,anon,authenticated/);
+  assert.match(sql, /purchase_shortage_allocation_sync_trigger_v1\(\) from public,anon,authenticated/);
+});

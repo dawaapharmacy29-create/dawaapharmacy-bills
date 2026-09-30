@@ -19,6 +19,7 @@ create table if not exists public.purchase_shortage_events (
   current_allocated_quantity numeric not null default 0 check (current_allocated_quantity >= 0),
   current_received_quantity numeric not null default 0 check (current_received_quantity >= 0),
   current_shortage_quantity numeric not null default 0 check (current_shortage_quantity >= 0),
+  shortage_basis text not null default 'sourcing' check (shortage_basis in ('sourcing','receipt')),
   initial_shortage_type text not null check (initial_shortage_type in ('unavailable','limited_supply')),
   current_shortage_type text not null check (current_shortage_type in ('unavailable','limited_supply','covered_later')),
   status text not null default 'open' check (status in ('open','covered_later','superseded')),
@@ -49,7 +50,8 @@ create or replace function public.smart_purchase_shortage_product_key_v1(
 returns text
 language sql
 immutable
-as $$
+set search_path='pg_catalog'
+as $
   select case
     when nullif(trim(coalesce(p_product_code,'')),'') is not null
       then 'code:'||lower(regexp_replace(trim(p_product_code),'\.0+$','','g'))
@@ -57,8 +59,7 @@ as $$
   end
 $$;
 
-revoke all on function public.smart_purchase_shortage_product_key_v1(text,text) from public;
-grant execute on function public.smart_purchase_shortage_product_key_v1(text,text) to anon,authenticated;
+revoke all on function public.smart_purchase_shortage_product_key_v1(text,text) from public,anon,authenticated;
 
 create or replace function public.smart_purchase_sync_shortage_event_for_item_v1(
   p_order_item_id uuid
@@ -70,10 +71,12 @@ set search_path='pg_catalog','public'
 as $$
 declare
   i public.smart_purchase_order_items%rowtype;
+  v_basis text:='sourcing';
   v_requested numeric:=0;
   v_allocated numeric:=0;
   v_received numeric:=0;
   v_shortage numeric:=0;
+  v_coverage numeric:=0;
 begin
   if p_order_item_id is null then
     return;
@@ -87,10 +90,13 @@ begin
     return;
   end if;
 
-  if not exists(
-    select 1 from public.purchase_shortage_events e
-    where e.order_item_id=p_order_item_id
-  ) then
+  select e.shortage_basis
+  into v_basis
+  from public.purchase_shortage_events e
+  where e.order_item_id=p_order_item_id
+  limit 1;
+
+  if not found then
     return;
   end if;
 
@@ -105,7 +111,8 @@ begin
 
   v_allocated:=least(v_requested,greatest(0,v_allocated));
   v_received:=least(v_requested,greatest(0,v_received));
-  v_shortage:=greatest(0,v_requested-v_allocated);
+  v_coverage:=case when v_basis='receipt' then v_received else v_allocated end;
+  v_shortage:=greatest(0,v_requested-v_coverage);
 
   update public.purchase_shortage_events e
   set requested_quantity=v_requested,
@@ -114,7 +121,7 @@ begin
       current_shortage_quantity=v_shortage,
       current_shortage_type=case
         when v_shortage<=0 then 'covered_later'
-        when v_allocated<=0 then 'unavailable'
+        when v_coverage<=0 then 'unavailable'
         else 'limited_supply'
       end,
       status=case
@@ -127,7 +134,113 @@ begin
 end
 $$;
 
-revoke all on function public.smart_purchase_sync_shortage_event_for_item_v1(uuid) from public;
+revoke all on function public.smart_purchase_sync_shortage_event_for_item_v1(uuid) from public,anon,authenticated;
+
+create or replace function public.smart_purchase_ensure_receipt_shortage_event_v1(
+  p_order_item_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path='pg_catalog','public'
+as $$
+declare
+  i public.smart_purchase_order_items%rowtype;
+  o public.smart_purchase_orders%rowtype;
+  v_requested numeric:=0;
+  v_allocated numeric:=0;
+  v_received numeric:=0;
+  v_shortage numeric:=0;
+  v_basis text:='sourcing';
+  v_coverage numeric:=0;
+  v_key text;
+begin
+  if p_order_item_id is null then
+    return;
+  end if;
+
+  select * into i
+  from public.smart_purchase_order_items
+  where id=p_order_item_id;
+
+  if not found then
+    return;
+  end if;
+
+  select * into o
+  from public.smart_purchase_orders
+  where id=i.order_id;
+
+  if not found then
+    return;
+  end if;
+
+  v_requested:=greatest(0,coalesce(i.approved_quantity,i.requested_quantity,0));
+
+  select
+    coalesce(sum(greatest(0,x.allocated_quantity)),0),
+    coalesce(sum(greatest(0,x.received_quantity)),0)
+  into v_allocated,v_received
+  from public.purchase_order_supplier_allocations x
+  where x.order_item_id=i.id;
+
+  v_allocated:=least(v_requested,greatest(0,v_allocated));
+  v_received:=least(v_requested,greatest(0,v_received));
+  v_shortage:=greatest(0,v_requested-v_received);
+  v_key:=public.smart_purchase_shortage_product_key_v1(i.product_code,i.product_name);
+
+  if exists(
+    select 1 from public.purchase_shortage_events e
+    where e.order_item_id=i.id
+  ) then
+    update public.purchase_shortage_events e
+    set shortage_basis='receipt',
+        branch=o.branch,
+        product_key=v_key,
+        product_code=i.product_code,
+        product_name=i.product_name,
+        updated_at=now()
+    where e.order_item_id=i.id;
+
+    perform public.smart_purchase_sync_shortage_event_for_item_v1(i.id);
+    return;
+  end if;
+
+  if v_shortage<=0 then
+    return;
+  end if;
+
+  update public.purchase_shortage_events previous
+  set status='superseded',
+      updated_at=now()
+  where previous.branch=o.branch
+    and previous.product_key=v_key
+    and previous.order_item_id is distinct from i.id
+    and previous.status='open';
+
+  insert into public.purchase_shortage_events(
+    branch,product_key,product_code,product_name,
+    order_id,order_item_id,
+    requested_quantity,
+    initial_allocated_quantity,initial_received_quantity,initial_shortage_quantity,
+    current_allocated_quantity,current_received_quantity,current_shortage_quantity,
+    shortage_basis,initial_shortage_type,current_shortage_type,status
+  )
+  values(
+    o.branch,v_key,i.product_code,i.product_name,
+    o.id,i.id,
+    v_requested,
+    v_allocated,v_received,v_shortage,
+    v_allocated,v_received,v_shortage,
+    'receipt',
+    case when v_received<=0 then 'unavailable' else 'limited_supply' end,
+    case when v_received<=0 then 'unavailable' else 'limited_supply' end,
+    'open'
+  );
+end
+$$;
+
+revoke all on function public.smart_purchase_ensure_receipt_shortage_event_v1(uuid) from public,anon,authenticated;
 
 create or replace function public.purchase_shortage_allocation_sync_trigger_v1()
 returns trigger
@@ -141,7 +254,11 @@ begin
     return old;
   end if;
 
-  perform public.smart_purchase_sync_shortage_event_for_item_v1(new.order_item_id);
+  if tg_op='UPDATE' and coalesce(new.received_quantity,0)>coalesce(old.received_quantity,0) then
+    perform public.smart_purchase_ensure_receipt_shortage_event_v1(new.order_item_id);
+  else
+    perform public.smart_purchase_sync_shortage_event_for_item_v1(new.order_item_id);
+  end if;
 
   if tg_op='UPDATE' and old.order_item_id is distinct from new.order_item_id then
     perform public.smart_purchase_sync_shortage_event_for_item_v1(old.order_item_id);
@@ -150,6 +267,8 @@ begin
   return new;
 end
 $$;
+
+revoke all on function public.purchase_shortage_allocation_sync_trigger_v1() from public,anon,authenticated;
 
 drop trigger if exists purchase_shortage_allocation_sync_v1
   on public.purchase_order_supplier_allocations;
@@ -244,7 +363,9 @@ begin
 
       v_allocated:=least(v_requested,greatest(0,v_allocated));
       v_received:=least(v_requested,greatest(0,v_received));
-      v_shortage:=greatest(0,v_requested-v_allocated);
+      v_basis:=case when v_received>0 then 'receipt' else 'sourcing' end;
+      v_coverage:=case when v_basis='receipt' then v_received else v_allocated end;
+      v_shortage:=greatest(0,v_requested-v_coverage);
 
       if v_shortage<=0 then
         continue;
@@ -273,7 +394,8 @@ begin
             current_allocated_quantity=v_allocated,
             current_received_quantity=v_received,
             current_shortage_quantity=v_shortage,
-            current_shortage_type=case when v_allocated<=0 then 'unavailable' else 'limited_supply' end,
+            shortage_basis=v_basis,
+            current_shortage_type=case when v_coverage<=0 then 'unavailable' else 'limited_supply' end,
             status='open',
             updated_at=now()
         where e.order_item_id=i.id;
@@ -285,7 +407,7 @@ begin
           requested_quantity,
           initial_allocated_quantity,initial_received_quantity,initial_shortage_quantity,
           current_allocated_quantity,current_received_quantity,current_shortage_quantity,
-          initial_shortage_type,current_shortage_type,status,
+          shortage_basis,initial_shortage_type,current_shortage_type,status,
           created_by_account_id,created_by_name
         )
         values(
@@ -294,8 +416,9 @@ begin
           v_requested,
           v_allocated,v_received,v_shortage,
           v_allocated,v_received,v_shortage,
-          case when v_allocated<=0 then 'unavailable' else 'limited_supply' end,
-          case when v_allocated<=0 then 'unavailable' else 'limited_supply' end,
+          v_basis,
+          case when v_coverage<=0 then 'unavailable' else 'limited_supply' end,
+          case when v_coverage<=0 then 'unavailable' else 'limited_supply' end,
           'open',
           a.id,a.display_name
         );
@@ -398,6 +521,7 @@ begin
         'last_allocated_quantity',latest.current_allocated_quantity,
         'last_received_quantity',latest.current_received_quantity,
         'last_shortage_quantity',latest.current_shortage_quantity,
+        'last_shortage_basis',latest.shortage_basis,
         'last_event_status',latest.status
       ) order by
         (g.open_shortage_quantity>0) desc,

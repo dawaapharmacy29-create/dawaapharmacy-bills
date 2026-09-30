@@ -78,3 +78,9 @@ test('allocation-mode UI blocks unexpected invoice rows before any write', () =>
   assert.match(page, /صنف في فاتورة المورد غير مخصص له/);
   assert.match(page, /allocationMode && receiptResult\.unexpected\.length > 0/);
 });
+
+test('latest corrected supplier response keeps the supplier original round order', () => {
+  assert.match(sql, /first_created_at/);
+  assert.match(sql, /min\(ws\.created_at\) over/);
+  assert.match(sql, /order by latest_response\.first_created_at asc/);
+});

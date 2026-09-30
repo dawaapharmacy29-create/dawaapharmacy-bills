@@ -326,6 +326,8 @@ export default function SmartPurchaseReceiving() {
     confirmedQuantity: Math.max(0, num(snapshot?.summary?.confirmed_quantity)),
     remainingQuantity: Math.max(0, num(snapshot?.summary?.remaining_quantity)),
     createdAt: snapshot.created_at || null,
+    firstCreatedAt: snapshot.first_created_at || snapshot.created_at || null,
+    corrected: Boolean(snapshot.first_created_at && snapshot.created_at && snapshot.first_created_at !== snapshot.created_at),
   })), [supplierResponseHistory]);
   const supplierProgress = useMemo(() => {
     if (allocationMode) {
@@ -745,7 +747,7 @@ export default function SmartPurchaseReceiving() {
             <div className="font-black text-slate-900">سجل دورات الموردين</div>
             <div className="mt-2 space-y-2">
               {sourcingHistory.map((round) => <div key={round.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm">
-                <div><span className="font-black">مورد {round.round}: {round.supplier}</span>{round.createdAt ? <span className="mr-2 text-xs text-slate-400">{new Date(round.createdAt).toLocaleString('ar-EG')}</span> : null}</div>
+                <div><span className="font-black">مورد {round.round}: {round.supplier}</span>{round.firstCreatedAt ? <span className="mr-2 text-xs text-slate-400">{new Date(round.firstCreatedAt).toLocaleString('ar-EG')}</span> : null}{round.corrected ? <span className="mr-2 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">تم تصحيح الرد لاحقًا</span> : null}</div>
                 <div className="text-xs text-slate-600">أكد {round.confirmedQuantity} • المتبقي بعده {round.remainingQuantity}</div>
               </div>)}
             </div>
