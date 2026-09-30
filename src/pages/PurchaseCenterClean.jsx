@@ -464,7 +464,7 @@ function JourneyActionBar({
                     ? 'جاري تثبيت التحليل التاريخي...'
                     : 'تثبيت المورد والتكلفة التاريخية'}
                 </button>
-              ) : !approved ? (
+              ) : (
                 <button
                   type="button"
                   disabled={!historicalReady || !hasHistoricalSnapshot || Boolean(applying) || approvalBusy}
