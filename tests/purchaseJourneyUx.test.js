@@ -126,3 +126,12 @@ test('stale historical snapshot refreshes automatically and cannot be applied si
   assert.ok(source.includes("err?.code === 'historical_allocation_changed'"));
   assert.ok(source.includes("راجع القيم الجديدة ثم اضغط التثبيت مرة أخرى"));
 });
+
+
+test('draft creation recovers exact matching drafts when the create response is lost', () => {
+  assert.ok(source.includes("recoverDraftsAfterCreateError"));
+  assert.ok(source.includes("latestPlan.stock_sync_id !== expectedSyncId"));
+  assert.ok(source.includes("recoverMatchingOpenDrafts(latestPlan)"));
+  assert.ok(source.includes("setDraftResult(recovered)"));
+  assert.ok(source.includes("setActiveStep(5)"));
+});

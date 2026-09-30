@@ -1030,6 +1030,17 @@ export default function PurchaseCenterClean() {
     }
   }
 
+  async function recoverDraftsAfterCreateError(expectedSyncId) {
+    try {
+      await purchaseApi.refreshDecisionDailySnapshot('all');
+      const latestPlan = await purchaseApi.dualBranchInstantPlan();
+      if (!latestPlan || latestPlan.stock_sync_id !== expectedSyncId) return null;
+      return await recoverMatchingOpenDrafts(latestPlan);
+    } catch {
+      return null;
+    }
+  }
+
   async function createDrafts() {
     if (runRef.current || !plan?.stock_sync_id || !plan?.plan_hash) return;
     runRef.current = true;
@@ -1045,6 +1056,15 @@ export default function PurchaseCenterClean() {
       setPhase('ready');
       void loadSupplierWorkspace(result);
     } catch (err) {
+      const recovered = await recoverDraftsAfterCreateError(plan.stock_sync_id);
+      if (recovered) {
+        setDraftResult(recovered);
+        setActiveStep(5);
+        setPhase('ready');
+        setError('');
+        void loadSupplierWorkspace(recovered);
+        return;
+      }
       setError(err?.message || 'تعذر إنشاء مسودتي الفرعين.');
       setPhase('error');
     } finally {
