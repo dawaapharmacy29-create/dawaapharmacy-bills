@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   AlertTriangle,
@@ -2359,9 +2360,17 @@ export default function PurchaseCenterClean() {
             && dispatchState.suppliers.shamy.length > 0
             && dispatchState.suppliers.shokry.every((supplier) => supplier.sent)
             && dispatchState.suppliers.shamy.every((supplier) => supplier.sent) && (
-              <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900 shadow-sm">
-                <div className="font-black">تم تسجيل إرسال كل الموردين للفرعين ✓</div>
-                <div className="mt-1 text-sm">المرحلة التالية هي الاستلام ومطابقة الفاتورة.</div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900 shadow-sm">
+                <div>
+                  <div className="font-black">تم تسجيل إرسال كل الموردين للفرعين ✓</div>
+                  <div className="mt-1 text-sm">المرحلة التالية هي الاستلام ومطابقة الفاتورة.</div>
+                </div>
+                <Link
+                  to="/smart-purchase-receiving"
+                  className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-black text-white shadow-sm"
+                >
+                  الانتقال للاستلام
+                </Link>
               </div>
             )}
         </section>

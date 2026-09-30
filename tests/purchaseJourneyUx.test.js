@@ -236,3 +236,11 @@ test('approved clean journey renders supplier-by-supplier dispatch cards', () =>
   assert.ok(source.includes("تم تسجيل إرسال كل الموردين للفرعين"));
   assert.ok(source.includes("المرحلة التالية هي الاستلام ومطابقة الفاتورة"));
 });
+
+
+test('receiving handoff appears only after all supplier sends are recorded', () => {
+  assert.ok(source.includes('to="/smart-purchase-receiving"'));
+  assert.ok(source.includes('الانتقال للاستلام'));
+  assert.ok(source.includes('dispatchState.suppliers.shokry.every((supplier) => supplier.sent)'));
+  assert.ok(source.includes('dispatchState.suppliers.shamy.every((supplier) => supplier.sent)'));
+});
