@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Download, FileSpreadsheet, PackageCheck, RefreshCw, Save, WandSparkles } from 'lucide-react';
 import { smartPurchaseReceivingApi as api } from '@/api/smartPurchaseReceivingApi';
@@ -38,9 +39,30 @@ function matchRows(orderItems, uploadedRows) {
 function downloadWorkbook(sheets, fileName) { const workbook = XLSX.utils.book_new(); Object.entries(sheets).forEach(([name, sheetRows]) => { const sheet = XLSX.utils.json_to_sheet(sheetRows); sheet['!dir'] = 'rtl'; sheet['!freeze'] = { ySplit: 1 }; if (sheet['!ref']) sheet['!autofilter'] = { ref: sheet['!ref'] }; XLSX.utils.book_append_sheet(workbook, sheet, name.slice(0, 31)); }); XLSX.writeFile(workbook, fileName); }
 
 export default function SmartPurchaseReceiving() {
+  const [searchParams] = useSearchParams();
+  const scopedOrderIdsParam = searchParams.get('orderIds') || '';
+  const selectedOrderIdParam = searchParams.get('selectedOrderId') || '';
+  const scopedOrderIds = useMemo(() => scopedOrderIdsParam
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean), [scopedOrderIdsParam]);
   const [orders, setOrders] = useState([]); const [selected, setSelected] = useState(null); const [mode, setMode] = useState('supplier_response'); const [responseType, setResponseType] = useState('available'); const [supplierName, setSupplierName] = useState(''); const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState(''); const [receiptDate, setReceiptDate] = useState(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())); const [fileName, setFileName] = useState(''); const [rows, setRows] = useState([]); const [loading, setLoading] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [invoiceLimit, setInvoiceLimit] = useState(0); const [invoiceTolerancePct] = useState(2); const [invoiceToleranceValue] = useState(100);
-  async function refresh() { setLoading(true); setError(''); try { setOrders(await api.listOrders() || []); } catch (err) { setError(err.message); } finally { setLoading(false); } }
-  useEffect(() => { refresh(); }, []);
+  async function refresh() {
+    setLoading(true); setError('');
+    try {
+      const availableOrders = await api.listOrders() || [];
+      setOrders(scopedOrderIds.length
+        ? availableOrders.filter((order) => scopedOrderIds.includes(String(order.id)))
+        : availableOrders);
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { refresh(); }, [scopedOrderIdsParam]);
+  useEffect(() => {
+    if (loading || selected?.order?.id || !orders.length) return;
+    const preferredOrder = orders.find((order) => String(order.id) === String(selectedOrderIdParam)) || orders[0];
+    if (preferredOrder?.id) void chooseOrder(preferredOrder.id);
+  }, [orders, loading, selected?.order?.id, selectedOrderIdParam]);
   async function chooseOrder(id) { setLoading(true); setError(''); setMessage(''); setRows([]); setFileName(''); setSupplierInvoiceNumber(''); try { const detail = await api.getOrder(id); setSelected(detail); setInvoiceLimit(num(detail?.order?.maximum_order_value || detail?.order?.budget || 0)); const suppliers = [...new Set((detail?.items || []).map((item) => String(item.supplier_name || '').trim()).filter(Boolean))]; setSupplierName(suppliers.length === 1 ? suppliers[0] : ''); } catch (err) { setError(err.message); } finally { setLoading(false); } }
   async function readFile(file) { setError(''); setMessage(''); setFileName(file.name); try { const parsed = await parseWorkbook(file); if (!parsed.length) throw new Error('لم يتم التعرف على أصناف داخل الملف.'); setRows(parsed); setMessage(`تمت قراءة ${parsed.length} صنف من الملف. المطابقة هتتم على الكميات المتبقية للمورد المختار.`); } catch (err) { setRows([]); setError(`تعذر قراءة الملف: ${err.message}`); } }
   const orderSuppliers = useMemo(() => [...new Set((selected?.items || [])
@@ -219,7 +241,7 @@ export default function SmartPurchaseReceiving() {
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-red-700 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0" />{error}</div>}
     {message && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-teal-700">{message}</div>}
     <div className="grid lg:grid-cols-[300px_minmax(0,1fr)] gap-4">
-      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">الطلبيات</h2><div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className="text-sm text-slate-400 p-3">لا توجد طلبيات متاحة.</p>}</div></aside>
+      <aside className="rounded-2xl border bg-white p-3 shadow-sm h-fit"><h2 className="font-bold mb-3">{scopedOrderIds.length ? 'طلبيتا الرحلة الحالية' : 'الطلبيات'}</h2>{scopedOrderIds.length > 0 && <p className="mb-3 text-xs text-slate-500">تم فتح شكري والشامي مباشرة من رحلة المشتريات الحالية.</p>}<div className="space-y-2 max-h-[700px] overflow-auto">{orders.map((order) => <button key={order.id} onClick={() => chooseOrder(order.id)} className={`w-full text-right rounded-xl border p-3 ${selected?.order?.id === order.id ? 'border-teal-500 bg-teal-50' : 'hover:bg-slate-50'}`}><div className="font-bold">{orderTitle(order)}</div><div className="text-[11px] text-slate-400 mt-1">{order.order_number}</div><div className="text-xs text-slate-500 mt-1">{order.branch} • {order.status}</div></button>)}{!orders.length && !loading && <p className="text-sm text-slate-400 p-3">لا توجد طلبيات متاحة.</p>}</div></aside>
       <main className="space-y-4">{!selected && <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">اختر طلبية للبدء.</div>}{selected && <>
         <section className="rounded-2xl border bg-white p-4 shadow-sm"><h2 className="text-xl font-bold">{orderTitle(selected.order)}</h2><p className="text-xs text-slate-400 mt-1">{selected.order.order_number}</p><p className="text-sm text-slate-500 mt-1">{selected.order.branch} • {orderSuppliers.length} مورد • {supplierName ? `${orderItems.length} صنف للمورد المختار` : 'اختر المورد لبدء المطابقة'}</p><div className="mt-4 grid sm:grid-cols-2 gap-2"><button onClick={() => { setMode('supplier_response'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'supplier_response' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>1. تسجيل رد المورد واستخراج المتبقي</button><button onClick={() => { setMode('receipt'); setRows([]); }} className={`rounded-xl border p-3 font-bold ${mode === 'receipt' ? 'border-teal-500 bg-teal-50 text-teal-700' : ''}`}>2. رفع المشتريات ومطابقة الاستلام</button></div></section>
         {receivingStarted && <section className="rounded-2xl border border-blue-200 bg-blue-50/30 p-4 shadow-sm space-y-3">
