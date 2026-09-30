@@ -83,6 +83,10 @@ async function standaloneRpc(functionName, body) {
       stock_sync_superseded: 'تم تجاهل هذا الرفع لأن ملف رصيد أحدث بدأ بعده وتم اعتماده بالفعل. لم يتم استبدال الرصيد الأحدث.',
       stock_sync_closed: 'عملية رفع الرصيد هذه تم إغلاقها بالفعل. اختر الملف من جديد إذا كنت تريد تحديثًا جديدًا.',
       stock_sync_not_staged: 'تعذر اعتماد الرصيد لأن جلسة الرفع لم تبدأ بشكل صحيح. أعد اختيار الملف.',
+      import_not_found: 'جلسة استيراد حركة المبيعات غير موجودة.',
+      import_not_staging: 'جلسة حركة المبيعات لم تعد في مرحلة التجهيز.',
+      invalid_movement_rows: 'يوجد صفوف حركة غير صالحة. راجع الأشهر والكميات قبل المتابعة.',
+      movement_preview_not_ready: 'معاينة الحركة لم تجتز حواجز الأمان؛ لم يتم اعتماد أي حركة.',
 
       plan_hash_mismatch: 'تم إيقاف إنشاء المسودتين لأن الخطة تغيرت بعد المراجعة. أعد التحليل ثم راجع الخطة الجديدة.',
       invalid_dual_plan_identity: 'بيانات تعريف الخطة غير مكتملة؛ أعد التحليل قبل إنشاء المسودتين.',
@@ -289,6 +293,29 @@ export const smartPurchaseUnifiedApi = {
       p_budget: Number(budget) > 0 ? Number(budget) : null,
     });
   },
+  beginMovementPreview: ({ branch, fileName, expectedRows }) => standaloneRpc('smart_purchase_begin_movement_import_v1', {
+    p_branch: branch,
+    p_source_file: fileName || 'movement-import',
+    p_expected_rows: Math.max(0, Number(expectedRows) || 0),
+  }),
+  stageMovementPreviewRows: async ({ importId, rows = [], chunkSize = 1000 }) => {
+    if (!importId) throw new Error('معرّف معاينة الحركة غير موجود.');
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد صفوف حركة صالحة للمعاينة.');
+    const safeChunkSize = Math.max(250, Math.min(1500, Math.floor(Number(chunkSize) || 1000)));
+    let stagedRows = 0;
+    for (let offset = 0; offset < rows.length; offset += safeChunkSize) {
+      const chunk = rows.slice(offset, offset + safeChunkSize);
+      const result = await withOneTransportRetry(() => standaloneRpc('smart_purchase_stage_movement_rows_v1', {
+        p_import_id: importId,
+        p_rows: chunk,
+      }));
+      stagedRows = Number(result?.staged_rows || stagedRows + chunk.length);
+    }
+    return { import_id: importId, staged_rows: stagedRows };
+  },
+  movementPreview: (importId) => standaloneRpc('smart_purchase_movement_import_preview_v1', {
+    p_import_id: importId,
+  }),
   historyStatus: (branch) => standaloneRpc('smart_purchase_history_status_v1', { p_branch: branch }),
   refreshDecisionDailySnapshot: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   historyEnrichRows: (branch, rows = []) => standaloneRpc('smart_purchase_history_enrich_rows_v1', { p_branch: branch, p_rows: rows }),
