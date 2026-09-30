@@ -85,3 +85,10 @@ test('final result hides loading noise and collapses audit details by default', 
   assert.ok(source.includes("القيمة التاريخية المقترحة"));
   assert.ok(source.includes("نتيجة الطلبية"));
 });
+
+
+test('supplier distribution is collapsed by default on the final result', () => {
+  assert.ok(source.includes("توزيع الموردين • {supplierDecision.supplierCount} مورد"));
+  assert.ok(source.includes("فتح التفاصيل الكاملة"));
+  assert.ok(source.includes("مورد إضافي موجود في التفاصيل الكاملة"));
+});

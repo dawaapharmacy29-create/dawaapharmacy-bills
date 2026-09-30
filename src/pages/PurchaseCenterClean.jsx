@@ -1070,10 +1070,10 @@ export default function PurchaseCenterClean() {
     const highConfidenceItems = rows.filter((row) => row.historical_confidence === 'high').length;
     const mediumConfidenceItems = rows.filter((row) => row.historical_confidence === 'medium').length;
     const lowConfidenceItems = rows.filter((row) => row.historical_confidence === 'low').length;
-    const topGroups = [...(supplierWorkspace.groups || [])]
+    const validGroups = [...(supplierWorkspace.groups || [])]
       .filter((group) => String(group.supplier_name || '').trim() && group.supplier_name !== 'غير محدد')
-      .sort((a, b) => Number(b.estimated_cash_total || 0) - Number(a.estimated_cash_total || 0))
-      .slice(0, 6);
+      .sort((a, b) => Number(b.estimated_cash_total || 0) - Number(a.estimated_cash_total || 0));
+    const topGroups = validGroups.slice(0, 6);
 
     return {
       historicalItems,
@@ -1084,7 +1084,7 @@ export default function PurchaseCenterClean() {
       lowConfidenceItems,
       missingSupplierItems,
       missingCostItems,
-      supplierCount: topGroups.length,
+      supplierCount: validGroups.length,
       topGroups,
       readyForFinalReview: rows.length > 0 && missingCostItems === 0,
       readyForHistoricalReview: rows.length > 0
@@ -1978,41 +1978,46 @@ export default function PurchaseCenterClean() {
               )}
 
               {supplierDecision.topGroups.length > 0 && (
-                <section className="rounded-2xl border bg-white p-4 shadow-sm">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-black text-slate-900">
-                        {supplierWorkspace.historicalApplied ? 'الموردون المثبتون على المسودتين' : 'أهم الموردين المقترحين'}
-                      </h3>
-                      <p className="mt-1 text-xs text-slate-500">
+                <details className="rounded-2xl border bg-white shadow-sm">
+                  <summary className="cursor-pointer select-none px-4 py-3 font-black text-slate-800">
+                    توزيع الموردين • {supplierDecision.supplierCount} مورد
+                  </summary>
+                  <div className="border-t p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-slate-500">
                         {supplierWorkspace.historicalApplied
                           ? 'التوزيع الحالي مكتوب بالفعل داخل المسودتين.'
                           : 'أعلى الموردين حسب القيمة التاريخية المرجعية الحالية.'}
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep(4)}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700"
+                      >
+                        فتح التفاصيل الكاملة
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveStep(4)}
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700"
-                    >
-                      مراجعة التحليل التاريخي
-                    </button>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {supplierDecision.topGroups.map((group) => (
-                      <div key={group.supplier_name} className="rounded-xl border bg-slate-50/70 p-3">
-                        <div className="font-black text-slate-900">{group.supplier_name}</div>
-                        <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
-                          <span>{group.items_count} صنف • {qty(group.units)} وحدة</span>
-                          <span className="font-black text-slate-900">{money(group.estimated_cash_total)} ج</span>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {supplierDecision.topGroups.map((group) => (
+                        <div key={group.supplier_name} className="rounded-xl border bg-slate-50/70 p-3">
+                          <div className="font-black text-slate-900">{group.supplier_name}</div>
+                          <div className="mt-2 flex items-center justify-between text-sm text-slate-600">
+                            <span>{group.items_count} صنف • {qty(group.units)} وحدة</span>
+                            <span className="font-black text-slate-900">{money(group.estimated_cash_total)} ج</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-slate-500">
+                            تاريخ مشتريات {group.historical_reference_items} صنف
+                          </div>
                         </div>
-                        <div className="mt-1 text-[11px] text-slate-500">
-                          تاريخ مشتريات {group.historical_reference_items} صنف
-                        </div>
+                      ))}
+                    </div>
+                    {supplierDecision.supplierCount > supplierDecision.topGroups.length && (
+                      <div className="mt-3 text-xs font-bold text-slate-500">
+                        + {supplierDecision.supplierCount - supplierDecision.topGroups.length} مورد إضافي موجود في التفاصيل الكاملة.
                       </div>
-                    ))}
+                    )}
                   </div>
-                </section>
+                </details>
               )}
 
               <div className="flex flex-wrap justify-between gap-2">
