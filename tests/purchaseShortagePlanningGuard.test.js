@@ -7,9 +7,10 @@ const sql = await readFile(
   'utf8'
 );
 
-test('shortage handoff requires an explicit persistent shortage event', () => {
+test('shortage handoff requires events only for uncovered order items', () => {
   assert.match(sql, /purchase_shortage_events e/);
-  assert.match(sql, /where e\.order_id=p_order_id/);
+  assert.match(sql, /where e\.order_item_id=i\.id/);
+  assert.doesNotMatch(sql, /where e\.order_id=p_order_id[\s\S]{0,80}and not exists/);
 });
 
 test('only unallocated sourcing gaps must be represented in shortage events', () => {
