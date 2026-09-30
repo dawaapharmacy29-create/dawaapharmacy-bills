@@ -415,7 +415,6 @@ export default function PurchaseCenterClean() {
     allocationHash: '',
     historicalApplied: false,
   });
-  const [timings, setTimings] = useState({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
   const [saveProgress, setSaveProgress] = useState({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
@@ -550,20 +549,6 @@ export default function PurchaseCenterClean() {
   }, [draftOrderTotal, financialReferenceTotal, supplierWorkspace.historicalApplied, supplierWorkspace.rows]);
 
   const estimatedPurchaseGap = Math.max(0, draftOrderTotal - liveReferenceTotal);
-  const reviewAlertsTotal =
-    quickReviewRows.length
-    + reviewWatchlistCounts.shokry
-    + reviewWatchlistCounts.shamy
-    + movementOnlyWatchlistCounts.shokry
-    + movementOnlyWatchlistCounts.shamy;
-
-  function countPlanQuickReviews(currentPlan) {
-    return ['shokry', 'shamy'].reduce((total, branchKey) => (
-      total + (currentPlan?.[branchKey]?.plan || []).filter(
-        (row) => row.requires_quick_review && Number(row.buy_quantity || 0) > 0
-      ).length
-    ), 0);
-  }
 
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
@@ -601,7 +586,6 @@ export default function PurchaseCenterClean() {
 
   async function runPlannerOnly(expectedSyncId = saveResult?.stock_sync_id, expectedPlanHash = '') {
     setPhase('planning');
-    const startedAt = performance.now();
     await purchaseApi.refreshDecisionDailySnapshot('all');
     const result = await purchaseApi.dualBranchInstantPlan();
     if (result?.planner !== 'dual_branch_instant_plan_v1') {
@@ -657,7 +641,6 @@ export default function PurchaseCenterClean() {
     } else {
       setActiveStep(2);
     }
-    setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
     return result;
   }
@@ -685,7 +668,7 @@ export default function PurchaseCenterClean() {
     }
   }
 
-  async function saveAndPlan(stockMaster, flowStartedAt = performance.now()) {
+  async function saveAndPlan(stockMaster) {
     if (runRef.current) return;
     runRef.current = true;
     setError('');
@@ -696,14 +679,11 @@ export default function PurchaseCenterClean() {
 
     try {
       setPhase('saving');
-      const saveStartedAt = performance.now();
       setSaveProgress({ staged: 0, total: stockMaster.rows.length, percent: 0, chunk: 0, totalChunks: 0 });
       const saved = await purchaseApi.saveDualBranchStockMasterClean({
         rows: stockMaster.rows,
         onProgress: setSaveProgress,
       });
-      const saveMs = Math.round(performance.now() - saveStartedAt);
-      setTimings((current) => ({ ...current, saveMs }));
       if (!saved?.dual_atomic_finalize || !saved?.row_count_verified) {
         throw new Error('تم إيقاف التحليل لأن حفظ الرصيد الموحد لم يكتمل بشكل ذري وآمن للفرعين.');
       }
@@ -718,7 +698,6 @@ export default function PurchaseCenterClean() {
         save_result: saved,
       });
       await runPlannerOnly(saved.stock_sync_id);
-      setTimings((current) => ({ ...current, totalMs: Math.round(performance.now() - flowStartedAt) }));
     } catch (err) {
       setError(err?.message || 'تعذر تجهيز خطة المشتريات.');
       setPhase('error');
@@ -753,7 +732,6 @@ export default function PurchaseCenterClean() {
       allocationHash: '',
       historicalApplied: false,
     });
-    setTimings({ readMs: 0, saveMs: 0, planMs: 0, totalMs: 0 });
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setError('');
     setPhase('idle');
@@ -842,15 +820,11 @@ export default function PurchaseCenterClean() {
     setError('');
     setSaveProgress({ staged: 0, total: 0, percent: 0, chunk: 0, totalChunks: 0 });
     setPhase('reading');
-    const flowStartedAt = performance.now();
 
     try {
-      const readStartedAt = performance.now();
       const stockMaster = await readWorkbook(file);
-      const readMs = Math.round(performance.now() - readStartedAt);
-      setTimings({ readMs, saveMs: 0, planMs: 0, totalMs: 0 });
       setParsed(stockMaster);
-      await saveAndPlan(stockMaster, flowStartedAt);
+      await saveAndPlan(stockMaster);
     } catch (err) {
       setError(err?.message || 'تعذر قراءة ملف الرصيد.');
       setPhase('error');

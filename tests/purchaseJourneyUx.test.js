@@ -191,3 +191,11 @@ test('navigation and fixed actions do not repeat stage chrome', () => {
   assert.doesNotMatch(source, /المرحلة \{step === 1/);
   assert.ok(source.includes('تحديث الخطة'));
 });
+
+
+test('simplified purchase page keeps no dead timing or review aggregate state', () => {
+  assert.doesNotMatch(source, /const \[timings, setTimings\]/);
+  assert.doesNotMatch(source, /setTimings\(/);
+  assert.doesNotMatch(source, /reviewAlertsTotal/);
+  assert.doesNotMatch(source, /countPlanQuickReviews/);
+});
