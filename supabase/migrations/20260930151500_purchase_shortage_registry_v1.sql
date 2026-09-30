@@ -51,7 +51,7 @@ returns text
 language sql
 immutable
 set search_path='pg_catalog'
-as $
+as $$
   select case
     when nullif(trim(coalesce(p_product_code,'')),'') is not null
       then 'code:'||lower(regexp_replace(trim(p_product_code),'\.0+$','','g'))
