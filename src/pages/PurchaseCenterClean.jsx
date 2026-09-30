@@ -259,7 +259,7 @@ function PurchaseJourneyTabs({
     },
     {
       id: 3,
-      target: 4,
+      target: 5,
       label: 'المورد والنتيجة',
       note: 'تحليل تاريخي ثم مراجعة نهائية',
       ready: Boolean(draftResult),
@@ -339,10 +339,9 @@ function PurchaseJourneyTabs({
 function CurrentStepGuide({ step }) {
   const guides = {
     1: ['ارفع ملف الرصيد', 'ملف واحد يحتوي رصيد شكري والشامي؛ الحفظ والتحليل يبدأان تلقائيًا.'],
-    2: ['راجع الخطة', 'راجع الإجمالي وشكري والشامي فقط. افتح التفاصيل أو التنبيهات عند الحاجة ثم اضغط التالي.'],
-    3: ['أنشئ المسودتين', 'ضغطة واحدة تنشئ مسودتي الفرعين من نفس الخطة بدون اعتماد أو إرسال.'],
-    4: ['راجع المورد والتكلفة', 'شوف أفضل مورد تاريخي لكل صنف والقيمة المتوقعة. التفاصيل الإضافية اختيارية.'],
-    5: ['راجع النتيجة النهائية', 'تأكد من القيمة والموردين والثقة، ثم ثبّت التحليل التاريخي فقط عند الموافقة. لا يوجد اعتماد أو إرسال تلقائي.'],
+    2: ['راجع وأنشئ', 'راجع الأرقام الأساسية، ولو كل شيء مناسب أنشئ مسودتي شكري والشامي مباشرة.'],
+    4: ['تفاصيل المورد والتكلفة', 'تفاصيل إضافية اختيارية لتحليل الموردين والتكلفة التاريخية.'],
+    5: ['المورد والنتيجة', 'راجع القيمة والموردين والثقة، ثم ثبّت التحليل التاريخي فقط عند الموافقة. لا يوجد اعتماد أو إرسال تلقائي.'],
   };
   const [title, description] = guides[step] || guides[1];
 
@@ -379,30 +378,19 @@ function JourneyActionBar({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {step === 2 && (
-            <button
-              type="button"
-              disabled={!plan || busy}
-              onClick={() => onStepChange(3)}
-              className="rounded-xl bg-teal-700 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
-            >
-              التالي: إنشاء المسودتين
-            </button>
-          )}
-
-          {step === 3 && !draftResult && (
+          {step === 2 && !draftResult && (
             <>
               <button
                 type="button"
-                disabled={busy || !saveResult || Boolean(draftResult)}
+                disabled={busy || !saveResult}
                 onClick={onReplan}
-                className="rounded-xl border border-amber-300 bg-white px-4 py-2.5 font-bold text-amber-900 disabled:opacity-40"
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700 disabled:opacity-40"
               >
                 إعادة التحليل
               </button>
               <button
                 type="button"
-                disabled={busy || !plan?.creation_guard?.can_create_dual || Boolean(draftResult)}
+                disabled={busy || !plan?.creation_guard?.can_create_dual}
                 onClick={onCreateDrafts}
                 className="rounded-xl bg-teal-700 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
               >
@@ -418,7 +406,7 @@ function JourneyActionBar({
               onClick={() => onStepChange(5)}
               className="rounded-xl bg-slate-900 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
             >
-              التالي: النتيجة النهائية
+              رجوع للنتيجة النهائية
             </button>
           )}
 
@@ -710,12 +698,10 @@ export default function PurchaseCenterClean() {
     setPlan(financialPlan);
     if (recoveredDrafts) {
       setDraftResult(recoveredDrafts);
-      setActiveStep(4);
+      setActiveStep(5);
       void loadSupplierWorkspace(recoveredDrafts);
     } else {
-      const quickReviewCount = countPlanQuickReviews(result);
-      const fastPathReady = result?.creation_guard?.can_create_dual === true && quickReviewCount === 0;
-      setActiveStep(fastPathReady ? 3 : 2);
+      setActiveStep(2);
     }
     setTimings((current) => ({ ...current, planMs: Math.round(performance.now() - startedAt) }));
     setPhase('ready');
@@ -1048,7 +1034,7 @@ export default function PurchaseCenterClean() {
         planHash: plan.plan_hash,
       });
       setDraftResult(result);
-      setActiveStep(4);
+      setActiveStep(5);
       setPhase('ready');
       void loadSupplierWorkspace(result);
     } catch (err) {
@@ -1403,6 +1389,49 @@ export default function PurchaseCenterClean() {
                 ✓ لا توجد مراجعات سريعة مطلوبة؛ الطلبية جاهزة لإنشاء المسودتين.
               </div>
             )}
+
+            {plan.creation_guard?.can_create_dual === false && !draftResult && (
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="font-black">لا يمكن إنشاء المسودتين قبل حل النقطة التالية.</div>
+                {(!plan.creation_guard?.shokry_data_ready || !plan.creation_guard?.shamy_data_ready) && (
+                  <div className="mt-2 rounded border border-red-100 bg-white/70 px-2 py-1">
+                    بيانات التشغيل تحتاج تحديث:
+                    {!plan.creation_guard?.shokry_data_ready ? ' شكري غير جاهز.' : ''}
+                    {!plan.creation_guard?.shamy_data_ready ? ' الشامي غير جاهز.' : ''}
+                  </div>
+                )}
+                {(plan.creation_guard?.shokry_open_order || plan.creation_guard?.shamy_open_order) && (
+                  <>
+                    <div className="mt-2 font-bold">مسودات مفتوحة تمنع إنشاء طلبية مكررة:</div>
+                    <div className="mt-1 space-y-1">
+                      {[...(plan.creation_guard?.shokry_open_orders || []), ...(plan.creation_guard?.shamy_open_orders || [])].map((order) => {
+                        const draftCancelable = ['draft', 'مسودة'].includes(String(order?.status || '').trim());
+                        return (
+                          <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-red-100 bg-white/80 px-2 py-2">
+                            <div className="min-w-0">
+                              <span className="font-mono">{order.order_number}</span>
+                              {' • '}{order.status}
+                              {' • '}{new Date(order.created_at).toLocaleDateString('ar-EG')}
+                              {order.title ? ` • ${order.title}` : ''}
+                            </div>
+                            {draftCancelable && (
+                              <button
+                                type="button"
+                                disabled={Boolean(cancellingOrderId)}
+                                onClick={() => cancelBlockingDraft(order)}
+                                className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-black text-red-700 hover:bg-red-50 disabled:opacity-40"
+                              >
+                                {cancellingOrderId === order.id ? 'جاري الإلغاء...' : 'إلغاء المسودة'}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </section>
 
           <details className={`rounded-2xl border border-slate-200 bg-white shadow-sm`}>
@@ -1695,90 +1724,6 @@ export default function PurchaseCenterClean() {
             </section>
           </details>
           </>
-          )}
-
-          {activeStep === 3 && (
-          <section className={`rounded-2xl border p-4 ${draftResult ? 'border-emerald-200 bg-emerald-50' : plan.creation_guard?.can_create_dual ? 'border-teal-200 bg-teal-50/60' : 'border-red-200 bg-red-50/60'}`}>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-black text-slate-900">إنشاء مسودتي شكري والشامي</h2>
-                  <span className={`rounded-full border bg-white px-2.5 py-1 text-xs font-black ${
-                    draftResult
-                      ? 'border-emerald-200 text-emerald-700'
-                      : plan.creation_guard?.can_create_dual
-                        ? 'border-teal-200 text-teal-700'
-                        : 'border-red-200 text-red-700'
-                  }`}>
-                    {draftResult ? 'تم ✓' : plan.creation_guard?.can_create_dual ? 'جاهزة للإنشاء' : 'متوقفة'}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-slate-600">
-                  نفس كميات الخطة بدون إعادة حساب، وبدون اعتماد أو إرسال للمورد.
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <Metric label="إجمالي الطلبية" value={`${money(draftOrderTotal)} ج`} tone="teal" />
-                  <Metric label="شكري" value={`${money(plan.shokry?.summary?.suggested_buy_value)} ج`} tone="indigo" />
-                  <Metric label="الشامي" value={`${money(plan.shamy?.summary?.suggested_buy_value)} ج`} tone="indigo" />
-                  <Metric label="أصناف الشراء" value={plan.totals?.buy_items || 0} tone="slate" />
-                </div>
-                {plan.creation_guard?.can_create_dual === false && !draftResult && (
-                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    <div className="font-black">إنشاء المسودتين متوقف مؤقتًا.</div>
-                    {(!plan.creation_guard?.shokry_data_ready || !plan.creation_guard?.shamy_data_ready) && (
-                      <div className="mt-2 rounded border border-red-100 bg-white/70 px-2 py-1">
-                        بيانات التشغيل تحتاج تحديث:
-                        {!plan.creation_guard?.shokry_data_ready ? ' شكري غير جاهز.' : ''}
-                        {!plan.creation_guard?.shamy_data_ready ? ' الشامي غير جاهز.' : ''}
-                      </div>
-                    )}
-                    {(plan.creation_guard?.shokry_open_order || plan.creation_guard?.shamy_open_order) && (
-                      <>
-                        <div className="mt-2 font-bold">طلبيات مفتوحة تمنع إنشاء مسودة جديدة:</div>
-                        <div className="mt-1 space-y-1">
-                          {[...(plan.creation_guard?.shokry_open_orders || []), ...(plan.creation_guard?.shamy_open_orders || [])].map((order) => {
-                            const draftCancelable = ['draft', 'مسودة'].includes(String(order?.status || '').trim());
-                            return (
-                              <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-red-100 bg-white/70 px-2 py-2">
-                                <div className="min-w-0">
-                                  <span className="font-mono">{order.order_number}</span>
-                                  {' • '}{order.status}
-                                  {' • '}{new Date(order.created_at).toLocaleDateString('ar-EG')}
-                                  {order.title ? ` • ${order.title}` : ''}
-                                </div>
-                                {draftCancelable && (
-                                  <button
-                                    type="button"
-                                    disabled={Boolean(cancellingOrderId)}
-                                    onClick={() => cancelBlockingDraft(order)}
-                                    className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-black text-red-700 hover:bg-red-50 disabled:opacity-40"
-                                  >
-                                    {cancellingOrderId === order.id ? 'جاري الإلغاء...' : 'إلغاء المسودة'}
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-                {draftResult && (
-                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-800">
-                    {draftResult.recovered_existing
-                      ? 'تم استعادة مسودتي شكري والشامي الموجودتين لأن محتواهما يطابق الخطة الحالية بندًا بندًا.'
-                      : draftResult.already_created
-                        ? 'المسودتان كانتا منشأتين بالفعل من نفس الخطة.'
-                        : 'تم إنشاء المسودتين بنجاح من نفس الخطة.'}
-                    {draftResult.content_verified && (
-                      <div className="mt-1 font-bold">✓ تم التحقق حسابيًا أن محتوى المسودتين يطابق الخطة المعتمدة بدون أي اختلاف.</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
           )}
 
           {draftResult && activeStep === 4 && (

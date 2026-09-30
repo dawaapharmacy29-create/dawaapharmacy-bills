@@ -61,3 +61,18 @@ test('final screen has one primary historical persistence action in the sticky a
   assert.ok(source.includes("زر التثبيت موجود أسفل الشاشة"));
   assert.ok(source.includes("تم التثبيت ✓"));
 });
+
+
+test('primary purchase journey has only three real user stages', () => {
+  assert.ok(source.includes("target: 5"));
+  assert.ok(source.includes("setActiveStep(5)"));
+  assert.ok(source.includes("setActiveStep(2)"));
+  assert.doesNotMatch(source, /التالي: إنشاء المسودتين/);
+  assert.doesNotMatch(source, /activeStep === 3 &&/);
+});
+
+test('blocking drafts are resolved inside review-and-create instead of a separate page', () => {
+  assert.ok(source.includes("مسودات مفتوحة تمنع إنشاء طلبية مكررة"));
+  assert.ok(source.includes("إلغاء المسودة"));
+  assert.ok(source.includes("إنشاء مسودتي شكري والشامي"));
+});
