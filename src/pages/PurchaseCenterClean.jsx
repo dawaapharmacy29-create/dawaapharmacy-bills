@@ -208,8 +208,8 @@ function PurchaseJourneyTabs({
     {
       id: 1,
       target: 1,
-      label: 'رفع الرصيد',
-      note: 'ملف واحد لشكري والشامي',
+      label: 'الرصيد',
+      note: 'ارفع ملف شكري والشامي',
       ready: !draftResult,
       done: Boolean(plan),
       status: plan ? 'تم' : 'ابدأ هنا',
@@ -217,8 +217,8 @@ function PurchaseJourneyTabs({
     {
       id: 2,
       target: 2,
-      label: 'راجع وأنشئ',
-      note: 'راجع الأرقام ثم أنشئ المسودتين',
+      label: 'الطلبية',
+      note: 'راجع الأرقام وأنشئ المسودتين',
       ready: Boolean(plan),
       done: Boolean(draftResult),
       status: draftResult
@@ -234,8 +234,8 @@ function PurchaseJourneyTabs({
     {
       id: 3,
       target: 5,
-      label: 'المورد والنتيجة',
-      note: 'تحليل تاريخي ثم مراجعة نهائية',
+      label: 'الموردين والتكلفة',
+      note: 'راجع ثم ثبّت التحليل التاريخي',
       ready: Boolean(draftResult),
       done: Boolean(supplierReady && supplierDecision?.readyForHistoricalReview && historicalApplied),
       status: supplierLoading
@@ -285,7 +285,6 @@ function PurchaseJourneyTabs({
                 {item.done && !active ? '✓' : item.id}
               </span>
               <span className="min-w-0">
-                <span className="block text-[10px] font-bold opacity-70">مرحلة {item.id} من 3</span>
                 <span className="block text-sm font-black">{item.label}</span>
                 <span className="mt-0.5 block text-[10px] opacity-70">{item.note}</span>
                 <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-black ${
@@ -310,22 +309,6 @@ function PurchaseJourneyTabs({
   );
 }
 
-function CurrentStepGuide({ step }) {
-  const guides = {
-    1: ['ارفع ملف الرصيد', 'ملف واحد يحتوي رصيد شكري والشامي؛ الحفظ والتحليل يبدأان تلقائيًا.'],
-    2: ['راجع وأنشئ', 'راجع الأرقام الأساسية، ولو كل شيء مناسب أنشئ مسودتي شكري والشامي مباشرة.'],
-    4: ['تفاصيل المورد والتكلفة', 'تفاصيل إضافية اختيارية لتحليل الموردين والتكلفة التاريخية.'],
-    5: ['المورد والنتيجة', 'راجع القيمة والموردين والثقة، ثم ثبّت التحليل التاريخي فقط عند الموافقة. لا يوجد اعتماد أو إرسال تلقائي.'],
-  };
-  const [title, description] = guides[step] || guides[1];
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm">
-      <span className="font-black text-slate-900">المطلوب منك الآن: {title}</span>
-      <span className="text-slate-600">{description}</span>
-    </div>
-  );
-}
 
 function JourneyActionBar({
   step,
@@ -381,7 +364,7 @@ function JourneyActionBar({
               onClick={() => onStepChange(5)}
               className="rounded-xl bg-slate-900 px-5 py-2.5 font-black text-white shadow-sm disabled:opacity-40"
             >
-              رجوع للنتيجة النهائية
+              العودة للنتيجة
             </button>
           )}
 
@@ -408,7 +391,7 @@ function JourneyActionBar({
                 onClick={() => onStepChange(4)}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-bold text-slate-700"
               >
-                رجوع للتحليل التاريخي
+                تفاصيل الموردين
               </button>
             </>
           )}
@@ -1231,8 +1214,6 @@ export default function PurchaseCenterClean() {
         supplierDecision={supplierDecision}
         historicalApplied={supplierWorkspace.historicalApplied}
       />
-
-      <CurrentStepGuide step={activeStep} />
 
       {activeStep === 1 && (
       <section className="rounded-2xl border bg-white p-5 shadow-sm">

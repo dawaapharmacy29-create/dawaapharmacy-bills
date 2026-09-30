@@ -174,3 +174,13 @@ test('stock upload keeps technical file diagnostics collapsed and hides internal
   assert.doesNotMatch(source, /font-mono text-\[10px\].*stock_sync_id/);
   assert.doesNotMatch(source, /الحالات محفوظة بعلامة للمراجعة في B-Connect/);
 });
+
+
+test('journey navigation is one compact three-stage control without a repeated guide', () => {
+  assert.ok(source.includes("label: 'الرصيد'"));
+  assert.ok(source.includes("label: 'الطلبية'"));
+  assert.ok(source.includes("label: 'الموردين والتكلفة'"));
+  assert.doesNotMatch(source, /function CurrentStepGuide/);
+  assert.doesNotMatch(source, /المطلوب منك الآن:/);
+  assert.doesNotMatch(source, /مرحلة \{item\.id\} من 3/);
+});
