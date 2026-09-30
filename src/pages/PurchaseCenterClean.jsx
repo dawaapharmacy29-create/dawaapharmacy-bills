@@ -909,15 +909,25 @@ export default function PurchaseCenterClean() {
         purchaseApi.getOrder(shamyOrderId),
       ]);
 
-      const rows = (preview?.rows || []).map((row) => ({
-        ...row,
-        quantity: Number(row.quantity || 0),
-        unit_cost: Number(row.unit_cost || 0),
-        cash_cost: Number(row.cash_cost || 0),
-        historical_purchase_events: Number(row.historical_purchase_events || 0),
-        historical_confidence: row.historical_confidence || 'missing',
-        cost_source: row.cost_source || 'missing',
-      }));
+      const rows = (preview?.rows || []).map((row) => {
+        const unitCost = Number(row.unit_cost || 0);
+        return {
+          ...row,
+          quantity: Number(row.quantity || 0),
+          unit_cost: unitCost,
+          cash_unit_cost: unitCost,
+          effective_unit_cost: unitCost,
+          historical_effective_unit_cost: unitCost,
+          cash_cost: Number(row.cash_cost || 0),
+          historical_supplier: row.supplier_name || '',
+          coverage: 'historical_reference',
+          financial_supplier_reason: 'الاختيار الموحّد من سجل فواتير المشتريات',
+          alternatives: [],
+          historical_purchase_events: Number(row.historical_purchase_events || 0),
+          historical_confidence: row.historical_confidence || 'missing',
+          cost_source: row.cost_source || 'missing',
+        };
+      });
 
       const previewByItemId = new Map(rows.map((row) => [String(row.item_id), row]));
       const historicalApplied = [shokryOrder, shamyOrder].every((order) => {

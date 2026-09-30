@@ -89,3 +89,13 @@ test('clean historical path contains no current-offer workspace state and expose
   assert.match(cleanPageSource, /draftMeta/);
   assert.match(cleanPageSource, /ثقة منخفضة/);
 });
+
+
+test('clean supplier review uses one canonical historical snapshot and no current-offer decision RPC', () => {
+  assert.match(cleanPageSource, /historicalAllocationPreview/);
+  assert.match(cleanPageSource, /allocationHash/);
+  assert.match(cleanPageSource, /الاختيار الموحّد من سجل فواتير المشتريات/);
+  assert.doesNotMatch(cleanPageSource, /purchaseApi\.supplierDecision\(/);
+  assert.doesNotMatch(cleanPageSource, /buildSupplierFinancialRows\(/);
+  assert.doesNotMatch(cleanPageSource, /buildSingleSupplierScenarios\(/);
+});
