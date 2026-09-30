@@ -644,7 +644,7 @@ export default function PurchaseCenterClean() {
     };
   }
 
-  async function runPlannerOnly(expectedSyncId = saveResult?.stock_sync_id) {
+  async function runPlannerOnly(expectedSyncId = saveResult?.stock_sync_id, expectedPlanHash = '') {
     setPhase('planning');
     const startedAt = performance.now();
     await purchaseApi.refreshDecisionDailySnapshot('all');
@@ -654,6 +654,9 @@ export default function PurchaseCenterClean() {
     }
     if (expectedSyncId && result?.stock_sync_id !== expectedSyncId) {
       throw new Error('تم إيقاف الخطة لأن التحليل لا يطابق نفس نسخة ملف الرصيد المحفوظ.');
+    }
+    if (expectedPlanHash && result?.plan_hash !== expectedPlanHash) {
+      throw new Error('آخر مسودتين لا تطابقان الخطة الحالية لنفس الرصيد، لذلك لم يتم استعادتهما تلقائيًا.');
     }
 
     let history = { shokry: [], shamy: [] };
@@ -804,35 +807,57 @@ export default function PurchaseCenterClean() {
   useEffect(() => {
     if (resumeAttemptedRef.current) return;
     resumeAttemptedRef.current = true;
-    const resume = readJourneyResume();
-    if (!resume?.stock_sync_id || runRef.current) return;
 
-    runRef.current = true;
-    setFileName(resume.file_name || 'آخر رصيد محفوظ');
-    setFileModifiedAt(resume.file_modified_at ? new Date(resume.file_modified_at) : null);
-    setParsed({
-      rows_count: Number(resume.rows_count || 0),
-      source_rows_count: Number(resume.rows_count || 0),
-      inventory_rows: Number(resume.inventory_rows || 0),
-      quality: resume.quality || {},
-    });
-    setSaveResult(resume.save_result || {
-      stock_sync_id: resume.stock_sync_id,
-      dual_atomic_finalize: true,
-      row_count_verified: true,
-    });
-    setError('');
+    async function resumeJourney() {
+      let resume = readJourneyResume();
+      let fromServer = false;
 
-    void runPlannerOnly(resume.stock_sync_id)
-      .catch((err) => {
-        clearJourneyResume();
+      if (!resume?.stock_sync_id) {
+        const serverResume = await purchaseApi.resumeCleanJourney();
+        if (!serverResume?.found) return;
+        fromServer = true;
+        resume = {
+          ...serverResume,
+          file_name: 'آخر طلبية مفتوحة محفوظة على السيرفر',
+          save_result: {
+            stock_sync_id: serverResume.stock_sync_id,
+            dual_atomic_finalize: true,
+            row_count_verified: true,
+          },
+        };
+      }
+
+      if (!resume?.stock_sync_id || runRef.current) return;
+      runRef.current = true;
+
+      setFileName(resume.file_name || 'آخر رصيد محفوظ');
+      setFileModifiedAt(resume.file_modified_at ? new Date(resume.file_modified_at) : null);
+      setParsed({
+        rows_count: Number(resume.rows_count || 0),
+        source_rows_count: Number(resume.rows_count || 0),
+        inventory_rows: Number(resume.inventory_rows || 0),
+        quality: resume.quality || {},
+      });
+      setSaveResult(resume.save_result || {
+        stock_sync_id: resume.stock_sync_id,
+        dual_atomic_finalize: true,
+        row_count_verified: true,
+      });
+      setError('');
+
+      try {
+        await runPlannerOnly(resume.stock_sync_id, resume.plan_hash || '');
+      } catch (err) {
+        if (!fromServer) clearJourneyResume();
         setError(err?.message || 'تعذر استكمال آخر رحلة شراء محفوظة.');
         setPhase('error');
         setActiveStep(1);
-      })
-      .finally(() => {
+      } finally {
         runRef.current = false;
-      });
+      }
+    }
+
+    void resumeJourney();
   }, []);
 
   async function replan() {

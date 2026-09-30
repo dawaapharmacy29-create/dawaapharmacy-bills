@@ -267,6 +267,7 @@ export const smartPurchaseUnifiedApi = {
     p_stock_sync_id: stockSyncId,
     p_plan_hash: planHash,
   }),
+  resumeCleanJourney: () => standaloneRpc('smart_purchase_resume_clean_journey_v1', {}),
   demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
     if (Array.isArray(rows) && rows.length > 0) {
       await standaloneRpc('smart_purchase_save_current_snapshot_v1', {

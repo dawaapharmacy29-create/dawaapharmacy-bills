@@ -135,3 +135,12 @@ test('draft creation recovers exact matching drafts when the create response is 
   assert.ok(source.includes("setDraftResult(recovered)"));
   assert.ok(source.includes("setActiveStep(5)"));
 });
+
+
+test('refresh can resume an exact open journey from the server when local storage is missing', () => {
+  assert.ok(source.includes("purchaseApi.resumeCleanJourney()"));
+  assert.ok(source.includes("if (!serverResume?.found) return"));
+  assert.ok(source.includes("expectedPlanHash"));
+  assert.ok(source.includes("result?.plan_hash !== expectedPlanHash"));
+  assert.ok(source.includes("آخر طلبية مفتوحة محفوظة على السيرفر"));
+});
