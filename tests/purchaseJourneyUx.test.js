@@ -40,3 +40,16 @@ test('heavy plan content renders only while the review step is active', () => {
   assert.ok(source.includes('draftResult && activeStep === 4'));
   assert.ok(source.includes('activeStep === 5 && draftResult'));
 });
+
+
+test('open drafts lock a new stock journey and stage 1', () => {
+  assert.ok(source.includes("if (draftResult) {"));
+  assert.ok(source.includes("ready: !draftResult"));
+  assert.ok(source.includes("disabled={busy || Boolean(draftResult)}"));
+});
+
+test('final readiness requires persisted historical allocation', () => {
+  assert.ok(source.includes("finalReviewReady"));
+  assert.ok(source.includes("جاهزة لتثبيت التحليل التاريخي"));
+  assert.ok(source.includes("جاهزة للمراجعة قبل الاعتماد"));
+});

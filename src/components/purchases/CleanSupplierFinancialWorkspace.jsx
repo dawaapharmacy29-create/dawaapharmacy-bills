@@ -117,6 +117,7 @@ export default function CleanSupplierFinancialWorkspace({
   message = '',
   error = '',
   draftTotals = {},
+  historicalApplied = false,
   onRefresh = null,
 }) {
   const [supplierChoice, setSupplierChoice] = useState('');
@@ -139,8 +140,9 @@ export default function CleanSupplierFinancialWorkspace({
   }, [rows]);
 
   const storedDraftTotal = Number(draftTotals?.shokry || 0) + Number(draftTotals?.shamy || 0);
-  const draftFinancialGap = storedDraftTotal - summary.total;
-  const draftFinancialGapPercent = summary.total > 0 ? (draftFinancialGap / summary.total) * 100 : 0;
+  const historicalComparisonTotal = historicalApplied && storedDraftTotal > 0 ? storedDraftTotal : summary.total;
+  const draftFinancialGap = storedDraftTotal - historicalComparisonTotal;
+  const draftFinancialGapPercent = historicalComparisonTotal > 0 ? (draftFinancialGap / historicalComparisonTotal) * 100 : 0;
 
   const splitRows = useMemo(() => (
     branchFilter === 'all'
@@ -277,7 +279,11 @@ export default function CleanSupplierFinancialWorkspace({
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
         <Metric icon={WalletCards} label="إجمالي المسودتين" value={`${money(storedDraftTotal)} ج`} />
-        <Metric icon={WalletCards} label="القيمة حسب تاريخ المشتريات" value={`${money(summary.total)} ج`} />
+        <Metric
+          icon={WalletCards}
+          label={historicalApplied ? 'القيمة التاريخية المثبتة' : 'القيمة حسب تاريخ المشتريات'}
+          value={`${money(historicalComparisonTotal)} ج`}
+        />
         <Metric
           icon={AlertTriangle}
           label={draftFinancialGap >= 0 ? 'المسودتان أعلى من التاريخي' : 'المسودتان أقل من التاريخي'}

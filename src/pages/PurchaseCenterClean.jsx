@@ -225,6 +225,7 @@ function PurchaseJourneyTabs({
   supplierLoading,
   supplierError,
   supplierDecision,
+  historicalApplied,
 }) {
   const stage = activeStep === 1 ? 1 : activeStep <= 3 ? 2 : 3;
   const planBlocked = Boolean(plan) && !draftResult && plan?.creation_guard?.can_create_dual === false;
@@ -235,7 +236,7 @@ function PurchaseJourneyTabs({
       target: 1,
       label: 'رفع الرصيد',
       note: 'ملف واحد لشكري والشامي',
-      ready: true,
+      ready: !draftResult,
       done: Boolean(plan),
       status: plan ? 'تم' : 'ابدأ هنا',
     },
@@ -262,14 +263,16 @@ function PurchaseJourneyTabs({
       label: 'المورد والنتيجة',
       note: 'تحليل تاريخي ثم مراجعة نهائية',
       ready: Boolean(draftResult),
-      done: Boolean(supplierReady && supplierDecision?.readyForHistoricalReview),
+      done: Boolean(supplierReady && supplierDecision?.readyForHistoricalReview && historicalApplied),
       status: supplierLoading
         ? 'جاري التحليل'
         : supplierError
           ? 'تحتاج مراجعة'
           : supplierReady
             ? supplierDecision?.readyForHistoricalReview
-              ? 'جاهزة'
+              ? historicalApplied
+                ? 'تم التثبيت'
+                : 'جاهزة للتثبيت'
               : 'تاريخ ناقص'
             : draftResult
               ? 'جاهزة'
@@ -561,6 +564,15 @@ export default function PurchaseCenterClean() {
     return persisted > 0 ? persisted : Number(plan?.totals?.buy_value || 0);
   }, [plan, supplierWorkspace.draftTotals]);
 
+  const displayedBranchTotals = useMemo(() => ({
+    shokry: supplierWorkspace.historicalApplied && Number(supplierWorkspace.draftTotals?.shokry || 0) > 0
+      ? Number(supplierWorkspace.draftTotals.shokry)
+      : Number(plan?.shokry?.summary?.suggested_buy_value || 0),
+    shamy: supplierWorkspace.historicalApplied && Number(supplierWorkspace.draftTotals?.shamy || 0) > 0
+      ? Number(supplierWorkspace.draftTotals.shamy)
+      : Number(plan?.shamy?.summary?.suggested_buy_value || 0),
+  }), [plan, supplierWorkspace.draftTotals, supplierWorkspace.historicalApplied]);
+
   const liveReferenceTotal = useMemo(() => {
     // Once the historical allocation is persisted, the draft line totals are the accounting
     // source of truth. Using the raw historical average here can differ by a few piastres
@@ -755,6 +767,10 @@ export default function PurchaseCenterClean() {
 
   function startNewJourney() {
     if (runRef.current) return;
+    if (draftResult) {
+      setError('يوجد مسودتان مفتوحتان للطلبية الحالية. أكمل أو ألغِ المسودتين قبل بدء طلبية جديدة حتى لا يحدث تكرار.');
+      return;
+    }
     clearJourneyResume();
     setActiveStep(1);
     setFileName('');
@@ -1062,6 +1078,12 @@ export default function PurchaseCenterClean() {
     };
   }, [supplierWorkspace.groups, supplierWorkspace.rows]);
 
+  const finalReviewReady = Boolean(
+    draftResult?.content_verified
+    && supplierDecision.readyForHistoricalReview
+    && supplierWorkspace.historicalApplied
+  );
+
   const supplierBranchDecision = useMemo(() => {
     const rows = supplierWorkspace.rows || [];
     return ['دواء شكري', 'دواء الشامي'].map((branchName) => {
@@ -1122,17 +1144,21 @@ export default function PurchaseCenterClean() {
               <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 <span className="font-black text-slate-900">الطلبية الحالية: {money(draftOrderTotal)} ج</span>
                 <span className="text-slate-500">{plan.totals?.buy_items || 0} صنف</span>
-                <span className="text-slate-500">شكري {money(plan.shokry?.summary?.suggested_buy_value)} ج</span>
-                <span className="text-slate-500">الشامي {money(plan.shamy?.summary?.suggested_buy_value)} ج</span>
+                <span className="text-slate-500">شكري {money(displayedBranchTotals.shokry)} ج</span>
+                <span className="text-slate-500">الشامي {money(displayedBranchTotals.shamy)} ج</span>
+                {draftResult && (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">مسودتان مفتوحتان</span>
+                )}
               </div>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || Boolean(draftResult)}
               onClick={startNewJourney}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:border-teal-300 disabled:opacity-40"
+              title={draftResult ? 'أكمل أو ألغِ المسودتين الحاليتين أولًا' : 'بدء طلبية جديدة'}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:border-teal-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
               بدء طلبية جديدة
             </button>
@@ -1154,6 +1180,7 @@ export default function PurchaseCenterClean() {
         supplierLoading={supplierWorkspace.loading}
         supplierError={supplierWorkspace.error}
         supplierDecision={supplierDecision}
+        historicalApplied={supplierWorkspace.historicalApplied}
       />
 
       <CurrentStepGuide step={activeStep} />
@@ -1734,6 +1761,7 @@ export default function PurchaseCenterClean() {
               message={supplierWorkspace.message}
               applying={supplierWorkspace.applying}
               draftTotals={supplierWorkspace.draftTotals}
+              historicalApplied={supplierWorkspace.historicalApplied}
               onRefresh={() => loadSupplierWorkspace(draftResult)}
             />
           )}
@@ -1741,7 +1769,7 @@ export default function PurchaseCenterClean() {
           {activeStep === 5 && draftResult && (
             <section className="space-y-4">
               <div className={`rounded-2xl border p-5 shadow-sm ${
-                supplierDecision.readyForHistoricalReview
+                finalReviewReady
                   ? 'border-emerald-200 bg-emerald-50/60'
                   : 'border-amber-200 bg-amber-50/70'
               }`}>
@@ -1753,13 +1781,15 @@ export default function PurchaseCenterClean() {
                     </p>
                   </div>
                   <span className={`rounded-full border bg-white px-3 py-1 text-xs font-black ${
-                    supplierDecision.readyForHistoricalReview
+                    finalReviewReady
                       ? 'border-emerald-200 text-emerald-800'
                       : 'border-amber-200 text-amber-800'
                   }`}>
-                    {supplierDecision.readyForHistoricalReview
-                      ? 'التحليل التاريخي مكتمل للمراجعة'
-                      : 'تحتاج استكمال تاريخ المورد أو التكلفة'}
+                    {!supplierDecision.readyForHistoricalReview
+                      ? 'تحتاج استكمال تاريخ المورد أو التكلفة'
+                      : supplierWorkspace.historicalApplied
+                        ? 'جاهزة للمراجعة قبل الاعتماد'
+                        : 'جاهزة لتثبيت التحليل التاريخي'}
                   </span>
                 </div>
 
@@ -1942,15 +1972,21 @@ export default function PurchaseCenterClean() {
                 <section className="rounded-2xl border bg-white p-4 shadow-sm">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="font-black text-slate-900">أهم الموردين المقترحين</h3>
-                      <p className="mt-1 text-xs text-slate-500">أعلى الموردين حسب القيمة المرجعية الحالية.</p>
+                      <h3 className="font-black text-slate-900">
+                        {supplierWorkspace.historicalApplied ? 'الموردون المثبتون على المسودتين' : 'أهم الموردين المقترحين'}
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {supplierWorkspace.historicalApplied
+                          ? 'التوزيع الحالي مكتوب بالفعل داخل المسودتين.'
+                          : 'أعلى الموردين حسب القيمة التاريخية المرجعية الحالية.'}
+                      </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setActiveStep(4)}
                       className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700"
                     >
-                      تعديل توزيع الموردين
+                      مراجعة التحليل التاريخي
                     </button>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1971,8 +2007,14 @@ export default function PurchaseCenterClean() {
               )}
 
               <div className="flex flex-wrap justify-between gap-2">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-600">
-                  الخطوة التالية لاحقًا: اعتماد مقصود ثم إرسال المورد — غير تلقائي
+                <div className={`rounded-xl border px-4 py-2 text-sm font-bold ${
+                  finalReviewReady
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-900'
+                }`}>
+                  {finalReviewReady
+                    ? 'المسودتان جاهزتان لقرار اعتماد يدوي لاحقًا. لا يوجد إرسال تلقائي.'
+                    : 'أكمل تثبيت التحليل التاريخي أولًا؛ لا يوجد اعتماد أو إرسال تلقائي.'}
                 </div>
               </div>
             </section>

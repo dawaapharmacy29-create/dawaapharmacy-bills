@@ -73,3 +73,12 @@ test('negative stock remains review-only instead of blocking dual draft creation
   assert.doesNotMatch(cleanPageSource, /إنشاء المسودتين متوقف لأن ملف الرصيد يحتوي على أرصدة سالبة/);
   assert.match(cleanPageSource, /تمت معاملة الأرصدة السالبة كصفر في الفرع المتأثر فقط/);
 });
+
+
+test('clean path never auto-approves or auto-dispatches after historical persistence', () => {
+  assert.match(unifiedApiSource, /smart_purchase_apply_historical_allocation_v1/);
+  assert.match(cleanPageSource, /applyHistoricalAllocation/);
+  assert.doesNotMatch(cleanPageSource, /approveOrder\s*\(/);
+  assert.doesNotMatch(cleanPageSource, /approveAndReserve\s*\(/);
+  assert.doesNotMatch(cleanPageSource, /markSupplierSent\s*\(/);
+});
