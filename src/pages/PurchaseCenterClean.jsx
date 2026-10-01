@@ -1026,6 +1026,34 @@ export default function PurchaseCenterClean() {
     void resumeJourney();
   }, []);
 
+  async function useLatestSavedStock() {
+    if (runRef.current) return;
+    runRef.current = true;
+    setError('');
+    try {
+      const result = await runPlannerOnly(null);
+      const restored = {
+        stock_sync_id: result.stock_sync_id,
+        dual_atomic_finalize: true,
+        row_count_verified: true,
+      };
+      setSaveResult(restored);
+      setFileName('آخر رصيد محفوظ');
+      writeJourneyResume({
+        stock_sync_id: result.stock_sync_id,
+        file_name: 'آخر رصيد محفوظ',
+        save_result: restored,
+        plan_hash: result.plan_hash || '',
+      });
+    } catch (err) {
+      setError(err?.message || 'تعذر تشغيل الخطة على آخر رصيد محفوظ.');
+      setPhase('error');
+      setActiveStep(1);
+    } finally {
+      runRef.current = false;
+    }
+  }
+
   async function replan() {
     if (runRef.current || !saveResult || draftResult) return;
     runRef.current = true;
@@ -1533,6 +1561,14 @@ export default function PurchaseCenterClean() {
             <div className="text-lg font-black text-slate-800">{fileName || 'اختر ملف رصيد شكري والشامي'}</div>
             <div className="mt-2 text-sm text-slate-500">بمجرد اختيار الملف يبدأ الحفظ والتحليل تلقائيًا.</div>
           </label>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void useLatestSavedStock()}
+            className="mt-3 w-full rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-black text-teal-800 hover:bg-teal-100 disabled:opacity-50"
+          >
+            {phase === 'planning' ? 'جاري تشغيل الخطة على آخر رصيد...' : 'استخدام آخر رصيد محفوظ وتشغيل الخطة'}
+          </button>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
