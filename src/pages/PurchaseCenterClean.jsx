@@ -489,8 +489,8 @@ export default function PurchaseCenterClean() {
   const [cancellingOrderId, setCancellingOrderId] = useState('');
   const [activeStep, setActiveStep] = useState(1);
   const [movementPreviewState, setMovementPreviewState] = useState({
-    shokry: { fileName: '', parsed: null, loading: false, preview: null, error: '' },
-    shamy: { fileName: '', parsed: null, loading: false, preview: null, error: '' },
+    shokry: { fileName: '', parsed: null, loading: false, preview: null, finalized: null, error: '' },
+    shamy: { fileName: '', parsed: null, loading: false, preview: null, finalized: null, error: '' },
   });
   const runRef = useRef(false);
   const supplierLoadRef = useRef(false);
@@ -635,18 +635,18 @@ export default function PurchaseCenterClean() {
     if (!file) return;
     setMovementPreviewState((current) => ({
       ...current,
-      [branchKey]: { fileName: file.name, parsed: null, loading: true, preview: null, error: '' },
+      [branchKey]: { fileName: file.name, parsed: null, loading: true, preview: null, finalized: null, error: '' },
     }));
     try {
       const movement = await readMovementWorkbook(file);
       setMovementPreviewState((current) => ({
         ...current,
-        [branchKey]: { fileName: file.name, parsed: movement, loading: false, preview: null, error: '' },
+        [branchKey]: { fileName: file.name, parsed: movement, loading: false, preview: null, finalized: null, error: '' },
       }));
     } catch (err) {
       setMovementPreviewState((current) => ({
         ...current,
-        [branchKey]: { fileName: file.name, parsed: null, loading: false, preview: null, error: err?.message || 'تعذر قراءة ملف الحركة.' },
+        [branchKey]: { fileName: file.name, parsed: null, loading: false, preview: null, finalized: null, error: err?.message || 'تعذر قراءة ملف الحركة.' },
       }));
     }
   }
@@ -677,6 +677,31 @@ export default function PurchaseCenterClean() {
       setMovementPreviewState((state) => ({
         ...state,
         [branchKey]: { ...state[branchKey], loading: false, preview: null, error: err?.message || 'تعذر تجهيز معاينة الحركة.' },
+      }));
+    }
+  }
+
+  async function finalizeMovementPreview(branchKey) {
+    const current = movementPreviewState[branchKey];
+    const importId = current?.preview?.import_id;
+    if (!importId || !current?.preview?.ready_to_finalize || current.loading || current.finalized) return;
+    const branchLabel = branchKey === 'shokry' ? 'شكري' : 'الشامي';
+    if (!window.confirm(`اعتماد حركة مبيعات فرع ${branchLabel}؟ سيتم تحديث حركة 30/60/90 وإعادة بناء التحليل الذكي فقط، ولن يتم إنشاء أي طلبية.`)) return;
+
+    setMovementPreviewState((state) => ({
+      ...state,
+      [branchKey]: { ...state[branchKey], loading: true, error: '' },
+    }));
+    try {
+      const finalized = await purchaseApi.finalizeMovementImport(importId);
+      setMovementPreviewState((state) => ({
+        ...state,
+        [branchKey]: { ...state[branchKey], loading: false, finalized, error: '' },
+      }));
+    } catch (err) {
+      setMovementPreviewState((state) => ({
+        ...state,
+        [branchKey]: { ...state[branchKey], loading: false, error: err?.message || 'تعذر اعتماد حركة المبيعات. لم يتم إنشاء أي طلبية.' },
       }));
     }
   }
@@ -884,6 +909,10 @@ export default function PurchaseCenterClean() {
     }
     clearJourneyResume();
     setActiveStep(1);
+    setMovementPreviewState({
+      shokry: { fileName: '', parsed: null, loading: false, preview: null, finalized: null, error: '' },
+      shamy: { fileName: '', parsed: null, loading: false, preview: null, finalized: null, error: '' },
+    });
     setFileName('');
     setFileModifiedAt(null);
     setParsed(null);
@@ -1624,7 +1653,22 @@ export default function PurchaseCenterClean() {
                           </div>
                         </details>
                       )}
-                      <div className="mt-2 text-[11px] font-bold">لا يوجد زر اعتماد في هذه المرحلة.</div>
+                      {movement.finalized ? (
+                        <div className="mt-3 rounded-lg border border-emerald-300 bg-white p-2 text-xs font-black text-emerald-800">
+                          تم اعتماد حركة {branchLabel} بنجاح وإعادة بناء التحليل الذكي. لم يتم إنشاء أي طلبية.
+                        </div>
+                      ) : movement.preview.ready_to_finalize ? (
+                        <button
+                          type="button"
+                          disabled={movement.loading}
+                          onClick={() => void finalizeMovementPreview(branchKey)}
+                          className="mt-3 w-full rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50"
+                        >
+                          {movement.loading ? 'جاري الاعتماد الآمن...' : `اعتماد حركة ${branchLabel}`}
+                        </button>
+                      ) : (
+                        <div className="mt-2 text-[11px] font-bold">الاعتماد غير متاح حتى تجتاز المعاينة حواجز الأمان.</div>
+                      )}
                     </div>
                   )}
                   {movement.loading && !movement.parsed && <div className="mt-3 text-xs text-slate-500">جاري قراءة الملف...</div>}
