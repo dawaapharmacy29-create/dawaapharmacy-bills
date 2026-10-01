@@ -18,6 +18,12 @@ function monthKey(value) {
   return Number(match[1]) * 100 + Number(match[2]);
 }
 
+function previousMonthKey(key) {
+  const year = Math.floor(key / 100);
+  const month = key % 100;
+  return month === 1 ? (year - 1) * 100 + 12 : year * 100 + (month - 1);
+}
+
 export function normalizeMovementWorkbookRows(rows, fileName = '') {
   if (!Array.isArray(rows) || rows.length < 2) {
     throw new Error('ملف حركة المبيعات فارغ أو غير صالح.');
@@ -34,6 +40,10 @@ export function normalizeMovementWorkbookRows(rows, fileName = '') {
 
   if (codeIndex < 0 || nameIndex < 0 || months.length < 3) {
     throw new Error('الملف لازم يحتوي على الكود والاسم وثلاثة أعمدة شهرية متتالية.');
+  }
+
+  if (months[1].key !== previousMonthKey(months[0].key) || months[2].key !== previousMonthKey(months[1].key)) {
+    throw new Error('أعمدة حركة المبيعات لازم تكون أحدث 3 شهور متتالية.');
   }
 
   const seen = new Set();
