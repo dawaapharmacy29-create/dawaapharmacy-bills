@@ -78,3 +78,9 @@ begin
   end loop;
 end
 $migration$;
+
+
+-- NOTE: planner integrity handling for missing costs is intentionally NOT changed here.
+-- Missing-cost adaptive items must remain visible and must not receive invented prices.
+-- A separate reviewed planner change will resolve effective cost from trusted history
+-- and quarantine only unresolved-cost items from auto-buy, without hiding demand.
