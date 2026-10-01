@@ -1545,6 +1545,7 @@ export default function PurchaseCenterClean() {
       {activeStep === 1 && (
       <section className="rounded-2xl border bg-white p-5 shadow-sm">
         {!plan ? (
+          <div>
           <label className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition ${busy ? 'pointer-events-none opacity-60' : 'hover:border-teal-400 hover:bg-teal-50/30'}`}>
             <input
               type="file"
@@ -1569,6 +1570,7 @@ export default function PurchaseCenterClean() {
           >
             {phase === 'planning' ? 'جاري تشغيل الخطة على آخر رصيد...' : 'استخدام آخر رصيد محفوظ وتشغيل الخطة'}
           </button>
+          </div>
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
