@@ -1599,7 +1599,31 @@ export default function PurchaseCenterClean() {
                         <span>غير مطابق: {movement.preview.unmatched_rows ?? 0}</span>
                         <span>نسبة المطابقة: {money(Number(movement.preview.match_rate || 0) * 100)}%</span>
                         <span>تكرار الهدف: {movement.preview.duplicate_target_matches ?? 0}</span>
+                        <span>مستبعد من المخزون: {movement.preview.ineligible_rows ?? 0}</span>
+                        <span>تغطية السياسة الذكية: {movement.preview.adaptive_covered ?? 0}/{movement.preview.adaptive_total ?? 0}</span>
                       </div>
+                      {Array.isArray(movement.preview.exceptions) && movement.preview.exceptions.length > 0 && (
+                        <details className="mt-3 rounded-lg border border-current/20 bg-white/60">
+                          <summary className="cursor-pointer px-3 py-2 text-xs font-black">
+                            مراجعة الاستثناءات ({movement.preview.exceptions.length})
+                          </summary>
+                          <div className="space-y-2 border-t border-current/10 p-2">
+                            {movement.preview.exceptions.map((item) => (
+                              <div key={`${item.row_no}-${item.product_code}-${item.reason}`} className="rounded-lg bg-white p-2 text-[11px]">
+                                <div className="font-black">{item.product_code || 'بدون كود'} — {item.product_name || 'بدون اسم'}</div>
+                                <div className="mt-1">
+                                  {item.reason === 'unmatched'
+                                    ? 'غير موجود في رصيد الفرع الحالي — لن يتم ربطه تلقائيًا.'
+                                    : 'مطابق لكنه مستبعد من سياسة المخزون — لن يدخل في حساب الشراء.'}
+                                </div>
+                                {item.reason === 'inventory_ineligible' && item.target_code && (
+                                  <div className="mt-1 text-slate-500">المطابق: {item.target_code} — {item.target_name || ''}</div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                       <div className="mt-2 text-[11px] font-bold">لا يوجد زر اعتماد في هذه المرحلة.</div>
                     </div>
                   )}
