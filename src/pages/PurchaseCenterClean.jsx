@@ -1569,6 +1569,25 @@ export default function PurchaseCenterClean() {
         )}
 
         <div className="mt-5 border-t pt-5">
+          {movementPreviewState.shokry.finalized && movementPreviewState.shamy.finalized && !plan && (
+            <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="font-black text-emerald-900">تم اعتماد حركة الفرعين بنجاح</div>
+              <p className="mt-1 text-xs leading-5 text-emerald-700">
+                شغّل الخطة الذكية على آخر رصيد محفوظ لمراجعة التحويلات والكميات المقترحة. هذه الخطوة لا تنشئ أي طلبية.
+              </p>
+              <button
+                type="button"
+                disabled={phase === 'planning'}
+                onClick={() => void runPlannerOnly(null).catch((err) => {
+                  setError(err?.message || 'تعذر تحديث الخطة الذكية.');
+                  setPhase('error');
+                })}
+                className="mt-3 w-full rounded-xl bg-teal-700 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
+              >
+                {phase === 'planning' ? 'جاري تحديث الخطة الذكية...' : 'عرض الخطة الذكية المحدثة'}
+              </button>
+            </div>
+          )}
           <div className="mb-3">
             <h2 className="font-black text-slate-900">معاينة حركة المبيعات — بدون اعتماد</h2>
             <p className="mt-1 text-xs text-slate-500">ارفع ملف شكري وملف الشامي كل واحد في مكانه. اختيار الملف يقرأه محليًا فقط؛ المعاينة لا تغيّر الرصيد ولا تعتمد الحركة.</p>
