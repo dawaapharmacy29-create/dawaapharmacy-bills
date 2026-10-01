@@ -80,7 +80,10 @@ end
 $migration$;
 
 
--- NOTE: planner integrity handling for missing costs is intentionally NOT changed here.
--- Missing-cost adaptive items must remain visible and must not receive invented prices.
--- A separate reviewed planner change will resolve effective cost from trusted history
--- and quarantine only unresolved-cost items from auto-buy, without hiding demand.
+
+-- Effective planning-cost contract:
+-- 1) positive branch snapshot cost
+-- 2) otherwise trusted cross-branch historical cost
+-- 3) otherwise unresolved: visible for review, never auto-bought.
+-- The planner-function replacement that consumes this contract is intentionally kept
+-- in the same rollout gate; do not apply this migration alone.
