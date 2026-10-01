@@ -49,3 +49,32 @@ select
   net_cost_total,avg_effective_unit_cost,min_effective_unit_cost,last_purchase_date,last_unit_cost,
   source_file,updated_at,selected_unit_cost,historical_cost_source,historical_confidence
 from ranked where rn=1;
+
+
+-- Consumers must join by product_key only: the selected history row may come from either branch.
+-- Keep branch authorization, inventory, movement and policy branch-scoped.
+
+do $migration$
+declare
+  r record;
+  v_def text;
+begin
+  for r in
+    select p.oid,p.proname
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public'
+      and p.proname in (
+        'smart_purchase_apply_historical_allocation_v1',
+        'smart_purchase_historical_allocation_preview_v1',
+        'smart_purchase_history_enrich_rows_v1'
+      )
+      and pg_get_functiondef(p.oid) ilike '%purchase_historical_supplier_choice_v1%'
+  loop
+    v_def := pg_get_functiondef(r.oid);
+    v_def := replace(v_def,'h.branch=v_order.branch' || chr(10) || '       and h.product_key=', 'h.product_key=');
+    v_def := replace(v_def,'h.branch=o.branch' || chr(10) || '     and h.product_key=', 'h.product_key=');
+    v_def := replace(v_def,'sh.branch=p_branch and sh.product_key=', 'sh.product_key=');
+    execute v_def;
+  end loop;
+end
+$migration$;
