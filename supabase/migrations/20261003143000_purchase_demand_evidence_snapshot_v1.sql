@@ -17,6 +17,8 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   dominant_customer_share_30d numeric check (dominant_customer_share_30d between 0 and 1),
   outlier_share_30d numeric not null default 0 check (outlier_share_30d between 0 and 1),
   behavior_class text not null check (behavior_class in ('recurring','sparse','concentrated','burst_one_off','emerging')),
+  evidence_confidence_score numeric not null check (evidence_confidence_score between 0 and 100),
+  evidence_quality_class text not null check (evidence_quality_class in ('high','medium','review')),
   last_sale_at timestamptz not null,
   source_max_invoice_at timestamptz not null,
   source_coverage_start_at timestamptz not null,
@@ -95,6 +97,8 @@ begin
        or coalesce(nullif(r->>'source_coverage_start_at',''),'')=''
        or coalesce(nullif(r->>'source_coverage_days',''),'')=''
        or coalesce(nullif(r->>'observed_span_days',''),'')=''
+       or coalesce(nullif(r->>'evidence_confidence_score',''),'')=''
+       or coalesce(nullif(r->>'evidence_quality_class',''),'')=''
        or coalesce(nullif(r->>'evidence_model_version',''),'')='' then
       v_invalid := v_invalid + 1;
       continue;
@@ -126,6 +130,8 @@ begin
         coalesce(r->>'dominant_customer_share_30d',''),
         coalesce(r->>'outlier_share_30d','0'),
         coalesce(r->>'behavior_class',''),
+        coalesce(r->>'evidence_confidence_score',''),
+        coalesce(r->>'evidence_quality_class',''),
         coalesce(r->>'last_sale_at',''),
         coalesce(r->>'source_max_invoice_at',''),
         coalesce(r->>'source_coverage_start_at',''),
@@ -150,7 +156,7 @@ begin
         branch,product_key,product_code,
         units_30d,invoices_30d,active_days_30d,customers_30d,known_customer_invoices_30d,
         typical_invoice_qty_30d,max_invoice_qty_30d,dominant_invoice_share_30d,
-        dominant_customer_share_30d,outlier_share_30d,behavior_class,
+        dominant_customer_share_30d,outlier_share_30d,behavior_class,evidence_confidence_score,evidence_quality_class,
         last_sale_at,source_max_invoice_at,source_coverage_start_at,source_coverage_days,observed_span_days,window_start,window_end,evidence_model_version,
         source_hash,calculated_at,imported_at,imported_by
       ) values (
@@ -168,6 +174,8 @@ begin
         least(1,greatest(0,coalesce(nullif(r->>'outlier_share_30d','')::numeric,0))),
         case when r->>'behavior_class' in ('recurring','sparse','concentrated','burst_one_off','emerging')
              then r->>'behavior_class' else 'sparse' end,
+        least(100,greatest(0,coalesce(nullif(r->>'evidence_confidence_score','')::numeric,0))),
+        case when r->>'evidence_quality_class' in ('high','medium','review') then r->>'evidence_quality_class' else 'review' end,
         (r->>'last_sale_at')::timestamptz,
         (r->>'source_max_invoice_at')::timestamptz,
         (r->>'source_coverage_start_at')::timestamptz,
@@ -193,6 +201,8 @@ begin
         dominant_customer_share_30d=excluded.dominant_customer_share_30d,
         outlier_share_30d=excluded.outlier_share_30d,
         behavior_class=excluded.behavior_class,
+        evidence_confidence_score=excluded.evidence_confidence_score,
+        evidence_quality_class=excluded.evidence_quality_class,
         last_sale_at=excluded.last_sale_at,
         source_max_invoice_at=excluded.source_max_invoice_at,
         source_coverage_start_at=excluded.source_coverage_start_at,
