@@ -267,6 +267,23 @@ export const smartPurchaseUnifiedApi = {
       total_saved: shamyResult.saved + shokryResult.saved,
     };
   },
+  importDemandEvidence: async ({ rows = [], chunkSize = 1000, onProgress = null }) => {
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد بيانات Demand Evidence صالحة للاستيراد.');
+    const safeChunkSize = Math.max(1, Math.min(1000, Math.floor(Number(chunkSize) || 1000)));
+    const totals = { imported: 0, unchanged_or_older: 0, unmatched: 0, invalid: 0 };
+    for (let offset = 0; offset < rows.length; offset += safeChunkSize) {
+      const chunk = rows.slice(offset, offset + safeChunkSize);
+      const result = await withOneTransportRetry(() => standaloneRpc('smart_purchase_upsert_demand_evidence_v1', { p_rows: chunk }));
+      totals.imported += Number(result?.imported || 0);
+      totals.unchanged_or_older += Number(result?.unchanged_or_older || 0);
+      totals.unmatched += Number(result?.unmatched || 0);
+      totals.invalid += Number(result?.invalid || 0);
+      if (typeof onProgress === 'function') onProgress({ processed: Math.min(rows.length, offset + chunk.length), total: rows.length, ...totals });
+    }
+    return { ...totals, total: rows.length };
+  },
+  demandEvidenceShadow: (branch = null) => standaloneRpc('smart_purchase_demand_evidence_shadow_v1', { p_branch: branch }),
+  demandEvidenceShadowSummary: (branch = null) => standaloneRpc('smart_purchase_demand_evidence_shadow_summary_v1', { p_branch: branch }),
   dualBranchInstantPlan: ({ shokryBudget = null, shamyBudget = null } = {}) => standaloneRpc('smart_purchase_dual_branch_instant_plan_v1', {
     p_shokry_budget: Number(shokryBudget) > 0 ? Number(shokryBudget) : null,
     p_shamy_budget: Number(shamyBudget) > 0 ? Number(shamyBudget) : null,
