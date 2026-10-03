@@ -154,7 +154,8 @@ begin
     from public.purchase_branch_current_snapshots s
     where s.branch=v_branch
       and regexp_replace(coalesce(nullif(trim(s.product_code),''),''),'\.0+$','','g')=v_code
-    order by s.inventory_eligible desc, s.stock_captured_at desc nulls last
+      and s.inventory_eligible is true
+    order by s.stock_captured_at desc nulls last
     limit 1;
 
     if v_key is null then
