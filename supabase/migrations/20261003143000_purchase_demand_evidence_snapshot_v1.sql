@@ -90,9 +90,17 @@ begin
   if jsonb_typeof(coalesce(p_rows,'[]'::jsonb)) <> 'array' then
     return jsonb_build_object('ok',false,'error','rows_must_be_array');
   end if;
+  if jsonb_array_length(coalesce(p_rows,'[]'::jsonb)) > 1000 then
+    return jsonb_build_object('ok',false,'error','too_many_rows','max_rows',1000);
+  end if;
 
   for r in select value from jsonb_array_elements(coalesce(p_rows,'[]'::jsonb))
   loop
+    if jsonb_typeof(r) <> 'object' then
+      v_invalid := v_invalid + 1;
+      continue;
+    end if;
+
     v_branch := nullif(trim(r->>'branch'),'');
     v_code := regexp_replace(coalesce(nullif(trim(r->>'product_code'),''),''),'\.0+$','','g');
 
