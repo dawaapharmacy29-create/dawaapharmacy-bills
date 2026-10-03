@@ -21,8 +21,8 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   evidence_quality_class text not null check (evidence_quality_class in ('high','medium','review')),
   last_sale_at timestamptz not null,
   source_max_invoice_at timestamptz not null,
-  source_coverage_start_at timestamptz not null,
-  source_coverage_days integer not null check (source_coverage_days between 1 and 90),
+  source_coverage_start_at timestamptz,
+  source_coverage_days integer check (source_coverage_days between 1 and 90),
   observed_span_days integer not null check (observed_span_days between 1 and 90),
   window_start timestamptz not null,
   window_end timestamptz not null,
@@ -33,14 +33,15 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   imported_by uuid references public.staff_accounts(id) on delete set null,
   primary key(branch, product_key),
   check (window_start < window_end),
-  check (source_coverage_start_at <= source_max_invoice_at),
+  check ((source_coverage_start_at is null and source_coverage_days is null) or (source_coverage_start_at is not null and source_coverage_days is not null)),
+  check (source_coverage_start_at is null or source_coverage_start_at <= source_max_invoice_at),
   check (source_max_invoice_at <= window_end),
   check (last_sale_at >= window_start and last_sale_at <= source_max_invoice_at),
   check (active_days_30d <= invoices_30d),
   check (known_customer_invoices_30d <= invoices_30d),
   check (customers_30d <= known_customer_invoices_30d),
   check (typical_invoice_qty_30d <= max_invoice_qty_30d),
-  check (observed_span_days <= source_coverage_days)
+  check (source_coverage_days is null or observed_span_days <= source_coverage_days)
 );
 
 create index if not exists idx_purchase_demand_evidence_freshness
@@ -101,8 +102,6 @@ begin
        or coalesce(nullif(r->>'window_end',''),'')=''
        or coalesce(nullif(r->>'last_sale_at',''),'')=''
        or coalesce(nullif(r->>'source_max_invoice_at',''),'')=''
-       or coalesce(nullif(r->>'source_coverage_start_at',''),'')=''
-       or coalesce(nullif(r->>'source_coverage_days',''),'')=''
        or coalesce(nullif(r->>'observed_span_days',''),'')=''
        or coalesce(nullif(r->>'evidence_confidence_score',''),'')=''
        or coalesce(nullif(r->>'evidence_quality_class',''),'')=''
@@ -111,9 +110,11 @@ begin
        or greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))
        or greatest(0,coalesce(nullif(r->>'customers_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0))
        or greatest(0,coalesce(nullif(r->>'typical_invoice_qty_30d','')::numeric,0)) > greatest(0,coalesce(nullif(r->>'max_invoice_qty_30d','')::numeric,0))
-       or greatest(1,coalesce(nullif(r->>'observed_span_days','')::int,1)) > greatest(1,coalesce(nullif(r->>'source_coverage_days','')::int,1))
+       or (nullif(r->>'source_coverage_start_at','') is null) <> (nullif(r->>'source_coverage_days','') is null)
+       or (nullif(r->>'source_coverage_days','') is not null and greatest(1,coalesce(nullif(r->>'observed_span_days','')::int,1)) > greatest(1,coalesce(nullif(r->>'source_coverage_days','')::int,1)))
+       or (nullif(r->>'source_coverage_days','') is null and r->>'evidence_quality_class' <> 'review')
        or (r->>'window_start')::timestamptz >= (r->>'window_end')::timestamptz
-       or (r->>'source_coverage_start_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz
+       or (nullif(r->>'source_coverage_start_at','') is not null and (r->>'source_coverage_start_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz)
        or (r->>'source_max_invoice_at')::timestamptz > (r->>'window_end')::timestamptz
        or (r->>'last_sale_at')::timestamptz < (r->>'window_start')::timestamptz
        or (r->>'last_sale_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz then
@@ -157,8 +158,8 @@ begin
           then r->>'evidence_quality_class' else 'review' end,
         (r->>'last_sale_at')::timestamptz::text,
         (r->>'source_max_invoice_at')::timestamptz::text,
-        (r->>'source_coverage_start_at')::timestamptz::text,
-        greatest(1,least(90,coalesce(nullif(r->>'source_coverage_days','')::int,1)))::text,
+        coalesce((nullif(r->>'source_coverage_start_at','')::timestamptz)::text,''),
+        coalesce(greatest(1,least(90,nullif(r->>'source_coverage_days','')::int))::text,''),
         greatest(1,least(90,coalesce(nullif(r->>'observed_span_days','')::int,1)))::text,
         (r->>'window_start')::timestamptz::text,
         (r->>'window_end')::timestamptz::text,
@@ -201,8 +202,8 @@ begin
         case when r->>'evidence_quality_class' in ('high','medium','review') then r->>'evidence_quality_class' else 'review' end,
         (r->>'last_sale_at')::timestamptz,
         (r->>'source_max_invoice_at')::timestamptz,
-        (r->>'source_coverage_start_at')::timestamptz,
-        greatest(1,least(90,coalesce(nullif(r->>'source_coverage_days','')::int,1))),
+        nullif(r->>'source_coverage_start_at','')::timestamptz,
+        greatest(1,least(90,nullif(r->>'source_coverage_days','')::int)),
         greatest(1,least(90,coalesce(nullif(r->>'observed_span_days','')::int,1))),
         (r->>'window_start')::timestamptz,
         (r->>'window_end')::timestamptz,
@@ -240,7 +241,7 @@ begin
         imported_by=excluded.imported_by
       where excluded.source_max_invoice_at >= public.purchase_demand_evidence_snapshots.source_max_invoice_at
         and excluded.window_end >= public.purchase_demand_evidence_snapshots.window_end
-        and excluded.source_coverage_start_at <= excluded.source_max_invoice_at;
+        and (excluded.source_coverage_start_at is null or excluded.source_coverage_start_at <= excluded.source_max_invoice_at);
 
       if found then v_imported := v_imported + 1; else v_unchanged := v_unchanged + 1; end if;
     exception
