@@ -20,7 +20,7 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   evidence_confidence_score numeric not null check (evidence_confidence_score between 0 and 100),
   evidence_quality_class text not null check (evidence_quality_class in ('high','medium','review')),
   last_sale_at timestamptz not null,
-  source_max_invoice_at timestamptz not null,
+  source_max_invoice_at timestamptz,
   source_coverage_start_at timestamptz,
   source_coverage_days integer check (source_coverage_days between 1 and 90),
   observed_span_days integer not null check (observed_span_days between 1 and 90),
@@ -34,9 +34,9 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   primary key(branch, product_key),
   check (window_start < window_end),
   check ((source_coverage_start_at is null and source_coverage_days is null) or (source_coverage_start_at is not null and source_coverage_days is not null)),
-  check (source_coverage_start_at is null or source_coverage_start_at <= source_max_invoice_at),
-  check (source_max_invoice_at >= window_start and source_max_invoice_at <= window_end),
-  check (last_sale_at >= window_start and last_sale_at <= source_max_invoice_at),
+  check (source_coverage_start_at is null or source_max_invoice_at is null or source_coverage_start_at <= source_max_invoice_at),
+  check (source_max_invoice_at is null or (source_max_invoice_at >= window_start and source_max_invoice_at <= window_end)),
+  check (last_sale_at >= window_start and (source_max_invoice_at is null or last_sale_at <= source_max_invoice_at)),
   check (active_days_30d <= invoices_30d),
   check (known_customer_invoices_30d <= invoices_30d),
   check (customers_30d <= known_customer_invoices_30d),
@@ -109,7 +109,6 @@ begin
        or coalesce(nullif(r->>'window_start',''),'')=''
        or coalesce(nullif(r->>'window_end',''),'')=''
        or coalesce(nullif(r->>'last_sale_at',''),'')=''
-       or coalesce(nullif(r->>'source_max_invoice_at',''),'')=''
        or coalesce(nullif(r->>'observed_span_days',''),'')=''
        or coalesce(nullif(r->>'evidence_confidence_score',''),'')=''
        or coalesce(nullif(r->>'evidence_quality_class',''),'')=''
@@ -137,11 +136,12 @@ begin
        or (nullif(r->>'source_coverage_days','') is not null and greatest(1,coalesce(nullif(r->>'observed_span_days','')::int,1)) > greatest(1,coalesce(nullif(r->>'source_coverage_days','')::int,1)))
        or (nullif(r->>'source_coverage_days','') is null and r->>'evidence_quality_class' <> 'review')
        or (r->>'window_start')::timestamptz >= (r->>'window_end')::timestamptz
-       or (nullif(r->>'source_coverage_start_at','') is not null and (r->>'source_coverage_start_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz)
-       or (r->>'source_max_invoice_at')::timestamptz < (r->>'window_start')::timestamptz
-       or (r->>'source_max_invoice_at')::timestamptz > (r->>'window_end')::timestamptz
+       or (nullif(r->>'source_max_invoice_at','') is null and r->>'evidence_quality_class' <> 'review')
+       or (nullif(r->>'source_coverage_start_at','') is not null and nullif(r->>'source_max_invoice_at','') is not null and (r->>'source_coverage_start_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz)
+       or (nullif(r->>'source_max_invoice_at','') is not null and (r->>'source_max_invoice_at')::timestamptz < (r->>'window_start')::timestamptz)
+       or (nullif(r->>'source_max_invoice_at','') is not null and (r->>'source_max_invoice_at')::timestamptz > (r->>'window_end')::timestamptz)
        or (r->>'last_sale_at')::timestamptz < (r->>'window_start')::timestamptz
-       or (r->>'last_sale_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz then
+       or (nullif(r->>'source_max_invoice_at','') is not null and (r->>'last_sale_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz) then
       v_invalid := v_invalid + 1;
       continue;
     end if;
@@ -179,7 +179,7 @@ begin
         (r->>'evidence_confidence_score')::numeric::text,
         r->>'evidence_quality_class',
         (r->>'last_sale_at')::timestamptz::text,
-        (r->>'source_max_invoice_at')::timestamptz::text,
+        coalesce((nullif(r->>'source_max_invoice_at','')::timestamptz)::text,''),
         coalesce((nullif(r->>'source_coverage_start_at','')::timestamptz)::text,''),
         coalesce((nullif(r->>'source_coverage_days','')::int)::text,''),
         (r->>'observed_span_days')::int::text,
@@ -222,7 +222,7 @@ begin
         (r->>'evidence_confidence_score')::numeric,
         r->>'evidence_quality_class',
         (r->>'last_sale_at')::timestamptz,
-        (r->>'source_max_invoice_at')::timestamptz,
+        nullif(r->>'source_max_invoice_at','')::timestamptz,
         nullif(r->>'source_coverage_start_at','')::timestamptz,
         nullif(r->>'source_coverage_days','')::int,
         (r->>'observed_span_days')::int,
@@ -261,13 +261,20 @@ begin
         imported_at=excluded.imported_at,
         imported_by=excluded.imported_by
       where
-        -- Never allow an older source/window to replace newer evidence.
-        excluded.source_max_invoice_at >= public.purchase_demand_evidence_snapshots.source_max_invoice_at
+        -- A proven source timestamp always outranks an unproven one.
+        (
+          public.purchase_demand_evidence_snapshots.source_max_invoice_at is null
+          or (
+            excluded.source_max_invoice_at is not null
+            and excluded.source_max_invoice_at >= public.purchase_demand_evidence_snapshots.source_max_invoice_at
+          )
+        )
         and excluded.window_end >= public.purchase_demand_evidence_snapshots.window_end
-        -- For the same source/window, never downgrade proven coverage to unknown
-        -- or replace it with a later (narrower) coverage start.
+        -- For an identical proven source/window, never replace wider proven
+        -- coverage with unknown or narrower coverage.
         and (
-          excluded.source_max_invoice_at > public.purchase_demand_evidence_snapshots.source_max_invoice_at
+          public.purchase_demand_evidence_snapshots.source_max_invoice_at is null
+          or excluded.source_max_invoice_at > public.purchase_demand_evidence_snapshots.source_max_invoice_at
           or excluded.window_end > public.purchase_demand_evidence_snapshots.window_end
           or (
             excluded.source_max_invoice_at = public.purchase_demand_evidence_snapshots.source_max_invoice_at
