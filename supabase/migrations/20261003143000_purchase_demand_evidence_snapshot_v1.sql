@@ -21,6 +21,7 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   source_max_invoice_at timestamptz not null,
   source_coverage_start_at timestamptz not null,
   source_coverage_days integer not null check (source_coverage_days between 1 and 90),
+  observed_span_days integer not null check (observed_span_days between 1 and 90),
   window_start timestamptz not null,
   window_end timestamptz not null,
   evidence_model_version text not null,
@@ -93,6 +94,7 @@ begin
        or coalesce(nullif(r->>'source_max_invoice_at',''),'')=''
        or coalesce(nullif(r->>'source_coverage_start_at',''),'')=''
        or coalesce(nullif(r->>'source_coverage_days',''),'')=''
+       or coalesce(nullif(r->>'observed_span_days',''),'')=''
        or coalesce(nullif(r->>'evidence_model_version',''),'')='' then
       v_invalid := v_invalid + 1;
       continue;
@@ -128,6 +130,7 @@ begin
         coalesce(r->>'source_max_invoice_at',''),
         coalesce(r->>'source_coverage_start_at',''),
         coalesce(r->>'source_coverage_days',''),
+        coalesce(r->>'observed_span_days',''),
         coalesce(r->>'window_start',''),
         coalesce(r->>'window_end',''),
         coalesce(r->>'evidence_model_version','')
@@ -148,7 +151,7 @@ begin
         units_30d,invoices_30d,active_days_30d,customers_30d,known_customer_invoices_30d,
         typical_invoice_qty_30d,max_invoice_qty_30d,dominant_invoice_share_30d,
         dominant_customer_share_30d,outlier_share_30d,behavior_class,
-        last_sale_at,source_max_invoice_at,source_coverage_start_at,source_coverage_days,window_start,window_end,evidence_model_version,
+        last_sale_at,source_max_invoice_at,source_coverage_start_at,source_coverage_days,observed_span_days,window_start,window_end,evidence_model_version,
         source_hash,calculated_at,imported_at,imported_by
       ) values (
         v_branch,v_key,v_code,
@@ -169,6 +172,7 @@ begin
         (r->>'source_max_invoice_at')::timestamptz,
         (r->>'source_coverage_start_at')::timestamptz,
         greatest(1,least(90,coalesce(nullif(r->>'source_coverage_days','')::int,1))),
+        greatest(1,least(90,coalesce(nullif(r->>'observed_span_days','')::int,1))),
         (r->>'window_start')::timestamptz,
         (r->>'window_end')::timestamptz,
         r->>'evidence_model_version',
@@ -193,6 +197,7 @@ begin
         source_max_invoice_at=excluded.source_max_invoice_at,
         source_coverage_start_at=excluded.source_coverage_start_at,
         source_coverage_days=excluded.source_coverage_days,
+        observed_span_days=excluded.observed_span_days,
         window_start=excluded.window_start,
         window_end=excluded.window_end,
         evidence_model_version=excluded.evidence_model_version,
