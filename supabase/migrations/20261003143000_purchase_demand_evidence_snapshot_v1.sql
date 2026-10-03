@@ -228,7 +228,7 @@ begin
         (r->>'observed_span_days')::int,
         (r->>'window_start')::timestamptz,
         (r->>'window_end')::timestamptz,
-        r->>'evidence_model_version',
+        trim(r->>'evidence_model_version'),
         v_source_hash,
         coalesce(nullif(r->>'calculated_at','')::timestamptz,now()),
         now(),a.id
