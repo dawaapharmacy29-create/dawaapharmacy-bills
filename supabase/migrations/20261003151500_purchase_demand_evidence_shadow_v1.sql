@@ -103,3 +103,39 @@ $function$;
 
 revoke all on function public.smart_purchase_demand_evidence_shadow_v1(text,text) from public;
 grant execute on function public.smart_purchase_demand_evidence_shadow_v1(text,text) to anon,authenticated;
+
+-- Aggregate-only summary of the shadow output. Read-only by construction.
+create or replace function public.smart_purchase_demand_evidence_shadow_summary_v1(
+  p_session_token text,
+  p_branch text default null
+) returns jsonb
+language sql
+stable
+security definer
+set search_path to 'pg_catalog','public','pg_temp','extensions'
+as $summary$
+  with s as (
+    select *
+    from public.smart_purchase_demand_evidence_shadow_v1(p_session_token,p_branch)
+  )
+  select jsonb_build_object(
+    'mode','shadow_read_only',
+    'total_profiles',count(*),
+    'same',count(*) filter (where decision_change='same'),
+    'high_to_medium',count(*) filter (where current_auto_decision_class='high' and proposed_auto_decision_class='medium'),
+    'high_to_review',count(*) filter (where current_auto_decision_class='high' and proposed_auto_decision_class='review'),
+    'medium_to_review',count(*) filter (where current_auto_decision_class='medium' and proposed_auto_decision_class='review'),
+    'possible_upgrade',count(*) filter (where coalesce(current_auto_decision_class,'review')='review' and proposed_auto_decision_class in ('medium','high')),
+    'missing_evidence',count(*) filter (where evidence_quality_class is null),
+    'bulk_burst',count(*) filter (where evidence_behavior_class='burst_one_off'),
+    'concentrated',count(*) filter (where evidence_behavior_class='concentrated'),
+    'partial_coverage',count(*) filter (where evidence_source_coverage_days is not null and evidence_source_coverage_days<15),
+    'quality_high',count(*) filter (where evidence_quality_class='high'),
+    'quality_medium',count(*) filter (where evidence_quality_class='medium'),
+    'quality_review',count(*) filter (where evidence_quality_class='review')
+  )
+  from s
+$summary$;
+
+revoke all on function public.smart_purchase_demand_evidence_shadow_summary_v1(text,text) from public;
+grant execute on function public.smart_purchase_demand_evidence_shadow_summary_v1(text,text) to anon,authenticated;
