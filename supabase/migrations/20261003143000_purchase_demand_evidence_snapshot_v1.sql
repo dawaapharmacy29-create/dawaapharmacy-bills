@@ -34,7 +34,13 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   primary key(branch, product_key),
   check (window_start < window_end),
   check (source_coverage_start_at <= source_max_invoice_at),
-  check (source_max_invoice_at <= window_end)
+  check (source_max_invoice_at <= window_end),
+  check (last_sale_at >= window_start and last_sale_at <= source_max_invoice_at),
+  check (active_days_30d <= invoices_30d),
+  check (known_customer_invoices_30d <= invoices_30d),
+  check (customers_30d <= known_customer_invoices_30d),
+  check (typical_invoice_qty_30d <= max_invoice_qty_30d),
+  check (observed_span_days <= source_coverage_days)
 );
 
 create index if not exists idx_purchase_demand_evidence_freshness
@@ -89,17 +95,28 @@ begin
     v_branch := nullif(trim(r->>'branch'),'');
     v_code := regexp_replace(coalesce(nullif(trim(r->>'product_code'),''),''),'\.0+$','','g');
 
-    if v_branch not in ('دواء شكري','دواء الشامي')
+    if v_branch is null or v_branch not in ('دواء شكري','دواء الشامي')
        or v_code=''
        or coalesce(nullif(r->>'window_start',''),'')=''
        or coalesce(nullif(r->>'window_end',''),'')=''
+       or coalesce(nullif(r->>'last_sale_at',''),'')=''
        or coalesce(nullif(r->>'source_max_invoice_at',''),'')=''
        or coalesce(nullif(r->>'source_coverage_start_at',''),'')=''
        or coalesce(nullif(r->>'source_coverage_days',''),'')=''
        or coalesce(nullif(r->>'observed_span_days',''),'')=''
        or coalesce(nullif(r->>'evidence_confidence_score',''),'')=''
        or coalesce(nullif(r->>'evidence_quality_class',''),'')=''
-       or coalesce(nullif(r->>'evidence_model_version',''),'')='' then
+       or coalesce(nullif(r->>'evidence_model_version',''),'')=''
+       or greatest(0,coalesce(nullif(r->>'active_days_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))
+       or greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))
+       or greatest(0,coalesce(nullif(r->>'customers_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0))
+       or greatest(0,coalesce(nullif(r->>'typical_invoice_qty_30d','')::numeric,0)) > greatest(0,coalesce(nullif(r->>'max_invoice_qty_30d','')::numeric,0))
+       or greatest(1,coalesce(nullif(r->>'observed_span_days','')::int,1)) > greatest(1,coalesce(nullif(r->>'source_coverage_days','')::int,1))
+       or (r->>'window_start')::timestamptz >= (r->>'window_end')::timestamptz
+       or (r->>'source_coverage_start_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz
+       or (r->>'source_max_invoice_at')::timestamptz > (r->>'window_end')::timestamptz
+       or (r->>'last_sale_at')::timestamptz < (r->>'window_start')::timestamptz
+       or (r->>'last_sale_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz then
       v_invalid := v_invalid + 1;
       continue;
     end if;
@@ -220,8 +237,9 @@ begin
         and excluded.source_coverage_start_at <= excluded.source_max_invoice_at;
 
       if found then v_imported := v_imported + 1; else v_unchanged := v_unchanged + 1; end if;
-    exception when others then
-      v_invalid := v_invalid + 1;
+    exception
+      when invalid_text_representation or numeric_value_out_of_range or datetime_field_overflow or check_violation then
+        v_invalid := v_invalid + 1;
     end;
   end loop;
 
