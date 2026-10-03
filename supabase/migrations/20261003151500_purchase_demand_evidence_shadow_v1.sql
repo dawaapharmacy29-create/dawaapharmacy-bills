@@ -65,6 +65,7 @@ begin
       e.dominant_customer_share_30d,e.source_coverage_days,e.observed_span_days,e.source_max_invoice_at,
       case
         when e.product_key is null then p.auto_decision_class
+        when e.source_max_invoice_at is null then p.auto_decision_class
         when e.source_coverage_days is null then p.auto_decision_class
         when e.source_coverage_days < 15 then 'review'
         when e.evidence_quality_class='high'
@@ -95,16 +96,18 @@ begin
     j.proposed,
     case
       when j.evidence_quality_class is null then 'insufficient_evidence'
+      when j.source_max_invoice_at is null then 'insufficient_evidence'
       when j.source_coverage_days is null then 'insufficient_evidence'
       else 'comparable'
     end,
     case
-      when j.evidence_quality_class is null or j.source_coverage_days is null then 'not_compared'
+      when j.evidence_quality_class is null or j.source_max_invoice_at is null or j.source_coverage_days is null then 'not_compared'
       when coalesce(j.current_auto_decision_class,'review')=j.proposed then 'same'
          else coalesce(j.current_auto_decision_class,'review')||'->'||j.proposed end,
     array_remove(array[
       case when j.evidence_behavior_class='burst_one_off' then 'bulk_burst' end,
       case when j.evidence_behavior_class='concentrated' then 'customer_concentration' end,
+      case when j.evidence_quality_class is not null and j.source_max_invoice_at is null then 'unproven_source_freshness' end,
       case when j.evidence_quality_class is not null and j.source_coverage_days is null then 'unproven_source_coverage' end,
       case when j.source_coverage_days is not null and j.source_coverage_days<15 then 'partial_source_coverage' end,
       case when j.evidence_quality_class='review' then 'weak_transaction_evidence' end,
