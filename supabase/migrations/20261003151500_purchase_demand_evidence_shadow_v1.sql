@@ -62,7 +62,8 @@ begin
       e.invoices_30d,e.active_days_30d,e.customers_30d,e.outlier_share_30d,
       e.dominant_customer_share_30d,e.source_coverage_days,e.observed_span_days,e.source_max_invoice_at,
       case
-        when e.product_key is null then 'review'
+        when e.product_key is null then p.auto_decision_class
+        when e.source_coverage_days is null then p.auto_decision_class
         when e.source_coverage_days < 15 then 'review'
         when e.evidence_quality_class='high'
              and coalesce(p.movement_history_months,0)>=2
@@ -93,6 +94,7 @@ begin
     array_remove(array[
       case when j.evidence_behavior_class='burst_one_off' then 'bulk_burst' end,
       case when j.evidence_behavior_class='concentrated' then 'customer_concentration' end,
+      case when j.evidence_quality_class is not null and j.source_coverage_days is null then 'unproven_source_coverage' end,
       case when j.source_coverage_days is not null and j.source_coverage_days<15 then 'partial_source_coverage' end,
       case when j.evidence_quality_class='review' then 'weak_transaction_evidence' end,
       case when j.evidence_quality_class is null then 'missing_transaction_evidence' end
@@ -127,6 +129,7 @@ as $summary$
     'medium_to_review',count(*) filter (where current_auto_decision_class='medium' and proposed_auto_decision_class='review'),
     'possible_upgrade',count(*) filter (where coalesce(current_auto_decision_class,'review')='review' and proposed_auto_decision_class in ('medium','high')),
     'missing_evidence',count(*) filter (where evidence_quality_class is null),
+    'unproven_coverage',count(*) filter (where evidence_quality_class is not null and evidence_source_coverage_days is null),
     'bulk_burst',count(*) filter (where evidence_behavior_class='burst_one_off'),
     'concentrated',count(*) filter (where evidence_behavior_class='concentrated'),
     'partial_coverage',count(*) filter (where evidence_source_coverage_days is not null and evidence_source_coverage_days<15),
