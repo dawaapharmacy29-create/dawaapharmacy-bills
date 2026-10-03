@@ -121,10 +121,10 @@ begin
        or (r->>'evidence_confidence_score')::numeric not between 0 and 100
        or (r->>'observed_span_days')::int not between 1 and 90
        or (nullif(r->>'source_coverage_days','') is not null and (r->>'source_coverage_days')::int not between 1 and 90)
-       or greatest(0,coalesce(nullif(r->>'active_days_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))
-       or greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))
-       or greatest(0,coalesce(nullif(r->>'customers_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0))
-       or greatest(0,coalesce(nullif(r->>'typical_invoice_qty_30d','')::numeric,0)) > greatest(0,coalesce(nullif(r->>'max_invoice_qty_30d','')::numeric,0))
+       or (r->>'active_days_30d')::int > (r->>'invoices_30d')::int
+       or (r->>'known_customer_invoices_30d')::int > (r->>'invoices_30d')::int
+       or (r->>'customers_30d')::int > (r->>'known_customer_invoices_30d')::int
+       or (r->>'typical_invoice_qty_30d')::numeric > (r->>'max_invoice_qty_30d')::numeric
        or (nullif(r->>'source_coverage_start_at','') is null) <> (nullif(r->>'source_coverage_days','') is null)
        or (nullif(r->>'source_coverage_days','') is not null and greatest(1,coalesce(nullif(r->>'observed_span_days','')::int,1)) > greatest(1,coalesce(nullif(r->>'source_coverage_days','')::int,1)))
        or (nullif(r->>'source_coverage_days','') is null and r->>'evidence_quality_class' <> 'review')
@@ -156,25 +156,25 @@ begin
       concat_ws('|',
         v_branch,
         v_code,
-        greatest(0,coalesce(nullif(r->>'units_30d','')::numeric,0))::text,
-        greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))::text,
-        greatest(0,coalesce(nullif(r->>'active_days_30d','')::int,0))::text,
-        greatest(0,coalesce(nullif(r->>'customers_30d','')::int,0))::text,
-        greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0))::text,
-        greatest(0,coalesce(nullif(r->>'typical_invoice_qty_30d','')::numeric,0))::text,
-        greatest(0,coalesce(nullif(r->>'max_invoice_qty_30d','')::numeric,0))::text,
-        least(1,greatest(0,coalesce(nullif(r->>'dominant_invoice_share_30d','')::numeric,0)))::text,
+        (r->>'units_30d')::numeric::text,
+        (r->>'invoices_30d')::int::text,
+        (r->>'active_days_30d')::int::text,
+        (r->>'customers_30d')::int::text,
+        (r->>'known_customer_invoices_30d')::int::text,
+        (r->>'typical_invoice_qty_30d')::numeric::text,
+        (r->>'max_invoice_qty_30d')::numeric::text,
+        (r->>'dominant_invoice_share_30d')::numeric::text,
         coalesce((case when nullif(r->>'dominant_customer_share_30d','') is null then null
-          else least(1,greatest(0,(r->>'dominant_customer_share_30d')::numeric)) end)::text,''),
-        least(1,greatest(0,coalesce(nullif(r->>'outlier_share_30d','')::numeric,0)))::text,
+          else (r->>'dominant_customer_share_30d')::numeric end)::text,''),
+        (r->>'outlier_share_30d')::numeric::text,
         r->>'behavior_class',
         (r->>'evidence_confidence_score')::numeric::text,
         r->>'evidence_quality_class',
         (r->>'last_sale_at')::timestamptz::text,
         (r->>'source_max_invoice_at')::timestamptz::text,
         coalesce((nullif(r->>'source_coverage_start_at','')::timestamptz)::text,''),
-        coalesce(greatest(1,least(90,nullif(r->>'source_coverage_days','')::int))::text,''),
-        greatest(1,least(90,coalesce(nullif(r->>'observed_span_days','')::int,1)))::text,
+        coalesce((nullif(r->>'source_coverage_days','')::int)::text,''),
+        (r->>'observed_span_days')::int::text,
         (r->>'window_start')::timestamptz::text,
         (r->>'window_end')::timestamptz::text,
         trim(r->>'evidence_model_version')
@@ -199,25 +199,25 @@ begin
         source_hash,calculated_at,imported_at,imported_by
       ) values (
         v_branch,v_key,v_code,
-        greatest(0,coalesce(nullif(r->>'units_30d','')::numeric,0)),
-        greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0)),
-        greatest(0,coalesce(nullif(r->>'active_days_30d','')::int,0)),
-        greatest(0,coalesce(nullif(r->>'customers_30d','')::int,0)),
-        greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0)),
-        greatest(0,coalesce(nullif(r->>'typical_invoice_qty_30d','')::numeric,0)),
-        greatest(0,coalesce(nullif(r->>'max_invoice_qty_30d','')::numeric,0)),
-        least(1,greatest(0,coalesce(nullif(r->>'dominant_invoice_share_30d','')::numeric,0))),
+        (r->>'units_30d')::numeric,
+        (r->>'invoices_30d')::int,
+        (r->>'active_days_30d')::int,
+        (r->>'customers_30d')::int,
+        (r->>'known_customer_invoices_30d')::int,
+        (r->>'typical_invoice_qty_30d')::numeric,
+        (r->>'max_invoice_qty_30d')::numeric,
+        (r->>'dominant_invoice_share_30d')::numeric,
         case when nullif(r->>'dominant_customer_share_30d','') is null then null
-             else least(1,greatest(0,(r->>'dominant_customer_share_30d')::numeric)) end,
-        least(1,greatest(0,coalesce(nullif(r->>'outlier_share_30d','')::numeric,0))),
+             else (r->>'dominant_customer_share_30d')::numeric end,
+        (r->>'outlier_share_30d')::numeric,
         r->>'behavior_class',
         (r->>'evidence_confidence_score')::numeric,
         r->>'evidence_quality_class',
         (r->>'last_sale_at')::timestamptz,
         (r->>'source_max_invoice_at')::timestamptz,
         nullif(r->>'source_coverage_start_at','')::timestamptz,
-        greatest(1,least(90,nullif(r->>'source_coverage_days','')::int)),
-        greatest(1,least(90,coalesce(nullif(r->>'observed_span_days','')::int,1))),
+        nullif(r->>'source_coverage_days','')::int,
+        (r->>'observed_span_days')::int,
         (r->>'window_start')::timestamptz,
         (r->>'window_end')::timestamptz,
         r->>'evidence_model_version',
