@@ -24,6 +24,7 @@ returns table(
   evidence_observed_span_days integer,
   evidence_source_max_invoice_at timestamptz,
   proposed_auto_decision_class text,
+  comparison_status text,
   decision_change text,
   reason_codes text[]
 )
@@ -89,7 +90,14 @@ begin
     j.invoices_30d,j.active_days_30d,j.customers_30d,j.outlier_share_30d,
     j.dominant_customer_share_30d,j.source_coverage_days,j.observed_span_days,j.source_max_invoice_at,
     j.proposed,
-    case when coalesce(j.current_auto_decision_class,'review')=j.proposed then 'same'
+    case
+      when j.evidence_quality_class is null then 'insufficient_evidence'
+      when j.source_coverage_days is null then 'insufficient_evidence'
+      else 'comparable'
+    end,
+    case
+      when j.evidence_quality_class is null or j.source_coverage_days is null then 'not_compared'
+      when coalesce(j.current_auto_decision_class,'review')=j.proposed then 'same'
          else coalesce(j.current_auto_decision_class,'review')||'->'||j.proposed end,
     array_remove(array[
       case when j.evidence_behavior_class='burst_one_off' then 'bulk_burst' end,
@@ -123,11 +131,13 @@ as $summary$
   select jsonb_build_object(
     'mode','shadow_read_only',
     'total_profiles',count(*),
-    'same',count(*) filter (where decision_change='same'),
-    'high_to_medium',count(*) filter (where current_auto_decision_class='high' and proposed_auto_decision_class='medium'),
-    'high_to_review',count(*) filter (where current_auto_decision_class='high' and proposed_auto_decision_class='review'),
-    'medium_to_review',count(*) filter (where current_auto_decision_class='medium' and proposed_auto_decision_class='review'),
-    'possible_upgrade',count(*) filter (where coalesce(current_auto_decision_class,'review')='review' and proposed_auto_decision_class in ('medium','high')),
+    'comparable',count(*) filter (where comparison_status='comparable'),
+    'insufficient_evidence',count(*) filter (where comparison_status='insufficient_evidence'),
+    'same',count(*) filter (where comparison_status='comparable' and decision_change='same'),
+    'high_to_medium',count(*) filter (where comparison_status='comparable' and current_auto_decision_class='high' and proposed_auto_decision_class='medium'),
+    'high_to_review',count(*) filter (where comparison_status='comparable' and current_auto_decision_class='high' and proposed_auto_decision_class='review'),
+    'medium_to_review',count(*) filter (where comparison_status='comparable' and current_auto_decision_class='medium' and proposed_auto_decision_class='review'),
+    'possible_upgrade',count(*) filter (where comparison_status='comparable' and coalesce(current_auto_decision_class,'review')='review' and proposed_auto_decision_class in ('medium','high')),
     'missing_evidence',count(*) filter (where evidence_quality_class is null),
     'unproven_coverage',count(*) filter (where evidence_quality_class is not null and evidence_source_coverage_days is null),
     'bulk_burst',count(*) filter (where evidence_behavior_class='burst_one_off'),
