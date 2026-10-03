@@ -33,6 +33,7 @@ create table if not exists public.purchase_demand_evidence_snapshots (
   imported_by uuid references public.staff_accounts(id) on delete set null,
   primary key(branch, product_key),
   check (window_start < window_end),
+  check (last_sale_at <= window_end),
   check ((source_coverage_start_at is null and source_coverage_days is null) or (source_coverage_start_at is not null and source_coverage_days is not null)),
   check (source_coverage_start_at is null or source_max_invoice_at is null or source_coverage_start_at <= source_max_invoice_at),
   check (source_max_invoice_at is null or (source_max_invoice_at >= window_start and source_max_invoice_at <= window_end)),
@@ -136,6 +137,9 @@ begin
        or (nullif(r->>'source_coverage_days','') is not null and greatest(1,coalesce(nullif(r->>'observed_span_days','')::int,1)) > greatest(1,coalesce(nullif(r->>'source_coverage_days','')::int,1)))
        or (nullif(r->>'source_coverage_days','') is null and r->>'evidence_quality_class' <> 'review')
        or (r->>'window_start')::timestamptz >= (r->>'window_end')::timestamptz
+       or (r->>'window_end')::timestamptz > now()
+       or (r->>'last_sale_at')::timestamptz > (r->>'window_end')::timestamptz
+       or (nullif(r->>'source_max_invoice_at','') is not null and (r->>'source_max_invoice_at')::timestamptz > now())
        or (nullif(r->>'source_max_invoice_at','') is null and r->>'evidence_quality_class' <> 'review')
        or (nullif(r->>'source_coverage_start_at','') is not null and nullif(r->>'source_max_invoice_at','') is not null and (r->>'source_coverage_start_at')::timestamptz > (r->>'source_max_invoice_at')::timestamptz)
        or (nullif(r->>'source_max_invoice_at','') is not null and (r->>'source_max_invoice_at')::timestamptz < (r->>'window_start')::timestamptz)
