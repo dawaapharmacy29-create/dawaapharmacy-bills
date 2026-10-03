@@ -31,3 +31,11 @@ test('falls back to normalized product name when product code is missing', () =>
   const order = { items: [{ product_name: 'panadol advance', approved_quantity: 1, expected_unit_cost: 5 }] };
   assert.equal(orderMatchesPurchasePlan(order, plan), true);
 });
+
+
+test('can recover same products and quantities after historical costs are persisted', () => {
+  const plan = [{ product_code: '10', product_name: 'A', buy_quantity: 2, unit_cost: 12.5 }];
+  const order = { items: [{ product_code: '10', product_name: 'A', approved_quantity: 2, expected_unit_cost: 9.75 }] };
+  assert.equal(orderMatchesPurchasePlan(order, plan, { compareCost: false }), true);
+  assert.equal(orderMatchesPurchasePlan(order, plan), false);
+});

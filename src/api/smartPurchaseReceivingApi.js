@@ -3,6 +3,16 @@ import { smartPurchaseUnifiedApi } from '@/api/smartPurchaseUnifiedApi';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 
+const ACTIVE_RECEIVING_STATUSES = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received', 'وصلت جزئيًا', 'received', 'وصلت بالكامل']);
+const CLOSED_RECEIVING_STATUSES = new Set(['مغلقة', 'closed', 'completed', 'مكتمل']);
+
+function receivingStateFromStatus(status) {
+  const normalized = String(status || '').trim();
+  if (CLOSED_RECEIVING_STATUSES.has(normalized)) return 'closed';
+  if (ACTIVE_RECEIVING_STATUSES.has(normalized)) return 'active';
+  return 'blocked';
+}
+
 function token() {
   try { return JSON.parse(localStorage.getItem('dawaa_staff_session') || 'null')?.session_token || ''; }
   catch { return ''; }
@@ -65,7 +75,7 @@ async function receivingRpc(action, payload = {}) {
 async function importReceipt(payload) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_import_receipt_v4`, {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_import_receipt_v5`, {
     method: 'POST',
     headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ p_session_token: sessionToken, p_payload: payload }),
@@ -85,9 +95,41 @@ async function importReceipt(payload) {
       order_not_found: 'الطلبية غير موجودة.',
       receipt_order_not_ready: 'لا يمكن تسجيل استلام على طلبية غير جاهزة للاستلام.',
       supplier_not_dispatched: 'سجل إرسال الطلبية لهذا المورد أولًا قبل تسجيل الاستلام.',
+      supplier_has_no_allocation: 'لا توجد كمية مخصصة لهذا المورد في الطلبية الحالية.',
+      receipt_rows_not_allocated: 'الملف يحتوي على صنف غير مخصص لهذا المورد في الطلبية الحالية.',
+      receipt_quantity_above_allocation: 'الكمية المستلمة تتجاوز الكمية المخصصة لهذا المورد.',
     };
     const code = data?.error || data?.message;
     throw new Error(messages[code] || String(code || `فشل تسجيل الاستلام (${response.status})`));
+  }
+  return data.data;
+}
+
+async function saveSupplierResponse(payload) {
+  const sessionToken = token();
+  if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/smart_purchase_save_supplier_response_v1`, {
+    method: 'POST',
+    headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_session_token: sessionToken, p_payload: payload }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) {
+    const messages = {
+      invalid_session: 'انتهت الجلسة. سجل الدخول مرة أخرى.',
+      forbidden: 'لا توجد صلاحية لتنفيذ الإجراء.',
+      forbidden_branch: 'لا توجد صلاحية على فرع الطلبية.',
+      order_not_found: 'الطلبية غير موجودة.',
+      supplier_required: 'اكتب اسم المورد قبل حفظ الرد.',
+      supplier_response_order_not_ready: 'الطلبية ليست في مرحلة تسمح بتسجيل رد مورد.',
+      invalid_supplier_response: 'بيانات رد المورد غير صالحة.',
+      invalid_supplier_response_item: 'رد المورد يحتوي على صنف غير موجود في الطلبية.',
+      supplier_allocation_above_order: 'الكمية التي أكدها المورد تتجاوز المتبقي الحقيقي للصنف.',
+      supplier_allocation_below_received: 'لا يمكن تقليل تخصيص المورد عن كمية تم استلامها منه فعليًا.',
+      supplier_allocation_requires_pre_receiving: 'لا يمكن بدء نظام توزيع الموردين الجديد بعد وجود استلام قديم على الطلبية. أكمل الطلبية القديمة بمسارها الحالي.',
+    };
+    const code = data?.error || data?.message;
+    throw new Error(messages[code] || String(code || `فشل حفظ رد المورد (${response.status})`));
   }
   return data.data;
 }
@@ -110,11 +152,25 @@ async function saveSnapshot(payload) {
 export const smartPurchaseReceivingApi = {
   listOrders: async () => {
     const rows = await receivingRpc('list_orders');
-    const allowed = new Set(['معتمدة', 'تم الإرسال للمورد', 'approved', 'sent', 'partially_received', 'وصلت جزئيًا', 'received', 'وصلت بالكامل']);
-    return (rows || []).filter((order) => allowed.has(String(order.status || '').trim()));
+    return (rows || []).filter((order) => ACTIVE_RECEIVING_STATUSES.has(String(order.status || '').trim()));
+  },
+  getScopedOrderStates: async (ids = []) => {
+    const uniqueIds = [...new Set((ids || []).map((id) => String(id || '').trim()).filter(Boolean))];
+    const details = await Promise.all(uniqueIds.map((id) => receivingRpc('get_order', { id })));
+    return details.map((detail) => {
+      const order = detail?.order || {};
+      const status = String(order.status || '').trim();
+      return {
+        id: String(order.id || ''),
+        status,
+        state: receivingStateFromStatus(status),
+        order,
+      };
+    });
   },
   getOrder: (id) => receivingRpc('get_order', { id }),
   importReceipt,
+  saveSupplierResponse,
   saveWorkflowSnapshot: saveSnapshot,
   resolveItem: (orderId, itemId, resolutionStatus, note = '') => {
     const sessionToken = token();

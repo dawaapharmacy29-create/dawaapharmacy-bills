@@ -23,6 +23,24 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   }
 }
 
+function isRetryableTransportError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.name === 'TypeError'
+    || message.includes('انتهت مهلة الاتصال بالخادم')
+    || message.includes('failed to fetch')
+    || message.includes('networkerror')
+    || message.includes('network request failed');
+}
+
+async function withOneTransportRetry(operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isRetryableTransportError(error)) throw error;
+    return operation();
+  }
+}
+
 async function standaloneRpc(functionName, body) {
   const sessionToken = token();
   if (!sessionToken) throw new Error('انتهت الجلسة. سجل الدخول مرة أخرى.');
@@ -44,7 +62,18 @@ async function standaloneRpc(functionName, body) {
       invalid_title: 'اسم الطلبية يجب أن يكون من حرفين إلى 120 حرفًا.',
       cancel_reason_required: 'اكتب سبب واضح لإلغاء الطلبية.',
       order_not_cancelable: 'الطلبية في مرحلة لا تسمح بالإلغاء.',
-      order_execution_started: 'لا يمكن إلغاء الطلبية بعد بدء الإرسال أو الاستلام.',
+      order_execution_started: 'لا يمكن تعديل الطلبية بعد بدء الإرسال أو الاستلام.',
+      historical_allocation_hash_required: 'راجع التحليل التاريخي من جديد قبل التثبيت.',
+      historical_allocation_changed: 'تاريخ المورد أو التكلفة اتغير بعد المراجعة. تم إيقاف التثبيت؛ أعد تحميل التحليل.',
+      historical_allocation_incomplete: 'التحليل التاريخي غير مكتمل لكل الأصناف؛ لم يتم تثبيت أي تغيير.',
+      dual_order_pair_required: 'الاعتماد يحتاج مسودتي شكري والشامي معًا.',
+      invalid_dual_order_pair: 'المسودتان لا تمثلان زوج شكري والشامي الصحيح.',
+      approval_requires_draft_pair: 'الاعتماد متاح فقط طالما المسودتان ما زالتا في حالة مسودة.',
+      reviewed_allocation_not_persisted: 'المورد أو التكلفة المثبتة لا تطابق آخر مراجعة؛ أعد التثبيت قبل الاعتماد.',
+      reviewed_total_mismatch: 'إجمالي المسودتين لا يطابق آخر مراجعة تاريخية؛ أعد المراجعة قبل الاعتماد.',
+      clean_approval_required: 'لا يمكن تسجيل الإرسال لأن الطلبية لم تُعتمد من المسار التاريخي الجديد.',
+      historical_supplier_items_not_send_ready: 'بنود المورد لا تطابق المورد والتكلفة التاريخية المعتمدة؛ راجع الطلبية قبل الإرسال.',
+      order_receiving_started: 'بدأ استلام هذه الطلبية بالفعل؛ لا يمكن تسجيل إرسال مورد جديد من هنا.',
       supplier_not_in_order: 'المورد غير موجود ضمن البنود المعتمدة في الطلبية.',
       supplier_items_not_send_ready: 'بنود المورد غير جاهزة للإرسال: راجع الأسعار والتحقق منها أولًا.',
       no_active_purchase_policy: 'لا توجد سياسة مخزون ذكية مفعلة لهذا الفرع؛ التحليل متوقف للحماية.',
@@ -54,6 +83,10 @@ async function standaloneRpc(functionName, body) {
       stock_sync_superseded: 'تم تجاهل هذا الرفع لأن ملف رصيد أحدث بدأ بعده وتم اعتماده بالفعل. لم يتم استبدال الرصيد الأحدث.',
       stock_sync_closed: 'عملية رفع الرصيد هذه تم إغلاقها بالفعل. اختر الملف من جديد إذا كنت تريد تحديثًا جديدًا.',
       stock_sync_not_staged: 'تعذر اعتماد الرصيد لأن جلسة الرفع لم تبدأ بشكل صحيح. أعد اختيار الملف.',
+      import_not_found: 'جلسة استيراد حركة المبيعات غير موجودة.',
+      import_not_staging: 'جلسة حركة المبيعات لم تعد في مرحلة التجهيز.',
+      invalid_movement_rows: 'يوجد صفوف حركة غير صالحة. راجع الأشهر والكميات قبل المتابعة.',
+      movement_preview_not_ready: 'معاينة الحركة لم تجتز حواجز الأمان؛ لم يتم اعتماد أي حركة.',
 
       plan_hash_mismatch: 'تم إيقاف إنشاء المسودتين لأن الخطة تغيرت بعد المراجعة. أعد التحليل ثم راجع الخطة الجديدة.',
       invalid_dual_plan_identity: 'بيانات تعريف الخطة غير مكتملة؛ أعد التحليل قبل إنشاء المسودتين.',
@@ -66,7 +99,9 @@ async function standaloneRpc(functionName, body) {
 
     };
     const code = data?.error || data?.message;
-    throw new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+    const error = new Error(messages[code] || String(code || `فشل الطلب (${response.status})`));
+    error.code = code;
+    throw error;
   }
   return Object.prototype.hasOwnProperty.call(data || {}, 'data') ? data.data : data;
 }
@@ -158,10 +193,10 @@ export const smartPurchaseUnifiedApi = {
     await runBoundedChunkPool(
       chunks,
       async (chunk) => {
-        const result = await standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
+        const result = await withOneTransportRetry(() => standaloneRpc('smart_purchase_stage_dual_stock_master_v1', {
           p_stock_sync_id: syncId,
           p_rows: chunk,
-        });
+        }));
         const reported = Number(result?.staged_rows ?? chunk.length);
         return Number.isFinite(reported) ? Math.max(0, Math.min(chunk.length, reported)) : chunk.length;
       },
@@ -181,10 +216,10 @@ export const smartPurchaseUnifiedApi = {
         },
       }
     );
-    const finalized = await standaloneRpc('smart_purchase_finalize_dual_stock_master_v1', {
+    const finalized = await withOneTransportRetry(() => standaloneRpc('smart_purchase_finalize_dual_stock_master_v1', {
       p_stock_sync_id: syncId,
       p_expected_rows: rows.length,
-    });
+    }));
     return {
       stock_sync_id: syncId,
       staged_rows: staged,
@@ -236,6 +271,29 @@ export const smartPurchaseUnifiedApi = {
       total_saved: shamyResult.saved + shokryResult.saved,
     };
   },
+  importDemandEvidence: async ({ rows = [], chunkSize = 1000, onProgress = null }) => {
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد بيانات Demand Evidence صالحة للاستيراد.');
+    const safeChunkSize = Math.max(1, Math.min(1000, Math.floor(Number(chunkSize) || 1000)));
+    const totals = { imported: 0, unchanged_or_older: 0, unmatched: 0, invalid: 0 };
+    for (let offset = 0; offset < rows.length; offset += safeChunkSize) {
+      const chunk = rows.slice(offset, offset + safeChunkSize);
+      const result = await withOneTransportRetry(() => standaloneRpc('smart_purchase_upsert_demand_evidence_v1', {
+        p_rows: chunk,
+      }));
+      totals.imported += Number(result?.imported || 0);
+      totals.unchanged_or_older += Number(result?.unchanged_or_older || 0);
+      totals.unmatched += Number(result?.unmatched || 0);
+      totals.invalid += Number(result?.invalid || 0);
+      if (typeof onProgress === 'function') onProgress({
+        processed: Math.min(rows.length, offset + chunk.length),
+        total: rows.length,
+        ...totals,
+      });
+    }
+    return { ...totals, total: rows.length };
+  },
+  demandEvidenceShadow: () => standaloneRpc('smart_purchase_demand_evidence_shadow_v1', {}),
+  demandEvidenceShadowSummary: () => standaloneRpc('smart_purchase_demand_evidence_shadow_summary_v1', {}),
   dualBranchInstantPlan: ({ shokryBudget = null, shamyBudget = null } = {}) => standaloneRpc('smart_purchase_dual_branch_instant_plan_v1', {
     p_shokry_budget: Number(shokryBudget) > 0 ? Number(shokryBudget) : null,
     p_shamy_budget: Number(shamyBudget) > 0 ? Number(shamyBudget) : null,
@@ -244,6 +302,7 @@ export const smartPurchaseUnifiedApi = {
     p_stock_sync_id: stockSyncId,
     p_plan_hash: planHash,
   }),
+  resumeCleanJourney: () => standaloneRpc('smart_purchase_resume_clean_journey_v1', {}),
   demandTransferPreview: async (branch, financialMode = 'medium', rows = [], budget = 0) => {
     if (Array.isArray(rows) && rows.length > 0) {
       await standaloneRpc('smart_purchase_save_current_snapshot_v1', {
@@ -257,10 +316,47 @@ export const smartPurchaseUnifiedApi = {
       p_budget: Number(budget) > 0 ? Number(budget) : null,
     });
   },
+  beginMovementPreview: ({ branch, fileName, expectedRows }) => standaloneRpc('smart_purchase_begin_movement_import_v1', {
+    p_branch: branch,
+    p_source_file: fileName || 'movement-import',
+    p_expected_rows: Math.max(0, Number(expectedRows) || 0),
+  }),
+  stageMovementPreviewRows: async ({ importId, rows = [], chunkSize = 1000 }) => {
+    if (!importId) throw new Error('معرّف معاينة الحركة غير موجود.');
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد صفوف حركة صالحة للمعاينة.');
+    const safeChunkSize = Math.max(250, Math.min(1500, Math.floor(Number(chunkSize) || 1000)));
+    let stagedRows = 0;
+    for (let offset = 0; offset < rows.length; offset += safeChunkSize) {
+      const chunk = rows.slice(offset, offset + safeChunkSize);
+      const result = await withOneTransportRetry(() => standaloneRpc('smart_purchase_stage_movement_rows_v1', {
+        p_import_id: importId,
+        p_rows: chunk,
+      }));
+      stagedRows = Number(result?.staged_rows || stagedRows + chunk.length);
+    }
+    return { import_id: importId, staged_rows: stagedRows };
+  },
+  movementPreview: (importId) => standaloneRpc('smart_purchase_movement_import_preview_v1', {
+    p_import_id: importId,
+  }),
+  finalizeMovementImport: (importId) => {
+    if (!importId) throw new Error('معرّف حركة المبيعات غير موجود.');
+    return standaloneRpc('smart_purchase_finalize_movement_import_v1', {
+      p_import_id: importId,
+    });
+  },
   historyStatus: (branch) => standaloneRpc('smart_purchase_history_status_v1', { p_branch: branch }),
   refreshDecisionDailySnapshot: (branch = 'all') => standaloneRpc('smart_purchase_decision_daily_change_v1', { p_branch: branch }),
   historyEnrichRows: (branch, rows = []) => standaloneRpc('smart_purchase_history_enrich_rows_v1', { p_branch: branch, p_rows: rows }),
-  applyHistoricalAllocation: (orderIds = []) => standaloneRpc('smart_purchase_apply_historical_allocation_v1', { p_order_ids: orderIds }),
+  historicalAllocationPreview: (orderIds = []) => standaloneRpc('smart_purchase_historical_allocation_preview_v1', { p_order_ids: orderIds }),
+  applyHistoricalAllocation: (orderIds = [], expectedHash = '') => standaloneRpc('smart_purchase_apply_historical_allocation_v2', {
+    p_order_ids: orderIds,
+    p_expected_hash: expectedHash,
+  }),
+  approveReviewedDual: (orderIds = [], expectedHash = '') => standaloneRpc('smart_purchase_approve_reviewed_dual_v1', {
+    p_order_ids: orderIds,
+    p_expected_hash: expectedHash,
+  }),
   importHistory: ({ branch, kind, fileName, rows, reset = false }) => standaloneRpc('smart_purchase_history_import_v1', {
     p_branch: branch,
     p_kind: kind,
@@ -318,5 +414,9 @@ export const smartPurchaseUnifiedApi = {
   markSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_supplier_dispatch_guarded_v3', {
     p_action: 'mark_supplier_sent',
     p_payload: { order_id: orderId, supplier_name: supplierName },
+  }),
+  markHistoricalSupplierSent: (orderId, supplierName) => standaloneRpc('smart_purchase_mark_historical_supplier_sent_v1', {
+    p_order_id: orderId,
+    p_supplier_name: supplierName,
   }),
 };

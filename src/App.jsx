@@ -52,6 +52,7 @@ const DataReviewCenter = lazy(() => import('./pages/DataReviewCenter'));
 const BranchSettlements = lazy(() => import('./pages/BranchSettlements'));
 const PurchaseWorkflowCenter = lazy(() => import('./pages/PurchaseWorkflowCenter'));
 const SmartPurchaseReceiving = lazy(() => import('./pages/SmartPurchaseReceiving'));
+const PurchaseShortages = lazy(() => import('./pages/PurchaseShortages'));
 const SmartPurchaseInsights = lazy(() => import('./pages/SmartPurchaseInsights'));
 const PurchaseCommandCenter = lazy(() => import('./pages/PurchaseCommandCenter'));
 const PurchaseCenterClean = lazy(() => import('./pages/PurchaseCenterClean'));
@@ -127,6 +128,7 @@ const AuthenticatedApp = () => {
     <Route path="/smart-purchase-orders" element={<Navigate to="/purchase-center" replace />} />
     <Route path="/smart-purchase-orders/manage" element={<Navigate to="/purchase-center" replace />} />
     <Route path="/smart-purchase-receiving" element={<SmartPurchaseReceiving />} />
+    <Route path="/purchase-shortages" element={<PurchaseShortages />} />
     <Route path="/smart-purchase-insights" element={<SmartPurchaseInsights />} />
   </Route><Route path="*" element={<PageNotFound />} /></Routes></Suspense>;
 };
