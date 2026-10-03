@@ -260,9 +260,27 @@ begin
         calculated_at=excluded.calculated_at,
         imported_at=excluded.imported_at,
         imported_by=excluded.imported_by
-      where excluded.source_max_invoice_at >= public.purchase_demand_evidence_snapshots.source_max_invoice_at
+      where
+        -- Never allow an older source/window to replace newer evidence.
+        excluded.source_max_invoice_at >= public.purchase_demand_evidence_snapshots.source_max_invoice_at
         and excluded.window_end >= public.purchase_demand_evidence_snapshots.window_end
-        and (excluded.source_coverage_start_at is null or excluded.source_coverage_start_at <= excluded.source_max_invoice_at);
+        -- For the same source/window, never downgrade proven coverage to unknown
+        -- or replace it with a later (narrower) coverage start.
+        and (
+          excluded.source_max_invoice_at > public.purchase_demand_evidence_snapshots.source_max_invoice_at
+          or excluded.window_end > public.purchase_demand_evidence_snapshots.window_end
+          or (
+            excluded.source_max_invoice_at = public.purchase_demand_evidence_snapshots.source_max_invoice_at
+            and excluded.window_end = public.purchase_demand_evidence_snapshots.window_end
+            and (
+              public.purchase_demand_evidence_snapshots.source_coverage_start_at is null
+              or (
+                excluded.source_coverage_start_at is not null
+                and excluded.source_coverage_start_at <= public.purchase_demand_evidence_snapshots.source_coverage_start_at
+              )
+            )
+          )
+        );
 
       if found then v_imported := v_imported + 1; else v_unchanged := v_unchanged + 1; end if;
     exception
