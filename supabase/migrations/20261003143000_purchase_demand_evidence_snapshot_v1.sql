@@ -133,30 +133,36 @@ begin
       continue;
     end if;
 
+    -- Hash canonical parsed values, not raw JSON text. This makes semantically
+    -- identical payloads (for example 1 vs 1.0) idempotent.
     v_source_hash := encode(extensions.digest(
       concat_ws('|',
-        v_branch,v_code,
-        coalesce(r->>'units_30d','0'),
-        coalesce(r->>'invoices_30d','0'),
-        coalesce(r->>'active_days_30d','0'),
-        coalesce(r->>'customers_30d','0'),
-        coalesce(r->>'known_customer_invoices_30d','0'),
-        coalesce(r->>'typical_invoice_qty_30d','0'),
-        coalesce(r->>'max_invoice_qty_30d','0'),
-        coalesce(r->>'dominant_invoice_share_30d','0'),
-        coalesce(r->>'dominant_customer_share_30d',''),
-        coalesce(r->>'outlier_share_30d','0'),
-        coalesce(r->>'behavior_class',''),
-        coalesce(r->>'evidence_confidence_score',''),
-        coalesce(r->>'evidence_quality_class',''),
-        coalesce(r->>'last_sale_at',''),
-        coalesce(r->>'source_max_invoice_at',''),
-        coalesce(r->>'source_coverage_start_at',''),
-        coalesce(r->>'source_coverage_days',''),
-        coalesce(r->>'observed_span_days',''),
-        coalesce(r->>'window_start',''),
-        coalesce(r->>'window_end',''),
-        coalesce(r->>'evidence_model_version','')
+        v_branch,
+        v_code,
+        greatest(0,coalesce(nullif(r->>'units_30d','')::numeric,0))::text,
+        greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))::text,
+        greatest(0,coalesce(nullif(r->>'active_days_30d','')::int,0))::text,
+        greatest(0,coalesce(nullif(r->>'customers_30d','')::int,0))::text,
+        greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0))::text,
+        greatest(0,coalesce(nullif(r->>'typical_invoice_qty_30d','')::numeric,0))::text,
+        greatest(0,coalesce(nullif(r->>'max_invoice_qty_30d','')::numeric,0))::text,
+        least(1,greatest(0,coalesce(nullif(r->>'dominant_invoice_share_30d','')::numeric,0)))::text,
+        coalesce((case when nullif(r->>'dominant_customer_share_30d','') is null then null
+          else least(1,greatest(0,(r->>'dominant_customer_share_30d')::numeric)) end)::text,''),
+        least(1,greatest(0,coalesce(nullif(r->>'outlier_share_30d','')::numeric,0)))::text,
+        case when r->>'behavior_class' in ('recurring','sparse','concentrated','burst_one_off','emerging')
+          then r->>'behavior_class' else 'sparse' end,
+        least(100,greatest(0,coalesce(nullif(r->>'evidence_confidence_score','')::numeric,0)))::text,
+        case when r->>'evidence_quality_class' in ('high','medium','review')
+          then r->>'evidence_quality_class' else 'review' end,
+        (r->>'last_sale_at')::timestamptz::text,
+        (r->>'source_max_invoice_at')::timestamptz::text,
+        (r->>'source_coverage_start_at')::timestamptz::text,
+        greatest(1,least(90,coalesce(nullif(r->>'source_coverage_days','')::int,1)))::text,
+        greatest(1,least(90,coalesce(nullif(r->>'observed_span_days','')::int,1)))::text,
+        (r->>'window_start')::timestamptz::text,
+        (r->>'window_end')::timestamptz::text,
+        trim(r->>'evidence_model_version')
       ),'sha256'),'hex'
     );
 
