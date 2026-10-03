@@ -150,9 +150,7 @@ as $summary$
     'partial_coverage',count(*) filter (where evidence_source_coverage_days is not null and evidence_source_coverage_days<15),
     'quality_high',count(*) filter (where evidence_quality_class='high'),
     'quality_medium',count(*) filter (where evidence_quality_class='medium'),
-    'quality_review',count(*) filter (where evidence_quality_class='review'),
-    'oldest_evidence_age_hours',max(evidence_age_hours),
-    'newest_evidence_age_hours',min(evidence_age_hours)
+    'quality_review',count(*) filter (where evidence_quality_class='review')
   )
   from s
 $summary$;
