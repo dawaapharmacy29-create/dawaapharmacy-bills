@@ -143,6 +143,8 @@ as $summary$
     'possible_upgrade',count(*) filter (where comparison_status='comparable' and coalesce(current_auto_decision_class,'review')='review' and proposed_auto_decision_class in ('medium','high')),
     'missing_evidence',count(*) filter (where evidence_quality_class is null),
     'unproven_coverage',count(*) filter (where evidence_quality_class is not null and evidence_source_coverage_days is null),
+    'oldest_evidence_age_hours',max(evidence_age_hours) filter (where comparison_status='comparable'),
+    'newest_evidence_age_hours',min(evidence_age_hours) filter (where comparison_status='comparable'),
     'bulk_burst',count(*) filter (where evidence_behavior_class='burst_one_off'),
     'concentrated',count(*) filter (where evidence_behavior_class='concentrated'),
     'partial_coverage',count(*) filter (where evidence_source_coverage_days is not null and evidence_source_coverage_days<15),
