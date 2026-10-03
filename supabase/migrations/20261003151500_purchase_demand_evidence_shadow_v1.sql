@@ -23,6 +23,7 @@ returns table(
   evidence_source_coverage_days integer,
   evidence_observed_span_days integer,
   evidence_source_max_invoice_at timestamptz,
+  evidence_age_hours numeric,
   proposed_auto_decision_class text,
   comparison_status text,
   decision_change text,
@@ -89,6 +90,8 @@ begin
     j.evidence_behavior_class,j.evidence_quality_class,j.evidence_confidence_score,
     j.invoices_30d,j.active_days_30d,j.customers_30d,j.outlier_share_30d,
     j.dominant_customer_share_30d,j.source_coverage_days,j.observed_span_days,j.source_max_invoice_at,
+    case when j.source_max_invoice_at is null then null
+         else round((extract(epoch from (now()-j.source_max_invoice_at))/3600.0)::numeric,1) end,
     j.proposed,
     case
       when j.evidence_quality_class is null then 'insufficient_evidence'
@@ -145,7 +148,9 @@ as $summary$
     'partial_coverage',count(*) filter (where evidence_source_coverage_days is not null and evidence_source_coverage_days<15),
     'quality_high',count(*) filter (where evidence_quality_class='high'),
     'quality_medium',count(*) filter (where evidence_quality_class='medium'),
-    'quality_review',count(*) filter (where evidence_quality_class='review')
+    'quality_review',count(*) filter (where evidence_quality_class='review'),
+    'oldest_evidence_age_hours',max(evidence_age_hours),
+    'newest_evidence_age_hours',min(evidence_age_hours)
   )
   from s
 $summary$;
