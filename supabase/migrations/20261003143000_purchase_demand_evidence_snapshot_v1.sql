@@ -106,6 +106,21 @@ begin
        or coalesce(nullif(r->>'evidence_confidence_score',''),'')=''
        or coalesce(nullif(r->>'evidence_quality_class',''),'')=''
        or coalesce(nullif(r->>'evidence_model_version',''),'')=''
+       or coalesce(nullif(r->>'behavior_class',''),'') not in ('recurring','sparse','concentrated','burst_one_off','emerging')
+       or coalesce(nullif(r->>'evidence_quality_class',''),'') not in ('high','medium','review')
+       or coalesce(nullif(r->>'units_30d',''),'')='' or (r->>'units_30d')::numeric < 0
+       or coalesce(nullif(r->>'invoices_30d',''),'')='' or (r->>'invoices_30d')::int < 0
+       or coalesce(nullif(r->>'active_days_30d',''),'')='' or (r->>'active_days_30d')::int < 0
+       or coalesce(nullif(r->>'customers_30d',''),'')='' or (r->>'customers_30d')::int < 0
+       or coalesce(nullif(r->>'known_customer_invoices_30d',''),'')='' or (r->>'known_customer_invoices_30d')::int < 0
+       or coalesce(nullif(r->>'typical_invoice_qty_30d',''),'')='' or (r->>'typical_invoice_qty_30d')::numeric < 0
+       or coalesce(nullif(r->>'max_invoice_qty_30d',''),'')='' or (r->>'max_invoice_qty_30d')::numeric < 0
+       or coalesce(nullif(r->>'dominant_invoice_share_30d',''),'')='' or (r->>'dominant_invoice_share_30d')::numeric not between 0 and 1
+       or (nullif(r->>'dominant_customer_share_30d','') is not null and (r->>'dominant_customer_share_30d')::numeric not between 0 and 1)
+       or coalesce(nullif(r->>'outlier_share_30d',''),'')='' or (r->>'outlier_share_30d')::numeric not between 0 and 1
+       or (r->>'evidence_confidence_score')::numeric not between 0 and 100
+       or (r->>'observed_span_days')::int not between 1 and 90
+       or (nullif(r->>'source_coverage_days','') is not null and (r->>'source_coverage_days')::int not between 1 and 90)
        or greatest(0,coalesce(nullif(r->>'active_days_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))
        or greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'invoices_30d','')::int,0))
        or greatest(0,coalesce(nullif(r->>'customers_30d','')::int,0)) > greatest(0,coalesce(nullif(r->>'known_customer_invoices_30d','')::int,0))
@@ -152,11 +167,9 @@ begin
         coalesce((case when nullif(r->>'dominant_customer_share_30d','') is null then null
           else least(1,greatest(0,(r->>'dominant_customer_share_30d')::numeric)) end)::text,''),
         least(1,greatest(0,coalesce(nullif(r->>'outlier_share_30d','')::numeric,0)))::text,
-        case when r->>'behavior_class' in ('recurring','sparse','concentrated','burst_one_off','emerging')
-          then r->>'behavior_class' else 'sparse' end,
-        least(100,greatest(0,coalesce(nullif(r->>'evidence_confidence_score','')::numeric,0)))::text,
-        case when r->>'evidence_quality_class' in ('high','medium','review')
-          then r->>'evidence_quality_class' else 'review' end,
+        r->>'behavior_class',
+        (r->>'evidence_confidence_score')::numeric::text,
+        r->>'evidence_quality_class',
         (r->>'last_sale_at')::timestamptz::text,
         (r->>'source_max_invoice_at')::timestamptz::text,
         coalesce((nullif(r->>'source_coverage_start_at','')::timestamptz)::text,''),
@@ -197,10 +210,9 @@ begin
         case when nullif(r->>'dominant_customer_share_30d','') is null then null
              else least(1,greatest(0,(r->>'dominant_customer_share_30d')::numeric)) end,
         least(1,greatest(0,coalesce(nullif(r->>'outlier_share_30d','')::numeric,0))),
-        case when r->>'behavior_class' in ('recurring','sparse','concentrated','burst_one_off','emerging')
-             then r->>'behavior_class' else 'sparse' end,
-        least(100,greatest(0,coalesce(nullif(r->>'evidence_confidence_score','')::numeric,0))),
-        case when r->>'evidence_quality_class' in ('high','medium','review') then r->>'evidence_quality_class' else 'review' end,
+        r->>'behavior_class',
+        (r->>'evidence_confidence_score')::numeric,
+        r->>'evidence_quality_class',
         (r->>'last_sale_at')::timestamptz,
         (r->>'source_max_invoice_at')::timestamptz,
         nullif(r->>'source_coverage_start_at','')::timestamptz,
