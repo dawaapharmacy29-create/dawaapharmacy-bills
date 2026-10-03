@@ -136,3 +136,12 @@ test('clean execution uses the historical supplier dispatch writer and guarded l
   assert.match(unifiedApiSource, /supplierDispatches/);
   assert.match(unifiedApiSource, /historical_supplier_items_not_send_ready/);
 });
+
+
+test('demand evidence remains shadow-only and does not replace the canonical planner', () => {
+  assert.match(unifiedApiSource, /smart_purchase_upsert_demand_evidence_v1/);
+  assert.match(unifiedApiSource, /smart_purchase_demand_evidence_shadow_v1/);
+  assert.match(unifiedApiSource, /smart_purchase_demand_evidence_shadow_summary_v1/);
+  assert.match(unifiedApiSource, /smart_purchase_dual_branch_instant_plan_v1/);
+  assert.doesNotMatch(unifiedApiSource, /smart_purchase_refresh_consumption_from_demand_evidence/);
+});
