@@ -145,3 +145,30 @@ test('demand evidence remains shadow-only and does not replace the canonical pla
   assert.match(unifiedApiSource, /smart_purchase_dual_branch_instant_plan_v1/);
   assert.doesNotMatch(unifiedApiSource, /smart_purchase_refresh_consumption_from_demand_evidence/);
 });
+
+
+test('daily sales-stock golden path is explicit and remains inside the clean purchase journey', () => {
+  assert.match(unifiedApiSource, /smart_purchase_import_daily_sales_stock_and_refresh_v1/);
+  assert.match(unifiedApiSource, /importDailySalesStock/);
+  assert.match(cleanPageSource, /readDailyWorkbook/);
+  assert.match(cleanPageSource, /purchaseApi\.importDailySalesStock/);
+  assert.match(cleanPageSource, /dailyPeriodStart/);
+  assert.match(cleanPageSource, /dailyPeriodEnd/);
+});
+
+test('daily import exposes protected period errors and inventory action signals', () => {
+  assert.match(unifiedApiSource, /period_already_imported_different_content/);
+  assert.match(unifiedApiSource, /overlapping_period/);
+  assert.match(unifiedApiSource, /unmatched_daily_rows/);
+  assert.match(unifiedApiSource, /smart_purchase_inventory_action_signals_v1/);
+  assert.match(unifiedApiSource, /inventoryActionSignals/);
+});
+
+test('daily golden path does not promote demand evidence shadow into canonical planning', () => {
+  const dailyImportAt = unifiedApiSource.indexOf('importDailySalesStock:');
+  const plannerAt = unifiedApiSource.indexOf('dualBranchInstantPlan:');
+  assert.ok(dailyImportAt >= 0);
+  assert.ok(plannerAt > dailyImportAt);
+  assert.doesNotMatch(cleanPageSource, /demandEvidenceShadow/);
+  assert.doesNotMatch(cleanPageSource, /demandEvidenceShadowSummary/);
+});
