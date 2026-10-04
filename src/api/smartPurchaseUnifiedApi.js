@@ -91,6 +91,9 @@ async function standaloneRpc(functionName, body) {
       stale_plan_data: 'تم إيقاف إنشاء المسودتين لأن الرصيد أو الحركة أو الوضع المالي أو سياسة Min / Reorder / Max ليست حديثة بما يكفي. حدّث البيانات ثم أعد التحليل.',
       order_content_mismatch_shokry: 'تم إلغاء إنشاء المسودتين لأن محتوى طلبية شكري لم يطابق خطة التحليل حسابيًا.',
       order_content_mismatch_shamy: 'تم إلغاء إنشاء المسودتين لأن محتوى طلبية الشامي لم يطابق خطة التحليل حسابيًا.',
+      period_already_imported_different_content: 'هذه الفترة محفوظة بالفعل ببيانات مختلفة. لم يتم استبدال أي بيانات؛ راجع الفترة أو الملف قبل المحاولة.',
+      overlapping_period: 'الفترة المختارة تتداخل مع فترة محفوظة سابقًا لنفس الفرع. عدّل وقت البداية أو النهاية حتى لا تتكرر المبيعات.',
+      unmatched_daily_rows: 'يوجد صنف أو أكثر في الملف لم يتم ربطه بالمخزون الحالي. لم يتم حفظ استيراد جزئي.',
 
 
     };
@@ -163,6 +166,7 @@ export const smartPurchaseUnifiedApi = {
     p_branch: branch,
     p_rows: rows,
   }),
+  inventoryActionSignals: (branch) => standaloneRpc('smart_purchase_inventory_action_signals_v1', { p_branch: branch }),
   importDailySalesStock: ({ branch, periodStart, periodEnd, fileName, rows = [] }) => standaloneRpc('smart_purchase_import_daily_sales_stock_and_refresh_v1', {
     p_branch: branch,
     p_period_start: periodStart,
