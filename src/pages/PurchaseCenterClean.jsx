@@ -644,7 +644,15 @@ export default function PurchaseCenterClean() {
       const productCode = String(pick(row, ['الكود', 'كود', 'product_code', 'code']) ?? '').trim().replace(/\.0+$/, '');
       const productName = String(pick(row, ['الإسم', 'الاسم', 'اسم الصنف', 'product_name', 'name']) ?? '').trim();
       // تقارير الصيدلية قد تنتهي بصف إجمالي/فوتر بلا هوية صنف؛ لا نحوله إلى حركة.
-      if (!productCode && !productName) return [];
+      const footerText = [productCode, productName, ...Object.values(row || {})].join(' ').toLowerCase();
+      const isReportFooter = !productCode && (
+        !productName ||
+        footerText.includes('عدد الأصناف') ||
+        footerText.includes('copyright') ||
+        footerText.includes('b-connect') ||
+        footerText.includes('eplus')
+      );
+      if (isReportFooter) return [];
       if (!productCode || !productName) throw new Error(`بيانات الصنف غير مكتملة في الصف ${rowNo}: يجب وجود الكود والاسم معًا.`);
       return [{
         product_code: productCode,
