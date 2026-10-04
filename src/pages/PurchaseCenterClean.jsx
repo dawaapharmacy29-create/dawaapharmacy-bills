@@ -455,6 +455,10 @@ function JourneyActionBar({
 export default function PurchaseCenterClean() {
   const [fileName, setFileName] = useState('');
   const [fileModifiedAt, setFileModifiedAt] = useState(null);
+  const [dailyBranch, setDailyBranch] = useState('دواء شكري');
+  const [dailyPeriodStart, setDailyPeriodStart] = useState('');
+  const [dailyPeriodEnd, setDailyPeriodEnd] = useState('');
+  const [dailyPending, setDailyPending] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [saveResult, setSaveResult] = useState(null);
   const [plan, setPlan] = useState(null);
@@ -616,6 +620,103 @@ export default function PurchaseCenterClean() {
   }, [draftOrderTotal, financialReferenceTotal, supplierWorkspace.historicalApplied, supplierWorkspace.rows]);
 
   const estimatedPurchaseGap = Math.max(0, draftOrderTotal - liveReferenceTotal);
+
+  async function readDailyWorkbook(file) {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error('ملف Excel لا يحتوي على Sheet قابلة للقراءة.');
+    const sourceRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: true });
+    if (!sourceRows.length) throw new Error('الملف اليومي فارغ.');
+
+    const pick = (row, names) => {
+      for (const name of names) if (Object.prototype.hasOwnProperty.call(row, name)) return row[name];
+      return '';
+    };
+    const number = (value, label, rowNo) => {
+      const n = Number(String(value ?? '').replace(/,/g, '').trim());
+      if (!Number.isFinite(n) || n < 0) throw new Error(`قيمة ${label} غير صالحة في الصف ${rowNo}.`);
+      return n;
+    };
+
+    const rows = sourceRows.map((row, index) => {
+      const rowNo = index + 2;
+      const productCode = String(pick(row, ['الكود', 'كود', 'product_code', 'code']) ?? '').trim().replace(/\.0+$/, '');
+      const productName = String(pick(row, ['الإسم', 'الاسم', 'اسم الصنف', 'product_name', 'name']) ?? '').trim();
+      if (!productCode && !productName) throw new Error(`الكود والاسم مفقودان في الصف ${rowNo}.`);
+      return {
+        product_code: productCode,
+        product_name: productName,
+        sold_qty: number(pick(row, ['الكمية', 'الكمية المباعة', 'sold_qty', 'sales_qty']), 'الكمية', rowNo),
+        stock_unit: String(pick(row, ['الوحدة', 'unit', 'stock_unit']) ?? '').trim(),
+        current_stock: number(pick(row, ['الرصيد', 'الرصيد الحالي', 'current_stock', 'stock']), 'الرصيد', rowNo),
+      };
+    });
+    return { rows, rows_count: rows.length, source_rows_count: sourceRows.length, inventory_rows: rows.length, daily: true };
+  }
+
+  async function handleDailyFile(file) {
+    if (!file) return;
+    setError('');
+    setPhase('reading');
+    setFileName(file.name);
+    setFileModifiedAt(file.lastModified ? new Date(file.lastModified) : null);
+    setPlan(null);
+    setDraftResult(null);
+    setSaveResult(null);
+    try {
+      const result = await readDailyWorkbook(file);
+      setDailyPending(result);
+      setParsed(result);
+      setPhase('idle');
+    } catch (err) {
+      setDailyPending(null);
+      setParsed(null);
+      setError(err?.message || 'تعذر قراءة ملف المبيعات والرصيد اليومي.');
+      setPhase('error');
+    }
+  }
+
+  async function importDailyAndPlan() {
+    if (runRef.current || !dailyPending) return;
+    if (!dailyPeriodStart || !dailyPeriodEnd) {
+      setError('حدد بداية ونهاية فترة المبيعات قبل الحفظ.');
+      return;
+    }
+    const start = new Date(dailyPeriodStart);
+    const end = new Date(dailyPeriodEnd);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
+      setError('فترة المبيعات غير صحيحة. يجب أن تكون النهاية بعد البداية.');
+      return;
+    }
+    runRef.current = true;
+    setError('');
+    setPhase('saving');
+    try {
+      const result = await purchaseApi.importDailySalesStock({
+        branch: dailyBranch,
+        periodStart: start.toISOString(),
+        periodEnd: end.toISOString(),
+        fileName,
+        rows: dailyPending.rows,
+      });
+      setSaveResult({ daily_import: true, ...result });
+      setDailyPending(null);
+      await runPlannerOnly(null);
+    } catch (err) {
+      const code = err?.code || '';
+      if (code === 'overlapping_period' || String(err?.message || '').includes('overlapping_period')) {
+        setError('تم إيقاف الحفظ لأن هذه الفترة تتداخل مع فترة مبيعات محفوظة لنفس الفرع.');
+      } else if (code === 'unmatched_daily_rows' || String(err?.message || '').includes('unmatched_daily_rows')) {
+        setError('يوجد صنف أو أكثر غير مطابق للرصيد الحالي. لم يتم حفظ الملف حتى لا نفقد أو نكرر حركة.');
+      } else {
+        setError(err?.message || 'تعذر حفظ ملف المبيعات والرصيد اليومي.');
+      }
+      setPhase('error');
+    } finally {
+      runRef.current = false;
+    }
+  }
 
   async function readWorkbook(file) {
     const buffer = await file.arrayBuffer();
@@ -822,6 +923,7 @@ export default function PurchaseCenterClean() {
     setActiveStep(1);
     setFileName('');
     setFileModifiedAt(null);
+    setDailyPending(null);
     setParsed(null);
     setSaveResult(null);
     setPlan(null);
@@ -1423,6 +1525,42 @@ export default function PurchaseCenterClean() {
 
       {activeStep === 1 && (
       <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        {!plan && (
+          <div className="mb-5 rounded-2xl border-2 border-teal-200 bg-teal-50/30 p-4">
+            <div className="mb-3">
+              <h2 className="font-black text-slate-900">الرفع اليومي — المبيعات + الرصيد</h2>
+              <p className="mt-1 text-sm text-slate-600">القالب: الكود | الاسم | الكمية | الوحدة | الرصيد. اختر الفرع وفترة المبيعات ثم احفظ مرة واحدة.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="text-sm font-bold text-slate-700">الفرع
+                <select value={dailyBranch} onChange={(e) => setDailyBranch(e.target.value)} disabled={busy} className="mt-1 w-full rounded-xl border bg-white px-3 py-2">
+                  <option value="دواء شكري">دواء شكري</option>
+                  <option value="دواء الشامي">دواء الشامي</option>
+                </select>
+              </label>
+              <label className="text-sm font-bold text-slate-700">من
+                <input type="datetime-local" value={dailyPeriodStart} onChange={(e) => setDailyPeriodStart(e.target.value)} disabled={busy} className="mt-1 w-full rounded-xl border bg-white px-3 py-2" />
+              </label>
+              <label className="text-sm font-bold text-slate-700">إلى
+                <input type="datetime-local" value={dailyPeriodEnd} onChange={(e) => setDailyPeriodEnd(e.target.value)} disabled={busy} className="mt-1 w-full rounded-xl border bg-white px-3 py-2" />
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <label className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border border-teal-300 bg-white px-4 py-2.5 text-sm font-black text-teal-800 ${busy ? 'pointer-events-none opacity-50' : ''}`}>
+                <input type="file" accept=".xlsx,.xls" className="hidden" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value=''; void handleDailyFile(file); }} />
+                <Upload className="h-4 w-4" /> اختيار الملف اليومي
+              </label>
+              {dailyPending && <span className="text-sm font-bold text-emerald-700">{fileName} • {dailyPending.rows_count} صنف جاهز للمراجعة</span>}
+              <button type="button" disabled={busy || !dailyPending || !dailyPeriodStart || !dailyPeriodEnd} onClick={() => void importDailyAndPlan()} className="rounded-xl bg-teal-700 px-5 py-2.5 text-sm font-black text-white disabled:opacity-40">
+                حفظ وتحديث التحليل
+              </button>
+            </div>
+          </div>
+        )}
+
+        <details className="mb-4 rounded-xl border border-slate-200 bg-slate-50/60">
+          <summary className="cursor-pointer px-3 py-2 text-sm font-bold text-slate-600">الملف الموحد القديم للفرعين</summary>
+          <div className="p-3">
         {!plan ? (
           <label className={`flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition ${busy ? 'pointer-events-none opacity-60' : 'hover:border-teal-400 hover:bg-teal-50/30'}`}>
             <input
@@ -1474,6 +1612,8 @@ export default function PurchaseCenterClean() {
             </label>
           </div>
         )}
+          </div>
+        </details>
 
         {parsed && !plan && (
           <>
