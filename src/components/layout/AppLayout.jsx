@@ -47,6 +47,7 @@ const navGroups = [
       ]},
       { label: "المشتريات", items: [
         { path: "/purchase-center", label: "مركز المشتريات والطلبية", icon: BrainCircuit, permission: "canPlanPurchases" },
+        { path: "/demand-evidence", label: "دليل الطلب (Demand Evidence)", icon: DatabaseZap, permission: "canPlanPurchases" },
         { path: "/smart-purchase-receiving", label: "الاستلام والمطابقة", icon: PackageCheck },
         { path: "/purchase-shortages", label: "الأصناف الناقصة", icon: PackageX },
         { path: "/smart-purchase-insights", label: "تقييم الأداء بعد التنفيذ", icon: BarChart3 },
