@@ -6,7 +6,7 @@ const FORBIDDEN_KEYS = new Set(["customer_id","customer_code","customer_name","c
 const allowedBranches = new Set(["دواء شكري","دواء الشامي"]);
 
 function validatePayload(payload) {
-  const rows = Array.isArray(payload) ? payload : payload?.rows;
+  const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.evidence) ? payload.evidence : payload?.rows);
   if (!Array.isArray(rows) || !rows.length) throw new Error("الملف لا يحتوي على rows صالحة.");
   for (const row of rows) {
     if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("يوجد صف غير صالح داخل الملف.");
@@ -52,7 +52,7 @@ export default function DemandEvidenceCenter() {
     finally{setBusy(false);}
   };
 
-  const completeness=meta?.completeness_status || meta?.metadata?.completeness_status || "غير محدد";
+  const completeness=meta?.source?.completeness_status || meta?.completeness_status || meta?.metadata?.completeness_status || "غير محدد";
   return <div dir="rtl" className="mx-auto max-w-6xl space-y-5 p-4 md:p-6">
     <div><h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900"><BrainCircuit className="h-6 w-6 text-teal-600"/>دليل الطلب (Demand Evidence)</h1><p className="mt-1 text-sm text-gray-500">استيراد دليل الطلب المجمع وتشغيل مقارنة Shadow فقط. لا يتم تعديل V10 أو إنشاء طلبية من هذه الصفحة.</p></div>
     <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-900"><div className="flex gap-2"><ShieldCheck className="h-5 w-5 shrink-0"/><p>المسار يقبل بيانات Aggregate فقط، ويمنع حقول هوية العميل وأرقام الفواتير. الاستيراد Idempotent والـShadow للقراءة فقط.</p></div></div>
