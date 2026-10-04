@@ -163,6 +163,13 @@ export const smartPurchaseUnifiedApi = {
     p_branch: branch,
     p_rows: rows,
   }),
+  importDailySalesStock: ({ branch, periodStart, periodEnd, fileName, rows = [] }) => standaloneRpc('smart_purchase_import_daily_sales_stock_and_refresh_v1', {
+    p_branch: branch,
+    p_period_start: periodStart,
+    p_period_end: periodEnd,
+    p_source_file: fileName || 'daily-sales-stock.xlsx',
+    p_rows: rows,
+  }),
   saveDualBranchStockMasterClean: async ({ rows = [], chunkSize = 2500, stageConcurrency = 2, onProgress = null }) => {
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('لا توجد صفوف رصيد صالحة للحفظ.');
     const safeChunkSize = Math.max(250, Math.min(2500, Math.floor(Number(chunkSize) || 2500)));
