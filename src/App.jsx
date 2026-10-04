@@ -62,6 +62,7 @@ const SystemStatus = lazy(() => import('./pages/SystemStatus'));
 const BranchPerformanceCenter = lazy(() => import('./pages/BranchPerformanceCenter'));
 const SalesPurchasesReport = lazy(() => import('./pages/SalesPurchasesReport'));
 const Base44SyncReview = lazy(() => import('./pages/Base44SyncReview'));
+const DemandEvidenceCenter = lazy(() => import('./pages/DemandEvidenceCenter'));
 
 function PageLoading() {
   return <div dir="rtl" className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
@@ -124,6 +125,7 @@ const AuthenticatedApp = () => {
     <Route path="/purchase-workflow" element={<PurchaseWorkflowCenter />} />
     <Route path="/purchase-center" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />
     <Route path="/purchase-center-clean" element={<RoleRouteGuard permission="canPlanPurchases"><PurchaseCenterClean /></RoleRouteGuard>} />
+    <Route path="/demand-evidence" element={<RoleRouteGuard permission="canPlanPurchases"><DemandEvidenceCenter /></RoleRouteGuard>} />
     <Route path="/purchase-center-legacy" element={<RoleRouteGuard adminOnly><PurchaseCommandCenter /></RoleRouteGuard>} />
     <Route path="/smart-purchase-orders" element={<Navigate to="/purchase-center" replace />} />
     <Route path="/smart-purchase-orders/manage" element={<Navigate to="/purchase-center" replace />} />
