@@ -639,20 +639,23 @@ export default function PurchaseCenterClean() {
       return n;
     };
 
-    const rows = sourceRows.map((row, index) => {
+    const rows = sourceRows.flatMap((row, index) => {
       const rowNo = index + 2;
       const productCode = String(pick(row, ['الكود', 'كود', 'product_code', 'code']) ?? '').trim().replace(/\.0+$/, '');
       const productName = String(pick(row, ['الإسم', 'الاسم', 'اسم الصنف', 'product_name', 'name']) ?? '').trim();
-      if (!productCode && !productName) throw new Error(`الكود والاسم مفقودان في الصف ${rowNo}.`);
-      return {
+      // تقارير الصيدلية قد تنتهي بصف إجمالي/فوتر بلا هوية صنف؛ لا نحوله إلى حركة.
+      if (!productCode && !productName) return [];
+      if (!productCode || !productName) throw new Error(`بيانات الصنف غير مكتملة في الصف ${rowNo}: يجب وجود الكود والاسم معًا.`);
+      return [{
         product_code: productCode,
         product_name: productName,
         sold_qty: number(pick(row, ['الكمية', 'الكمية المباعة', 'sold_qty', 'sales_qty']), 'الكمية', rowNo),
         stock_unit: String(pick(row, ['الوحدة', 'unit', 'stock_unit']) ?? '').trim(),
         current_stock: number(pick(row, ['الرصيد', 'الرصيد الحالي', 'current_stock', 'stock']), 'الرصيد', rowNo),
-      };
+      }];
     });
-    return { rows, rows_count: rows.length, source_rows_count: sourceRows.length, inventory_rows: rows.length, daily: true };
+    if (!rows.length) throw new Error('لم يتم العثور على أصناف صالحة في الملف اليومي.');
+    return { rows, rows_count: rows.length, source_rows_count: sourceRows.length, skipped_rows_count: sourceRows.length - rows.length, inventory_rows: rows.length, daily: true };
   }
 
   async function handleDailyFile(file) {
