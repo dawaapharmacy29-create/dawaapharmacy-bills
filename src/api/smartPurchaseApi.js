@@ -68,7 +68,13 @@ async function directRpc(functionName, body = {}) {
     const code = data?.error || data?.message;
     throw new Error(messages[code] || errorMessage(data, response.status));
   }
-  return data.data;
+  // Direct RPCs in this app use both response contracts:
+  // wrapped { ok, data } and raw JSON/scalar values from PostgREST.
+  // Preserve wrapped behavior while allowing read-only raw RPCs such as Shadow Summary.
+  if (data && typeof data === 'object' && !Array.isArray(data) && Object.prototype.hasOwnProperty.call(data, 'data')) {
+    return data.data;
+  }
+  return data;
 }
 
 async function rpc(action, payload = {}) {
