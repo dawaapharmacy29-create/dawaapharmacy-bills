@@ -167,8 +167,9 @@ export function preparePurchaseCandidates(payload = {}) {
 async function importDemandEvidence(rows = []) {
   if (!Array.isArray(rows) || !rows.length) throw new Error('ملف Demand Evidence لا يحتوي على صفوف صالحة.');
   const totals = { imported: 0, unchanged_or_older: 0, unmatched: 0, invalid: 0 };
-  for (let i = 0; i < rows.length; i += 1000) {
-    const result = await directRpc('smart_purchase_upsert_demand_evidence_v1', { p_rows: rows.slice(i, i + 1000) });
+  const chunkSize = 250;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const result = await directRpc('smart_purchase_upsert_demand_evidence_v1', { p_rows: rows.slice(i, i + chunkSize) });
     for (const key of Object.keys(totals)) totals[key] += Number(result?.[key] || 0);
   }
   return { ...totals, total_rows: rows.length, idempotent: true, privacy_contract: 'aggregate_only_no_customer_or_invoice_identifiers' };
