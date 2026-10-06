@@ -102,8 +102,16 @@ export function parseBConnectRows(rows) {
       const branchCandidate = nonEmpty.find((v) => /فرع\s*شكري|دواء\s*شكري|دواء\s*الشامي|فرع\s*الشامي/.test(v));
       if (branchCandidate) branch = branchCandidate;
 
-      // A single descriptive cell outside a table is normally the supplier group label.
-      if (nonEmpty.length === 1 && !isPaymentLabel(nonEmpty[0]) && !/تم الإسترجاع|تم الاسترجاع|الإجمالي|الاجمالي/.test(nonEmpty[0])) {
+      // B-Connect supplier groups are emitted as: <supplier name> | موردين.
+      // Treat the label as structure, not as invoice/branch data.
+      const supplierTypeIndex = nonEmpty.findIndex((v) => v === "موردين");
+      if (supplierTypeIndex > 0) {
+        supplier = nonEmpty[supplierTypeIndex - 1];
+      } else if (
+        nonEmpty.length === 1 &&
+        !isPaymentLabel(nonEmpty[0]) &&
+        !/تم الإسترجاع|تم الاسترجاع|الإجمالي|الاجمالي|إجمـــالى/.test(nonEmpty[0])
+      ) {
         supplier = nonEmpty[0];
       }
       continue;
