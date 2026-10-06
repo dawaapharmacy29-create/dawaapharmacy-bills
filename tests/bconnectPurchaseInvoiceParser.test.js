@@ -5,13 +5,13 @@ import { parseBConnectRows } from "../src/lib/bconnectPurchaseInvoiceParser.js";
 test("parses hierarchical B-Connect invoice sections without treating subtotals as invoices", () => {
   const rows = [
     ["تم الإسترجاع حسب: تاريخ الإنشاء"],
-    ["المتحدة المنصورة للتوزيع"],
+    ["المتحدة المنصورة للتوزيع","موردين"],
     ["الادارة فرع شكري", "آجل"],
     ["المستخدم","الصافى","ض.إضافة","مصاريف","خصم %","خصم قيمة","ق.المرتجع","ق.الفاتورة","العدد","مسلسل","التاريخ"],
     ["د وائل",842.72,0,0,0,0,0,842.72,3,19526,"2026-10-06 01:23:40"],
     ["د وائل",411.483,0,0,0,0,0,411.483,4,19527,"2026-10-06 01:28:35"],
     [null,1254.203],
-    ["دواء الشامي"],
+    ["دواء الشامي","موردين"],
     ["آجل"],
     ["المستخدم","الصافى","ض.إضافة","مصاريف","خصم %","خصم قيمة","ق.المرتجع","ق.الفاتورة","العدد","مسلسل","التاريخ"],
     ["د محمد شبل",157.25,0,0,0,0,0,157.25,1,19519,"2026-10-06 00:00:45"],
@@ -24,6 +24,7 @@ test("parses hierarchical B-Connect invoice sections without treating subtotals 
   assert.equal(result.invoices[1].supplier, "المتحدة المنصورة للتوزيع");
   assert.equal(result.invoices[1].branch, "الادارة فرع شكري");
   assert.equal(result.invoices[2].supplier, "دواء الشامي");
+  assert.equal(result.invoices[2].branch, "الادارة فرع شكري");
 });
 
 test("fails closed when required invoice headers are absent", () => {
