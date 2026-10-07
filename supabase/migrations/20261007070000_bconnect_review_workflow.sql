@@ -47,7 +47,8 @@ as $$
 declare
   v_account public.staff_accounts%rowtype; v_item jsonb; v_invoice public.purchase_invoices%rowtype;
   v_number text; v_id text; v_count int; v_now timestamptz:=now(); v_results jsonb:='[]'::jsonb;
-  v_from text; v_to text;
+  v_expected_branch text; v_expected_total numeric; v_seen_numbers text[]:=array[]::text[];
+  v_from text;
 begin
   select a.* into v_account from public.staff_sessions s join public.staff_accounts a on a.id=s.account_id
   where s.token_hash=encode(digest(coalesce(p_session_token,''),'sha256'),'hex')
@@ -67,9 +68,15 @@ begin
   for v_item in select value from jsonb_array_elements(p_items)
   loop
     v_id:=nullif(trim(v_item->>'invoice_id'),''); v_number:=nullif(trim(v_item->>'system_invoice_number'),'');
-    if v_id is null or v_number is null then
-      v_results:=v_results||jsonb_build_array(jsonb_build_object('invoice_id',v_id,'number',v_number,'ok',false,'error','missing_identity')); continue;
+    v_expected_branch:=nullif(trim(v_item->>'expected_branch'),'');
+    begin v_expected_total:=(v_item->>'expected_total_value')::numeric; exception when others then v_expected_total:=null; end;
+    if v_id is null or v_number is null or v_expected_branch is null or v_expected_total is null then
+      v_results:=v_results||jsonb_build_array(jsonb_build_object('invoice_id',v_id,'number',v_number,'ok',false,'error','missing_snapshot')); continue;
     end if;
+    if v_number=any(v_seen_numbers) then
+      v_results:=v_results||jsonb_build_array(jsonb_build_object('invoice_id',v_id,'number',v_number,'ok',false,'error','duplicate_in_batch')); continue;
+    end if;
+    v_seen_numbers:=array_append(v_seen_numbers,v_number);
     select count(*) into v_count from public.purchase_invoices p
       where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
         and trim(coalesce(p.system_invoice_number,''))=v_number;
@@ -79,6 +86,9 @@ begin
     select * into v_invoice from public.purchase_invoices where id=v_id for update;
     if not found or trim(coalesce(v_invoice.system_invoice_number,''))<>v_number then
       v_results:=v_results||jsonb_build_array(jsonb_build_object('invoice_id',v_id,'number',v_number,'ok',false,'error','invoice_changed')); continue;
+    end if;
+    if v_invoice.branch is distinct from v_expected_branch or round(coalesce(v_invoice.total_value,0)::numeric,3)<>round(v_expected_total,3) then
+      v_results:=v_results||jsonb_build_array(jsonb_build_object('invoice_id',v_id,'number',v_number,'ok',false,'error','snapshot_changed')); continue;
     end if;
     if v_account.role<>'general_manager' and not (coalesce(v_account.branch_ids,'[]'::jsonb) ? v_invoice.branch) then
       v_results:=v_results||jsonb_build_array(jsonb_build_object('invoice_id',v_id,'number',v_number,'ok',false,'error','forbidden_branch')); continue;
