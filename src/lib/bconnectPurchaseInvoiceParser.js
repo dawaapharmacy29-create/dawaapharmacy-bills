@@ -1,5 +1,7 @@
 import * as XLSX from "xlsx";
 
+export const BCONNECT_PARSER_VERSION = "v2";
+
 const HEADER_ALIASES = {
   user: ["المستخدم"],
   net: ["الصافى", "الصافي"],
@@ -96,20 +98,28 @@ export function parseBConnectRows(rows) {
 
     // Supplier/branch/payment labels occur outside invoice tables in the B-Connect report.
     if (!header || !looksLikeInvoice(row, header)) {
-      const payment = nonEmpty.find(isPaymentLabel);
-      if (payment) payment_type = normalizePayment(payment);
-
-      const branchCandidate = nonEmpty.find((v) => /فرع\s*شكري|دواء\s*شكري|دواء\s*الشامي|فرع\s*الشامي/.test(v));
-      if (branchCandidate) branch = branchCandidate;
-
-      // B-Connect supplier groups are emitted as: <supplier name> | موردين.
-      // Treat the label as structure, not as invoice/branch data.
+      // Supplier groups are structural rows: <supplier name> | موردين.
+      // Resolve and stop on this row BEFORE branch detection: a supplier may itself
+      // contain a branch-looking phrase such as "دواء الشامي".
       const supplierTypeIndex = nonEmpty.findIndex((v) => v === "موردين");
       if (supplierTypeIndex > 0) {
         supplier = nonEmpty[supplierTypeIndex - 1];
-      } else if (
+        continue;
+      }
+
+      const payment = nonEmpty.find(isPaymentLabel);
+      if (payment) payment_type = normalizePayment(payment);
+
+      // Only explicit branch/report labels are accepted as branch evidence.
+      const branchCandidate = nonEmpty.find((v) => /فرع\s*شكري|فرع\s*الشامي/.test(v));
+      if (branchCandidate) branch = branchCandidate;
+
+      // Retain the legacy one-cell supplier form only when it cannot be confused
+      // with payment, totals, report captions, or an explicit branch row.
+      if (
         nonEmpty.length === 1 &&
         !isPaymentLabel(nonEmpty[0]) &&
+        !branchCandidate &&
         !/تم الإسترجاع|تم الاسترجاع|الإجمالي|الاجمالي|إجمـــالى/.test(nonEmpty[0])
       ) {
         supplier = nonEmpty[0];
@@ -143,7 +153,7 @@ export function parseBConnectRows(rows) {
     valid: headerCount > 0 && invoices.length > 0,
     invoices,
     warnings,
-    meta: { header_sections: headerCount, invoice_count: invoices.length },
+    meta: { parser_version: BCONNECT_PARSER_VERSION, header_sections: headerCount, invoice_count: invoices.length },
   };
 }
 
