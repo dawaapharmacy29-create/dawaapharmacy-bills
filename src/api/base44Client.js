@@ -295,7 +295,7 @@ export const performanceApi = {
     p_date_to: params.date_to || null,
     p_month: params.month || null,
   }),
-  invoices: (params = {}) => callSecureRpc('app_paged_purchase_invoices', {
+  bconnectInvoiceNumbers: (numbers = []) => callSecureRpc('app_bconnect_invoice_number_check', { p_numbers: numbers }),\n  invoices: (params = {}) => callSecureRpc('app_paged_purchase_invoices', {
     p_branch: params.branch || 'all',
     p_date_from: params.date_from || null,
     p_date_to: params.date_to || null,
