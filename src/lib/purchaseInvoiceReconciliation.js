@@ -3,7 +3,7 @@ import {
   invoiceIdentityEvidence,
 } from "./purchaseInvoiceTruth.js";
 
-export const RECONCILIATION_ENGINE_VERSION = "v2";
+export const RECONCILIATION_ENGINE_VERSION = "v3";
 
 function known(value) {
   return value !== null && value !== undefined && value !== "";
@@ -49,13 +49,14 @@ export function reconcilePurchaseInvoice(appInput, bconnectInput) {
   const supportingMatches = supportingKnown.filter((key) => checks[key] === "match");
   const supportingMismatches = supportingKnown.filter((key) => checks[key] === "mismatch");
 
-  // Conservative v2 contract:
-  // program number must match, no known supporting field may conflict,
-  // and at least two independent supporting fields must be known and match.
+  // Truth-lab v3 contract:
+  // system invoice number is the primary cross-system identity and branch is the
+  // independent scope gate. Supplier labels and report/invoice dates are useful
+  // evidence, but verified real records show aliases and date drift, so they
+  // must never block identity by themselves.
   const identitySufficient =
     checks.system_invoice_number === "match" &&
-    supportingMismatches.length === 0 &&
-    supportingMatches.length >= 2;
+    checks.branch === "match";
 
   let identity = "insufficient";
   if (hardConflict) identity = "conflict";
@@ -72,9 +73,9 @@ export function reconcilePurchaseInvoice(appInput, bconnectInput) {
   if (identity === "conflict") {
     status = "problem";
     reasons.push("رقم البرنامج متعارض؛ لا يجوز ربط السجلين تلقائيًا.");
-  } else if (supportingMismatches.length > 0) {
-    status = "review";
-    reasons.push(`رقم البرنامج مرشح للمطابقة لكن يوجد تعارض في: ${supportingMismatches.join(", ")}.`);
+  } else if (checks.branch === "mismatch") {
+    status = "problem";
+    reasons.push("رقم البرنامج موجود لكن الفرع مختلف؛ لا يجوز اعتماد المطابقة تلقائيًا.");
   } else if (!identitySufficient) {
     status = "review";
     reasons.push("الأدلة المتاحة غير كافية لإصدار حكم سليم تلقائيًا.");
@@ -86,7 +87,9 @@ export function reconcilePurchaseInvoice(appInput, bconnectInput) {
     reasons.push(`الهوية مؤكدة لكن يوجد فرق مالي غير مفسر قدره ${Math.abs(totalDifference).toFixed(3)} ج.`);
   } else {
     status = "clean";
-    reasons.push("الأدلة كافية لهوية الفاتورة والقيمة المالية متطابقة.");
+    reasons.push("رقم الفاتورة والفرع متطابقان والقيمة المالية متطابقة.");
+    if (checks.supplier === "mismatch") reasons.push("اسم المورد مختلف بين المصدرين ويُعرض كدليل مساعد فقط.");
+    if (checks.invoice_date === "mismatch") reasons.push("التاريخ مختلف بين المصدرين ويُعرض كدليل مساعد فقط.");
   }
 
   return {
