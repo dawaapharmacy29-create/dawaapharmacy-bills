@@ -33,3 +33,43 @@ test("fails closed when required invoice headers are absent", () => {
   assert.equal(result.invoices.length, 0);
   assert.ok(result.warnings.length > 0);
 });
+
+
+test("golden report shape keeps all 11 invoices under Shokry and preserves exact financial total", () => {
+  const H = ["المستخدم","الصافى","ض.إضافة","مصاريف","خصم %","خصم قيمة","ق.المرتجع","ق.الفاتورة","العدد","مسلسل","التاريخ"];
+  const invoice = (user, value, count, serial, time) => [user,value,0,0,0,0,0,value,count,serial,`2026-10-06 ${time}`];
+  const rows = [
+    ["تم الإسترجاع حسب: تاريخ الإنشاء"],
+    ["المتحدة المنصورة للتوزيع","موردين"], ["الادارة فرع شكري","آجل"], H,
+    invoice("د وائل",842.72,3,19526,"01:23:40"), invoice("د وائل",411.483,4,19527,"01:28:35"), [null,1254.203],
+    ["دواء الشامي","موردين"], ["الادارة فرع شكري","آجل"], H,
+    invoice("د محمد شبل",157.25,1,19519,"00:00:45"), invoice("د عمر",144.5,1,19522,"00:26:25"),
+    invoice("د عمر",136,1,19525,"00:51:57"), invoice("د محمد شبل",864,1,19528,"02:57:33"),
+    invoice("د محمد شبل",122.43,1,19529,"05:51:26"), [null,1424.18],
+    ["صيدليات","موردين"], ["الادارة فرع شكري","نقدى"], H, invoice("د محمد شبل",24,1,19520,"00:10:31"), [null,24],
+    ["فارما اوفر سيز","موردين"], ["الادارة فرع شكري","آجل"], H, invoice("د وائل",484,1,19523,"00:31:14"), [null,484],
+    ["مخزن الحياه","موردين"], ["الادارة فرع شكري","آجل"], H,
+    invoice("د محمد شبل",300,1,19521,"00:13:08"), invoice("د عمر",2720,1,19524,"00:44:30"), [null,3020],
+    [null,6206.383],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, true);
+  assert.equal(result.meta.parser_version, "v2");
+  assert.equal(result.invoices.length, 11);
+  assert.equal(new Set(result.invoices.map((row) => row.serial)).size, 11);
+  assert.ok(result.invoices.every((row) => row.branch === "الادارة فرع شكري"));
+  assert.equal(result.invoices.find((row) => row.serial === "19519").supplier, "دواء الشامي");
+  assert.equal(Math.round(result.invoices.reduce((sum, row) => sum + row.invoice_value, 0) * 1000) / 1000, 6206.383);
+});
+
+test("supplier names that look like branches never overwrite branch context", () => {
+  const rows = [
+    ["الادارة فرع شكري","آجل"],
+    ["دواء الشامي","موردين"],
+    ["المستخدم","الصافى","ض.إضافة","مصاريف","خصم %","خصم قيمة","ق.المرتجع","ق.الفاتورة","العدد","مسلسل","التاريخ"],
+    ["د عمر",136,0,0,0,0,0,136,1,19525,"2026-10-06 00:51:57"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.invoices[0].supplier, "دواء الشامي");
+  assert.equal(result.invoices[0].branch, "الادارة فرع شكري");
+});
