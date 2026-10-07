@@ -5,11 +5,18 @@ import { performanceApi } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { parseBConnectWorkbook } from '@/lib/bconnectPurchaseInvoiceParser';
-import { findDuplicateProgramNumbers, reconcilePurchaseInvoice } from '@/lib/purchaseInvoiceReconciliation';
+import { reconcilePurchaseInvoice } from '@/lib/purchaseInvoiceReconciliation';
 
 const labels = { clean: 'سليم', review: 'راجعها', problem: 'مشكلة' };
 const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
 const money = (v) => Number(v || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+
+function shiftDate(value, days) {
+  if (!value) return null;
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 async function loadAppInvoices(dateFrom, dateTo) {
   const rows = [];
@@ -43,7 +50,7 @@ export default function BConnectInvoiceReview() {
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
       const dates = parsed.invoices.map((r) => String(r.date || '').slice(0, 10)).filter(Boolean).sort();
       // Date is used only to limit the read window, never as a hard identity requirement.
-      const appRows = await loadAppInvoices(dates[0], dates[dates.length - 1]);
+      const appRows = await loadAppInvoices(shiftDate(dates[0], -7), shiftDate(dates[dates.length - 1], 1));
       const appByNumber = new Map();
       appRows.forEach((r) => {
         const key = String(r.system_invoice_number || '').trim();
@@ -51,12 +58,16 @@ export default function BConnectInvoiceReview() {
         const list = appByNumber.get(key) || [];
         list.push(r); appByNumber.set(key, list);
       });
-      const duplicates = new Set(findDuplicateProgramNumbers(appRows).map((d) => d.key.split('::').pop()));
+      const globalCounts = new Map();
+      appRows.forEach((r) => { const key = String(r.system_invoice_number || '').trim(); if (key) globalCounts.set(key, (globalCounts.get(key) || 0) + 1); });
+      const fileCounts = new Map();
+      parsed.invoices.forEach((r) => { const key = String(r.serial || '').trim(); if (key) fileCounts.set(key, (fileCounts.get(key) || 0) + 1); });
       const rows = parsed.invoices.map((b) => {
         const number = String(b.serial || '').trim();
         const candidates = appByNumber.get(number) || [];
         if (!candidates.length) return { number, bconnect: b, app: null, status: 'problem', identity: 'missing', reasons: ['الفاتورة موجودة في B-Connect ولا يوجد لها سجل مقابل في قراءة التطبيق الحالية.'], financial: { difference: null } };
-        if (candidates.length > 1 || duplicates.has(number)) return { number, bconnect: b, app: null, status: 'problem', identity: 'ambiguous', reasons: ['يوجد أكثر من سجل محتمل لنفس رقم البرنامج؛ لا توجد مطابقة تلقائية.'], financial: { difference: null } };
+        if ((fileCounts.get(number) || 0) > 1) return { number, bconnect: b, app: null, status: 'problem', identity: 'duplicate_bconnect', reasons: ['رقم الفاتورة مكرر داخل ملف B-Connect؛ تم منعه من المطابقة والحفظ.'], financial: { difference: null } };
+        if (candidates.length > 1 || (globalCounts.get(number) || 0) > 1) return { number, bconnect: b, app: null, status: 'problem', identity: 'duplicate_app', reasons: ['رقم الفاتورة له أكثر من سجل في التطبيق؛ تم منعه من المطابقة والحفظ.'], financial: { difference: null } };
         const result = reconcilePurchaseInvoice(candidates[0], b);
         return { number, bconnect: b, app: candidates[0], ...result };
       });
