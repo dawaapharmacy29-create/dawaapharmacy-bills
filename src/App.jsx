@@ -62,6 +62,7 @@ const SystemStatus = lazy(() => import('./pages/SystemStatus'));
 const BranchPerformanceCenter = lazy(() => import('./pages/BranchPerformanceCenter'));
 const SalesPurchasesReport = lazy(() => import('./pages/SalesPurchasesReport'));
 const Base44SyncReview = lazy(() => import('./pages/Base44SyncReview'));
+const BConnectInvoiceReview = lazy(() => import('./pages/BConnectInvoiceReview'));
 
 function PageLoading() {
   return <div dir="rtl" className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
@@ -88,6 +89,7 @@ const AuthenticatedApp = () => {
     <Route path="/quality-center" element={<QualityReviewCenter />} />
     <Route path="/invoices/manage" element={<PurchaseInvoices />} />
     <Route path="/invoices" element={<FastPurchaseInvoices />} />
+    <Route path="/invoices/bconnect-review" element={<BConnectInvoiceReview />} />
     <Route path="/suppliers" element={<Suppliers />} />
     <Route path="/expenses" element={<Expenses />} />
     <Route path="/reports" element={<Reports />} />
