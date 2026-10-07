@@ -6,7 +6,7 @@
  * It does not write, mutate or sync business data.
  */
 
-export const PURCHASE_INVOICE_TRUTH_VERSION = "v1";
+export const PURCHASE_INVOICE_TRUTH_VERSION = "v2";
 
 export function cleanInvoiceText(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -65,6 +65,7 @@ export function canonicalPurchaseInvoice(input = {}, source = "unknown") {
     supplier_name: cleanInvoiceText(input.supplier_name ?? input.supplier) || null,
     supplier_name_key: normalizeArabicText(input.supplier_name ?? input.supplier) || null,
     branch: normalizeBranch(input.branch),
+    // invoice_date is the business date only. Source timestamps remain separate evidence.
     invoice_date: normalizeDate(input.invoice_date ?? input.date),
     total_value: normalizeMoney(input.total_value ?? input.invoice_value),
     returned_value: normalizeMoney(input.returned_value ?? input.return_value),
@@ -72,6 +73,9 @@ export function canonicalPurchaseInvoice(input = {}, source = "unknown") {
     cash_amount: normalizeMoney(input.cash_amount),
     payment_type: cleanInvoiceText(input.payment_type) || null,
     entered_by: cleanInvoiceText(input.entered_by ?? input.user) || null,
+    // B-Connect's "العدد" is intentionally retained as an uninterpreted source value.
+    // We do not call it SKU count, line count or units until its semantics are proven.
+    source_count_raw: normalizeMoney(input.source_count_raw ?? input.count),
     source_created_at: cleanInvoiceText(input.source_created_at ?? input.created_date ?? input.created_at) || null,
     source_updated_at: cleanInvoiceText(input.source_updated_at ?? input.updated_date ?? input.updated_at) || null,
   };
