@@ -10,7 +10,10 @@ function same(a,b) { return known(a) && known(b) && a === b; }
 function compare(a,b) { if (!known(a)||!known(b)) return "unknown"; return a===b?"match":"mismatch"; }
 function moneyDelta(a,b) {
   if (!known(a)||!known(b)) return null;
-  return Math.round((Number(a)-Number(b))*1000)/1000;
+  const left=Number(a), right=Number(b);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
+  const delta=Math.round((left-right)*1000)/1000;
+  return Number.isFinite(delta) ? delta : null;
 }
 
 export function reconcilePurchaseInvoice(appInput,bconnectInput) {
