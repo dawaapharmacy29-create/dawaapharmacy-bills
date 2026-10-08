@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseBConnectRows } from "../src/lib/bconnectPurchaseInvoiceParser.js";
+import { parseBConnectRows, parseBConnectWorkbook } from "../src/lib/bconnectPurchaseInvoiceParser.js";
+import * as XLSX from "xlsx";
 
 test("parses hierarchical B-Connect invoice sections without treating subtotals as invoices", () => {
   const rows = [
@@ -188,4 +189,32 @@ test("accepts day-first B-Connect dates with valid times", () => {
   const result = parseBConnectRows(rows);
   assert.equal(result.valid, true);
   assert.equal(result.invoices[0].date, "06/10/2026 01:23:40");
+});
+
+
+test("populated additional Excel worksheets cannot be silently ignored", () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ["المستخدم", "ق.الفاتورة", "مسلسل", "التاريخ"],
+    ["د وائل", 100, 19526, "2026-10-06"],
+  ]), "فواتير");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["فاتورة إضافية", 19527]]), "فواتير أخرى");
+  const buffer = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  const result = parseBConnectWorkbook(buffer);
+  assert.equal(result.valid, false);
+  assert.equal(result.invoices.length, 0);
+  assert.deepEqual(result.meta.additional_populated_sheets, ["فواتير أخرى"]);
+});
+
+test("blank additional worksheets do not prevent a complete invoice report", () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ["المستخدم", "ق.الفاتورة", "مسلسل", "التاريخ"],
+    ["د وائل", 100, 19526, "2026-10-06"],
+  ]), "فواتير");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([]), "فارغ");
+  const buffer = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  const result = parseBConnectWorkbook(buffer);
+  assert.equal(result.valid, true);
+  assert.equal(result.invoices.length, 1);
 });
