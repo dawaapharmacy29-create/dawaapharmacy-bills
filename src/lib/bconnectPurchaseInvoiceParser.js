@@ -64,7 +64,7 @@ function parseExcelDate(value) {
 }
 
 function number(value) {
-  if (value === null || value === undefined || value === "") return null;
+  if (value === null || value === undefined || String(value).trim() === "") return null;
   const n = Number(String(value).replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : null;
 }
@@ -99,7 +99,9 @@ export function parseBConnectRows(rows) {
 
     // A numeric invoice serial identifies a candidate even if its amount is corrupt.
     // Never silently discard it as a supplier/subtotal row.
-    if (header && text(row[header.serial]) && number(row[header.serial]) !== null && !looksLikeInvoice(row, header)) {
+    const hasSerial = header && text(row[header.serial]) !== "";
+    const hasAmountAndDate = header && text(row[header.invoice_value]) !== "" && text(row[header.date]) !== "";
+    if (header && (hasSerial || hasAmountAndDate) && !looksLikeInvoice(row, header)) {
       invalidInvoiceRows.push(i + 1);
       continue;
     }
