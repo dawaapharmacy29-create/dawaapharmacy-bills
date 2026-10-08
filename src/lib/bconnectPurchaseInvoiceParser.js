@@ -54,7 +54,7 @@ function normalizePayment(value) {
 function parseExcelDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
   if (typeof value === "number") {
-    const parsed = XLSX.SSF.parse_date_code(value);
+    const parsed = (XLSX.SSF ?? XLSX.default?.SSF)?.parse_date_code?.(value);
     if (parsed) {
       const pad = (n) => String(n).padStart(2, "0");
       return `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)} ${pad(parsed.H)}:${pad(parsed.M)}:${pad(parsed.S)}`;
