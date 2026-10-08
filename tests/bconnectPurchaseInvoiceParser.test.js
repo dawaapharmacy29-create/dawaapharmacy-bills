@@ -131,3 +131,36 @@ test("real B-Connect subtotal rows with numeric serial-position totals are not c
   assert.equal(result.invoices.length, 1);
   assert.equal(result.invoices[0].serial, "19526");
 });
+
+
+test("invoice with a valid serial and amount but missing date fails closed", () => {
+  const rows = [
+    ["المستخدم", "ق.الفاتورة", "مسلسل", "التاريخ"],
+    ["د وائل", 842.72, 19526, "2026-10-06"],
+    ["د وائل", 411.483, 19527, null],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, false);
+  assert.equal(result.invoices.length, 1);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [3]);
+});
+
+test("real report payment, branch, supplier and print footer rows are never invoices", () => {
+  const H = ["المستخدم","الصافى","ض.إضافة","مصاريف","خصم %","خصم قيمة","ق.المرتجع","ق.الفاتورة","العدد","مسلسل","التاريخ"];
+  const rows = [
+    ["تم الإسترجاع حسب: تاريخ الإنشاء , المخزن الادارة فرع شكري"],
+    ["المتحدة المنصورة للتوزيع", "موردين"],
+    ["الادارة فرع شكري", "آجل"], H,
+    ["د وائل",842.72,0,0,0,0,0,842.72,3,19526,"2026-10-06"],
+    [1254.203,0,0,0,0,1254.203,"آجل","إجمـــالى:"],
+    [1254.203,0,0,0,0,1254.203,"الادارة فرع شكري","إجمـــالى:"],
+    [1254.203,0,0,0,0,1254.203,"المتحدة المنصورة للتوزيع","إجمـــالى:",1254.203,"إجمالى المورد النهائى"],
+    ["ملحوظة: تم أسترجاع مرتجع الفواتير فقط","E-pharmacy Plus","-","Page -1 of 1","Copyright B-Connect",46301,0.324386574,"وقت الطباعة"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, true);
+  assert.equal(result.invoices.length, 1);
+  assert.deepEqual(result.meta.invalid_invoice_rows, []);
+  assert.equal(result.invoices[0].supplier, "المتحدة المنصورة للتوزيع");
+  assert.equal(result.invoices[0].branch, "الادارة فرع شكري");
+});
