@@ -12,3 +12,17 @@ test("branch mismatch is a hard problem",()=>{const r=reconcilePurchaseInvoice({
 test("different program number is a hard conflict",()=>{const r=reconcilePurchaseInvoice(app,{...bc,serial:99999});assert.equal(r.status,"problem");assert.equal(r.identity,"conflict");});
 test("duplicate detection is global across branches",()=>{const d=findDuplicateProgramNumbers([app,{...app,id:"b",branch:"دواء الشامي"}]);assert.equal(d.length,1);assert.equal(d[0].key,"19527");assert.equal(d[0].count,2);});
 test("integer-like Excel numbers normalize into one global identity",()=>{const d=findDuplicateProgramNumbers([{system_invoice_number:"19527.0",branch:"دواء شكري"},{system_invoice_number:19527,branch:"دواء الشامي"}]);assert.equal(d.length,1);});
+
+test("invalid monetary input cannot produce a clean verdict",()=>{
+  for(const invalid of ["NaN","Infinity","-Infinity","not-a-number"]){
+    const result=reconcilePurchaseInvoice({...app,total_value:invalid},{...bc,invoice_value:411.483});
+    assert.equal(result.status,"review");
+    assert.equal(result.financial.comparable,false);
+    assert.equal(result.financial.difference,null);
+  }
+});
+test("missing financial evidence never becomes zero or clean",()=>{
+  const result=reconcilePurchaseInvoice({...app,total_value:null},{...bc,invoice_value:0});
+  assert.equal(result.status,"review");
+  assert.equal(result.financial.difference,null);
+});
