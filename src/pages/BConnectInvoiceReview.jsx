@@ -48,43 +48,41 @@ export default function BConnectInvoiceReview() {
     try {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
-      const dates = parsed.invoices.map((r) => String(r.date || '').slice(0, 10)).filter(Boolean).sort();
-      // Date is used only to limit the read window, never as a hard identity requirement.
       const numbers = [...new Set(parsed.invoices.map((r) => String(r.serial || '').trim()).filter(Boolean))];
-      let globalGate = null;
-      try {
-        const checked = await performanceApi.bconnectInvoiceNumbers(numbers);
-        const payload = checked?.data ?? checked;
-        if (Array.isArray(payload)) globalGate = new Map(payload.map((x) => [String(x.number), x]));
-      } catch {
-        globalGate = null;
-      }
-      const appRows = await loadAppInvoices(shiftDate(dates[0], -7), shiftDate(dates[dates.length - 1], 1));
-      const appByNumber = new Map();
-      appRows.forEach((r) => {
-        const key = String(r.system_invoice_number || '').trim();
-        if (!key) return;
-        const list = appByNumber.get(key) || [];
-        list.push(r); appByNumber.set(key, list);
-      });
-      const globalCounts = new Map();
-      appRows.forEach((r) => { const key = String(r.system_invoice_number || '').trim(); if (key) globalCounts.set(key, (globalCounts.get(key) || 0) + 1); });
+      // Global lookup is the only authority for uniqueness and matching.
+      // Never fall back to a date-limited scan: failure must fail closed.
+      const checked = await performanceApi.bconnectInvoiceNumbers(numbers);
+      if (!Array.isArray(checked)) throw new Error('تعذر التحقق العالمي من أرقام الفواتير؛ لم يتم إصدار أحكام.');
+      const globalGate = new Map(checked.map((x) => [String(x.number), x]));
       const fileCounts = new Map();
-      parsed.invoices.forEach((r) => { const key = String(r.serial || '').trim(); if (key) fileCounts.set(key, (fileCounts.get(key) || 0) + 1); });
+      parsed.invoices.forEach((r) => {
+        const key = String(r.serial || '').trim();
+        if (key) fileCounts.set(key, (fileCounts.get(key) || 0) + 1);
+      });
       const rows = parsed.invoices.map((b) => {
         const number = String(b.serial || '').trim();
-        const candidates = appByNumber.get(number) || [];
-        const gate = globalGate?.get(number);
-        const gateRows = Array.isArray(gate?.rows) ? gate.rows : [];
-        const effectiveCandidates = gateRows.length ? gateRows : candidates;
-        if (globalGate && Number(gate?.record_count || 0) === 0) return { number, bconnect: b, app: null, status: 'problem', identity: 'missing', reasons: ['الفاتورة موجودة في B-Connect وغير موجودة في التطبيق.'], financial: { difference: null } };
-        if (!effectiveCandidates.length) return { number, bconnect: b, app: null, status: 'problem', identity: 'missing', reasons: ['الفاتورة موجودة في B-Connect ولا يوجد لها سجل مقابل في قراءة التطبيق الحالية.'], financial: { difference: null } };
-        if ((fileCounts.get(number) || 0) > 1) return { number, bconnect: b, app: null, status: 'problem', identity: 'duplicate_bconnect', reasons: ['رقم الفاتورة مكرر داخل ملف B-Connect؛ تم منعه من المطابقة والحفظ.'], financial: { difference: null } };
-        if (candidates.length > 1 || (globalCounts.get(number) || 0) > 1) return { number, bconnect: b, app: null, status: 'problem', identity: 'duplicate_app', reasons: ['رقم الفاتورة له أكثر من سجل في التطبيق؛ تم منعه من المطابقة والحفظ.'], financial: { difference: null } };
-        const result = reconcilePurchaseInvoice(candidates[0], b);
-        return { number, bconnect: b, app: candidates[0], ...result };
+        const gate = globalGate.get(number);
+        const recordCount = Number(gate?.record_count);
+        const authorizedRows = Array.isArray(gate?.rows) ? gate.rows : [];
+        const problem = (identity, reason) => ({
+          number, bconnect: b, app: null, status: 'problem', identity,
+          reasons: [reason], financial: { difference: null },
+        });
+        if (!gate || !Number.isSafeInteger(recordCount) || recordCount < 0)
+          return problem('unverified', 'التحقق العالمي غير مكتمل لهذا الرقم؛ ممنوع اعتماد الفاتورة.');
+        if ((fileCounts.get(number) || 0) > 1)
+          return problem('duplicate_bconnect', 'رقم الفاتورة مكرر داخل ملف B-Connect.');
+        if (recordCount > 1)
+          return problem('duplicate_app', 'رقم الفاتورة مكرر عالميًا في التطبيق؛ ممنوع الاعتماد.');
+        if (recordCount === 0)
+          return problem('missing', 'الفاتورة غير موجودة في التطبيق.');
+        if (authorizedRows.length !== 1)
+          return problem('unauthorized_or_incomplete', 'الفاتورة موجودة لكن تفاصيلها غير متاحة أو غير مكتملة ضمن صلاحياتك.');
+        const app = authorizedRows[0];
+        const result = reconcilePurchaseInvoice(app, b);
+        return { number, bconnect: b, app, ...result };
       });
-      setState({ loading: false, error: '', fileName: file.name, rows, meta: { ...parsed.meta, app_count: appRows.length, global_gate: Boolean(globalGate) } });
+      setState({ loading: false, error: '', fileName: file.name, rows, meta: { ...parsed.meta, global_gate: true } });
     } catch (error) {
       setState({ loading: false, error: error?.message || 'تعذر مراجعة الملف.', fileName: file.name, rows: [], meta: null });
     }
