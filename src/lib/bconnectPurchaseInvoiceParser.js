@@ -101,6 +101,7 @@ export function parseBConnectRows(rows) {
   let payment_type = null;
   let header = null;
   let headerCount = 0;
+  const unrecognizedRows = [];
 
   for (let i = 0; i < rows.length; i += 1) {
     const row = Array.isArray(rows[i]) ? rows[i] : [];
@@ -156,6 +157,11 @@ export function parseBConnectRows(rows) {
       ) {
         supplier = nonEmpty[0];
       }
+      // A populated row inside an invoice table that is neither a known
+      // structural label nor a valid invoice must not disappear silently.
+      if (header && !payment && !branchCandidate && nonEmpty.length > 1) {
+        unrecognizedRows.push(i + 1);
+      }
       continue;
     }
 
@@ -178,15 +184,16 @@ export function parseBConnectRows(rows) {
     });
   }
 
+  if (unrecognizedRows.length) warnings.push(`صفوف غير معروفة داخل التقرير: ${unrecognizedRows.join("، ")}. راجع بنية الملف قبل الاعتماد.`);
   if (invalidInvoiceRows.length) warnings.push(`صفوف فواتير ذات قيم غير صالحة: ${invalidInvoiceRows.join("، ")}. لا يمكن اعتماد الملف قبل تصحيحها.`);
   if (!headerCount) warnings.push("لم يتم العثور على رأس جدول فواتير B-Connect المعتمد.");
   if (!invoices.length) warnings.push("لم يتم العثور على أي صف فاتورة صالح.");
 
   return {
-    valid: headerCount > 0 && invoices.length > 0 && invalidInvoiceRows.length === 0,
+    valid: headerCount > 0 && invoices.length > 0 && invalidInvoiceRows.length === 0 && unrecognizedRows.length === 0,
     invoices,
     warnings,
-    meta: { parser_version: BCONNECT_PARSER_VERSION, header_sections: headerCount, invoice_count: invoices.length, invalid_invoice_rows: invalidInvoiceRows },
+    meta: { parser_version: BCONNECT_PARSER_VERSION, header_sections: headerCount, invoice_count: invoices.length, invalid_invoice_rows: invalidInvoiceRows, unrecognized_rows: unrecognizedRows },
   };
 }
 
