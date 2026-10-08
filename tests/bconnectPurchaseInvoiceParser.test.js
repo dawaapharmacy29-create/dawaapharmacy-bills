@@ -111,3 +111,23 @@ test("whitespace-only amount is invalid, never a zero-valued invoice", () => {
   assert.equal(result.valid,false);
   assert.deepEqual(result.meta.invalid_invoice_rows,[2]);
 });
+
+
+test("real B-Connect subtotal rows with numeric serial-position totals are not corrupt invoices", () => {
+  const H = ["المستخدم","الصافى","ض.إضافة","مصاريف","خصم %","خصم قيمة","ق.المرتجع","ق.الفاتورة","العدد","مسلسل","التاريخ"];
+  const subtotal = (amount, label) => [amount,0,0,0,0,amount,label,"إجمـــالى:",amount,"إجمالى المورد النهائى"];
+  const rows = [H,
+    ["د وائل",842.72,0,0,0,0,0,842.72,3,19526,"2026-10-06"],
+    subtotal(1254.203,"المتحدة المنصورة للتوزيع"),
+    subtotal(1424.18,"دواء الشامي"),
+    subtotal(24,"صيدليات"),
+    subtotal(484,"فارما اوفر سيز"),
+    subtotal(3020,"مخزن الحياه"),
+    [6206.383,0,0,0,0,6206.383,11,"الإجمالى :",6206.383,"الإجمالى النهائى"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.meta.invalid_invoice_rows, []);
+  assert.equal(result.invoices.length, 1);
+  assert.equal(result.invoices[0].serial, "19526");
+});
