@@ -30,7 +30,13 @@ export default function BConnectInvoiceReview() {
       // Never fall back to a date-limited scan: failure must fail closed.
       const checked = await performanceApi.bconnectInvoiceNumbers(numbers);
       if (!Array.isArray(checked)) throw new Error('تعذر التحقق العالمي من أرقام الفواتير؛ لم يتم إصدار أحكام.');
-      const globalGate = new Map(checked.map((x) => [normalizeInvoiceNumber(x.number), x]));
+      const pairs = checked.map((entry) => [normalizeInvoiceNumber(entry?.number), entry]);
+      const returned = pairs.map(([number]) => number);
+      if (returned.length !== numbers.length || new Set(returned).size !== returned.length ||
+          returned.some((number) => !number || !numbers.includes(number))) {
+        throw new Error('نتيجة البحث العالمي ناقصة أو متعارضة؛ لا يمكن اعتماد المطابقة.');
+      }
+      const globalGate = new Map(pairs);
       const fileCounts = new Map();
       parsed.invoices.forEach((r) => {
         const key = normalizeInvoiceNumber(r.serial);
