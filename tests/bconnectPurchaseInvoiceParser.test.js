@@ -73,3 +73,17 @@ test("supplier names that look like branches never overwrite branch context", ()
   assert.equal(result.invoices[0].supplier, "دواء الشامي");
   assert.equal(result.invoices[0].branch, "الادارة فرع شكري");
 });
+
+test("corrupt invoice amount blocks the whole report rather than disappearing", () => {
+  const rows = [
+    ["الادارة فرع شكري", "آجل"],
+    ["المستخدم","ق.الفاتورة","مسلسل","التاريخ"],
+    ["د وائل", 100, 19526, "2026-10-06"],
+    ["د وائل", "not-a-number", 19527, "2026-10-06"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, false);
+  assert.equal(result.invoices.length, 1);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [4]);
+  assert.ok(result.warnings.some((warning) => warning.includes("4")));
+});
