@@ -74,6 +74,13 @@ export default function BConnectInvoiceReview() {
         if (authorizedRows.length !== 1)
           return problem('unauthorized_or_incomplete', 'الفاتورة موجودة لكن تفاصيلها غير متاحة أو غير مكتملة ضمن صلاحياتك.');
         const app = authorizedRows[0];
+        // A single visible entry is not sufficient evidence if the RPC payload
+        // omits the underlying record identity or returns malformed details.
+        if (!app || typeof app !== 'object' || Array.isArray(app) ||
+            !app.id || !normalizeInvoiceNumber(app.system_invoice_number) ||
+            normalizeInvoiceNumber(app.system_invoice_number) !== number) {
+          return problem('unverified', 'تفاصيل الفاتورة المرجعية غير مكتملة أو رقمها متعارض؛ ممنوع الاعتماد.');
+        }
         const result = reconcilePurchaseInvoice(app, b);
         return { number, bconnect: b, app, ...result };
       });
