@@ -18,8 +18,36 @@ begin
   order by s.created_at desc limit 1;
   if not found then return jsonb_build_object('ok',false,'error','invalid_session'); end if;
 
+  if coalesce(array_length(p_numbers,1),0) > 500 then
+    return jsonb_build_object('ok',false,'error','too_many_invoice_numbers');
+  end if;
+
   with wanted as (
-    select distinct trim(x) number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+    select distinct regexp_replace(trim(x), '\\.0+
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
   ), global_counts as (
     select trim(p.system_invoice_number) number,count(*)::int record_count
     from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
@@ -29,6 +57,2530 @@ begin
     select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
            p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
     from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select trim(p.system_invoice_number) number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number from unnest(coalesce(p_numbers,array[]::text[])) x where trim(x)<>''
+  ), global_counts as (
+    select regexp_replace(trim(p.system_invoice_number), '\\.0+ number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by trim(p.system_invoice_number)
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') number,count(*)::int record_count
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+    group by regexp_replace(trim(p.system_invoice_number), '\\.0+
+  ), visible as (
+    select p.id,trim(p.system_invoice_number) system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+  ), visible as (
+    select p.id,regexp_replace(trim(p.system_invoice_number), '\\.0+ system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=trim(coalesce(p.system_invoice_number,''))
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '') system_invoice_number,p.branch,p.supplier_name,p.invoice_date,
+           p.total_value,p.workflow_status,p.status,p.created_at,p.updated_at
+    from public.purchase_invoices p join wanted w on w.number=regexp_replace(trim(coalesce(p.system_invoice_number,'')), '\\.0+
+    where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
+      and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
+  ), packed as (
+    select w.number,coalesce(g.record_count,0) record_count,
+      coalesce((select jsonb_agg(to_jsonb(v) order by v.created_at) from visible v where v.system_invoice_number=w.number),'[]'::jsonb) rows
+    from wanted w left join global_counts g on g.number=w.number
+  )
+  select coalesce(jsonb_agg(to_jsonb(packed) order by number),'[]'::jsonb) into v_rows from packed;
+
+  return jsonb_build_object('ok',true,'data',v_rows,'scope','global_count_authorized_details');
+end; $$;
+
+revoke all on function public.app_bconnect_invoice_number_check(text,text[]) from public;
+grant execute on function public.app_bconnect_invoice_number_check(text,text[]) to anon,authenticated,service_role;
+, '')
     where coalesce(p.is_sample,false)=false and coalesce(p.base44_sync_state,'active')='active'
       and (v_account.role='general_manager' or coalesce(v_account.branch_ids,'[]'::jsonb) ? p.branch)
   ), packed as (
