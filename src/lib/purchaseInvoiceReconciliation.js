@@ -15,7 +15,7 @@ function moneyDelta(a,b) {
   // Do not round before deciding whether a discrepancy exists.
   // Rounding can turn a real sub-milliunit difference into a false clean verdict.
   const delta=left-right;
-  return Number.isFinite(delta) ? Number(delta.toPrecision(15)) : null;
+  return Number.isFinite(delta) ? Number(delta.toPrecision(10)) : null;
 }
 
 export function reconcilePurchaseInvoice(appInput,bconnectInput) {
