@@ -72,7 +72,7 @@ function number(value) {
 function looksLikeInvoice(row, map) {
   const serial = row[map.serial];
   const value = row[map.invoice_value];
-  return text(serial) !== "" && number(serial) !== null && number(value) !== null;
+  return text(serial) !== "" && number(serial) !== null && number(value) !== null && parseExcelDate(row[map.date]) !== null;
 }
 
 export function parseBConnectRows(rows) {
