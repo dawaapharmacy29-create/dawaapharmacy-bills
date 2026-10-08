@@ -194,6 +194,18 @@ export function parseBConnectWorkbook(arrayBuffer) {
   const workbook = XLSX.read(arrayBuffer, { type: "array", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return { valid: false, invoices: [], warnings: ["الملف لا يحتوي على أي Sheet."], meta: {} };
+  // Never silently ignore additional populated worksheets: they may contain invoices.
+  const extraSheets = workbook.SheetNames.slice(1).filter((name) => {
+    const cells = workbook.Sheets[name];
+    return cells && Object.keys(cells).some((key) => !key.startsWith("!") && cells[key]?.v != null && String(cells[key].v).trim() !== "");
+  });
+  if (extraSheets.length) {
+    return {
+      valid: false, invoices: [],
+      warnings: [`الملف يحتوي على Sheets إضافية بها بيانات: ${extraSheets.join("، ")}. لا يمكن تجاهلها أثناء المطابقة؛ صدّر تقريرًا بورقة واحدة أو راجع الأوراق أولًا.`],
+      meta: { sheet_name: sheetName, additional_populated_sheets: extraSheets },
+    };
+  }
   const sheet = workbook.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
   const result = parseBConnectRows(rows);
