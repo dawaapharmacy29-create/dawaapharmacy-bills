@@ -64,8 +64,8 @@ function parseExcelDate(value) {
   if (!raw) return null;
   // B-Connect exports dates as YYYY-MM-DD or DD/MM/YYYY (optionally with time).
   // Reject arbitrary text: it is not evidence of a dated invoice.
-  const match = raw.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/)
-    || raw.match(/^(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/);
+  const match = raw.match(new RegExp('^([0-9]{4})[-/]([0-9]{1,2})[-/]([0-9]{1,2})(?:[ T]([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?)?$'))
+    || raw.match(new RegExp('^([0-9]{1,2})[-/]([0-9]{1,2})[-/]([0-9]{4})(?:[ T]([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?)?$'));
   if (!match) return null;
   const yearFirst = match[1].length === 4;
   const year = Number(yearFirst ? match[1] : match[3]);
