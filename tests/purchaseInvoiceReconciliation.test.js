@@ -26,3 +26,10 @@ test("missing financial evidence never becomes zero or clean",()=>{
   assert.equal(result.status,"review");
   assert.equal(result.financial.difference,null);
 });
+
+test("whitespace-only amounts remain missing rather than zero",()=>{
+  const result=reconcilePurchaseInvoice({...app,total_value:"   "},{...bc,invoice_value:0});
+  assert.equal(result.status,"review");
+  assert.equal(result.financial.comparable,false);
+  assert.equal(result.financial.difference,null);
+});
