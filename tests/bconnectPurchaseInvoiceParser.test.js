@@ -87,3 +87,27 @@ test("corrupt invoice amount blocks the whole report rather than disappearing", 
   assert.deepEqual(result.meta.invalid_invoice_rows, [4]);
   assert.ok(result.warnings.some((warning) => warning.includes("4")));
 });
+
+test("missing or invalid invoice serial blocks the report without treating subtotals as invoices", () => {
+  const rows = [
+    ["المستخدم","ق.الفاتورة","مسلسل","التاريخ"],
+    ["د وائل",100,19526,"2026-10-06"],
+    ["د وائل",200,null,"2026-10-06"],
+    ["د وائل",300,"not-a-serial","2026-10-06"],
+    [null,600,null,null],
+  ];
+  const result=parseBConnectRows(rows);
+  assert.equal(result.valid,false);
+  assert.equal(result.invoices.length,1);
+  assert.deepEqual(result.meta.invalid_invoice_rows,[3,4]);
+});
+
+test("whitespace-only amount is invalid, never a zero-valued invoice", () => {
+  const rows=[
+    ["المستخدم","ق.الفاتورة","مسلسل","التاريخ"],
+    ["د وائل","   ",19526,"2026-10-06"],
+  ];
+  const result=parseBConnectRows(rows);
+  assert.equal(result.valid,false);
+  assert.deepEqual(result.meta.invalid_invoice_rows,[2]);
+});
