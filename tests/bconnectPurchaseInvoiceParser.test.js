@@ -164,3 +164,28 @@ test("real report payment, branch, supplier and print footer rows are never invo
   assert.equal(result.invoices[0].supplier, "المتحدة المنصورة للتوزيع");
   assert.equal(result.invoices[0].branch, "الادارة فرع شكري");
 });
+
+
+test("invoice date must be a real calendar date, not arbitrary nonempty text", () => {
+  const H = ["المستخدم", "ق.الفاتورة", "مسلسل", "التاريخ"];
+  const rows = [H,
+    ["د وائل", 100, 19526, "2026-10-06 01:23:40"],
+    ["د وائل", 100, 19527, "تاريخ غير صالح"],
+    ["د وائل", 100, 19528, "2026-02-30"],
+    ["د وائل", 100, 19529, "2026-10-06 25:00:00"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, false);
+  assert.equal(result.invoices.length, 1);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [3,4,5]);
+});
+
+test("accepts day-first B-Connect dates with valid times", () => {
+  const rows = [
+    ["المستخدم", "ق.الفاتورة", "مسلسل", "التاريخ"],
+    ["د وائل", 100, 19526, "06/10/2026 01:23:40"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, true);
+  assert.equal(result.invoices[0].date, "06/10/2026 01:23:40");
+});
