@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { parseBConnectWorkbook } from '@/lib/bconnectPurchaseInvoiceParser';
 import { reconcilePurchaseInvoice } from '@/lib/purchaseInvoiceReconciliation';
+import { normalizeInvoiceNumber } from '@/lib/purchaseInvoiceTruth';
 
 const labels = { clean: 'سليم', review: 'راجعها', problem: 'مشكلة' };
 const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
@@ -24,21 +25,21 @@ export default function BConnectInvoiceReview() {
     try {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
-      const numbers = [...new Set(parsed.invoices.map((r) => String(r.serial || '').trim()).filter(Boolean))];
+      const numbers = [...new Set(parsed.invoices.map((r) => normalizeInvoiceNumber(r.serial)).filter(Boolean))];
       // Global lookup is the only authority for uniqueness and matching.
       // Never fall back to a date-limited scan: failure must fail closed.
       const checked = await performanceApi.bconnectInvoiceNumbers(numbers);
       if (!Array.isArray(checked)) throw new Error('تعذر التحقق العالمي من أرقام الفواتير؛ لم يتم إصدار أحكام.');
-      const globalGate = new Map(checked.map((x) => [String(x.number), x]));
+      const globalGate = new Map(checked.map((x) => [normalizeInvoiceNumber(x.number), x]));
       const fileCounts = new Map();
       parsed.invoices.forEach((r) => {
-        const key = String(r.serial || '').trim();
+        const key = normalizeInvoiceNumber(r.serial);
         if (key) fileCounts.set(key, (fileCounts.get(key) || 0) + 1);
       });
       const rows = parsed.invoices.map((b) => {
-        const number = String(b.serial || '').trim();
+        const number = normalizeInvoiceNumber(b.serial);
         const gate = globalGate.get(number);
-        const recordCount = Number(gate?.record_count);
+        const recordCount = gate?.record_count == null ? NaN : Number(gate.record_count);
         const authorizedRows = Array.isArray(gate?.rows) ? gate.rows : [];
         const problem = (identity, reason) => ({
           number, bconnect: b, app: null, status: 'problem', identity,
