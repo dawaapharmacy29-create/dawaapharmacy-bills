@@ -40,6 +40,7 @@ export function normalizeInvoiceNumber(value) {
 export function normalizeMoney(value) {
   if (value === null || value === undefined || value === "") return null;
   const cleaned = String(value).replace(/,/g, "").trim();
+  if (!cleaned) return null;
   const number = Number(cleaned);
   return Number.isFinite(number) ? number : null;
 }
