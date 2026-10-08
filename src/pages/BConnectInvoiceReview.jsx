@@ -26,6 +26,8 @@ export default function BConnectInvoiceReview() {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
       const numbers = [...new Set(parsed.invoices.map((r) => normalizeInvoiceNumber(r.serial)).filter(Boolean))];
+      if (numbers.length === 0) throw new Error('الملف لا يحتوي على أرقام فواتير صالحة للمراجعة.');
+      if (numbers.length > 500) throw new Error('الملف يحتوي على أكثر من 500 رقم فاتورة مختلف. قسّمه إلى ملفات أصغر قبل المراجعة.');
       // Global lookup is the only authority for uniqueness and matching.
       // Never fall back to a date-limited scan: failure must fail closed.
       const checked = await performanceApi.bconnectInvoiceNumbers(numbers);
