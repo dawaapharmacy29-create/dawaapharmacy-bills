@@ -12,8 +12,10 @@ function moneyDelta(a,b) {
   if (!known(a)||!known(b)) return null;
   const left=Number(a), right=Number(b);
   if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
-  const delta=Math.round((left-right)*1000)/1000;
-  return Number.isFinite(delta) ? delta : null;
+  // Do not round before deciding whether a discrepancy exists.
+  // Rounding can turn a real sub-milliunit difference into a false clean verdict.
+  const delta=left-right;
+  return Number.isFinite(delta) ? Number(delta.toPrecision(15)) : null;
 }
 
 export function reconcilePurchaseInvoice(appInput,bconnectInput) {
@@ -40,7 +42,7 @@ export function reconcilePurchaseInvoice(appInput,bconnectInput) {
   else if(checks.branch==="mismatch"){status="problem";reasons.push("رقم البرنامج موجود لكن الفرع مختلف؛ لا يجوز اعتماد المطابقة تلقائيًا.");}
   else if(!identitySufficient){reasons.push("الأدلة المتاحة غير كافية لإصدار حكم سليم تلقائيًا.");}
   else if(!financialComparable){reasons.push("الهوية مؤكدة لكن القيمة المالية غير متاحة في أحد المصدرين.");}
-  else if(!financialMatch){reasons.push(`الهوية مؤكدة لكن يوجد فرق مالي غير مفسر قدره ${Math.abs(totalDifference).toFixed(3)} ج.`);}
+  else if(!financialMatch){reasons.push(`الهوية مؤكدة لكن يوجد فرق مالي غير مفسر قدره ${Math.abs(totalDifference).toString()} ج.`);}
   else {status="clean";reasons.push("رقم الفاتورة والفرع متطابقان والقيمة المالية متطابقة.");
     if(checks.supplier==="mismatch") reasons.push("اسم المورد مختلف بين المصدرين ويُعرض كدليل مساعد فقط.");
     if(checks.invoice_date==="mismatch") reasons.push("التاريخ مختلف بين المصدرين ويُعرض كدليل مساعد فقط.");
