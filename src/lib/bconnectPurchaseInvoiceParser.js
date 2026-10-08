@@ -97,6 +97,11 @@ export function parseBConnectRows(rows) {
     const nonEmpty = row.map(text).filter(Boolean);
     if (!nonEmpty.length) continue;
 
+    // B-Connect subtotal/grand-total rows reuse numeric invoice columns. Their
+    // explicit total label must take precedence over invoice-candidate checks.
+    // Check the report's invoice-value column, not arbitrary supplier names.
+    if (header && /^(?:إجم[اأإـ]*ل[يى]|ال[اإ]جمال[يى])\s*:/u.test(text(row[header.invoice_value]))) continue;
+
     // A numeric invoice serial identifies a candidate even if its amount is corrupt.
     // Never silently discard it as a supplier/subtotal row.
     const hasSerial = header && text(row[header.serial]) !== "";
