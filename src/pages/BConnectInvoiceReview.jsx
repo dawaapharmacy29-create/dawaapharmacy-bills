@@ -10,7 +10,7 @@ import { normalizeInvoiceNumber } from '@/lib/purchaseInvoiceTruth';
 
 const labels = { clean: 'سليم', review: 'راجعها', problem: 'مشكلة' };
 const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
-const money = (v) => Number(v || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+const money = (v) => v == null || v === '' || !Number.isFinite(Number(v)) ? '—' : Number(v).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 
 export default function BConnectInvoiceReview() {
   const [state, setState] = useState({ loading: false, error: '', fileName: '', rows: [], meta: null });
@@ -95,7 +95,7 @@ export default function BConnectInvoiceReview() {
           <tbody>{visible.map((r, i) => { const Icon = icons[r.status]; return <tr key={r.number + '-' + i} className="border-b align-top">
             <td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
             <td className="p-3 font-mono font-bold">{r.number}</td><td className="p-3">{r.bconnect?.supplier || '—'}</td>
-            <td className="p-3">{money(r.bconnect?.invoice_value)} ج</td><td className="p-3">{r.app ? money(r.app.total_value) + ' ج' : '—'}</td>
+            <td className="p-3">{money(r.bconnect?.invoice_value)}{money(r.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="p-3">{r.app ? money(r.app.total_value) + ' ج' : '—'}</td>
             <td className="p-3">{r.financial?.difference == null ? '—' : money(r.financial.difference) + ' ج'}</td>
             <td className="max-w-[420px] p-3 text-xs leading-6 text-gray-600">{(r.reasons || []).join(' ')}</td>
           </tr>; })}{!visible.length && <tr><td colSpan={7} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
