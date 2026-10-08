@@ -60,7 +60,24 @@ function parseExcelDate(value) {
       return `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)} ${pad(parsed.H)}:${pad(parsed.M)}:${pad(parsed.S)}`;
     }
   }
-  return text(value) || null;
+  const raw = text(value);
+  if (!raw) return null;
+  // B-Connect exports dates as YYYY-MM-DD or DD/MM/YYYY (optionally with time).
+  // Reject arbitrary text: it is not evidence of a dated invoice.
+  const match = raw.match(/^(\\d{4})[-/](\\d{1,2})[-/](\\d{1,2})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/)
+    || raw.match(/^(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})(?:[ T](\\d{1,2}):(\\d{2})(?::(\\d{2}))?)?$/);
+  if (!match) return null;
+  const yearFirst = match[1].length === 4;
+  const year = Number(yearFirst ? match[1] : match[3]);
+  const month = Number(match[2]);
+  const day = Number(yearFirst ? match[3] : match[1]);
+  const hour = Number(match[4] || 0);
+  const minute = Number(match[5] || 0);
+  const second = Number(match[6] || 0);
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 ||
+      date.getUTCDate() !== day || hour > 23 || minute > 59 || second > 59) return null;
+  return raw;
 }
 
 function number(value) {
