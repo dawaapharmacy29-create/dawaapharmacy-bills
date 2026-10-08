@@ -120,6 +120,9 @@ export function parseBConnectRows(rows) {
     // Check the report's invoice-value column, not arbitrary supplier names.
     if (header && /^(?:إجم[اأإـ]*ل[يى]|ال[اإ]جمال[يى])\s*:/u.test(text(row[header.invoice_value]))) continue;
 
+    // B-Connect print footer carries numeric timestamps in unrelated columns.
+    if (nonEmpty.some((v) => /^(?:ملحوظة:|Page -|Copyright B-Connect|وقت الطباعة)/u.test(v))) continue;
+
     // A numeric invoice serial identifies a candidate even if its amount is corrupt.
     // Never silently discard it as a supplier/subtotal row.
     const hasSerial = header && text(row[header.serial]) !== "";
