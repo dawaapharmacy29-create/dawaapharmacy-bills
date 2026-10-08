@@ -59,6 +59,8 @@ export default function BConnectInvoiceReview() {
           return problem('duplicate_bconnect', 'رقم الفاتورة مكرر داخل ملف B-Connect.');
         if (recordCount > 1)
           return problem('duplicate_app', 'رقم الفاتورة مكرر عالميًا في التطبيق؛ ممنوع الاعتماد.');
+        if (recordCount === 0 && authorizedRows.length !== 0)
+          return problem('unverified', 'استجابة البحث متعارضة: لا توجد سجلات عالميًا لكن ظهرت تفاصيل؛ ممنوع الاعتماد.');
         if (recordCount === 0)
           return problem('missing', 'الفاتورة غير موجودة في التطبيق.');
         if (authorizedRows.length !== 1)
