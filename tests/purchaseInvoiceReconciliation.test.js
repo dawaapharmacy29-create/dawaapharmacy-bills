@@ -33,3 +33,17 @@ test("whitespace-only amounts remain missing rather than zero",()=>{
   assert.equal(result.financial.comparable,false);
   assert.equal(result.financial.difference,null);
 });
+
+test("sub-milliunit differences cannot be rounded into a clean verdict",()=>{
+  const result=reconcilePurchaseInvoice({...app,total_value:100},{...bc,invoice_value:100.0004});
+  assert.equal(result.status,"review");
+  assert.equal(result.financial.comparable,true);
+  assert.ok(result.financial.difference>0);
+  assert.ok(result.reasons.some(reason=>reason.includes("0.0004")));
+});
+
+test("identical monetary values remain clean after precision fix",()=>{
+  const result=reconcilePurchaseInvoice({...app,total_value:100.0004},{...bc,invoice_value:100.0004});
+  assert.equal(result.status,"clean");
+  assert.equal(result.financial.difference,0);
+});
