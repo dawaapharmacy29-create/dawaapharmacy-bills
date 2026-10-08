@@ -78,6 +78,7 @@ function looksLikeInvoice(row, map) {
 export function parseBConnectRows(rows) {
   const invoices = [];
   const warnings = [];
+  const invalidInvoiceRows = [];
   let supplier = null;
   let branch = null;
   let payment_type = null;
@@ -95,6 +96,13 @@ export function parseBConnectRows(rows) {
 
     const nonEmpty = row.map(text).filter(Boolean);
     if (!nonEmpty.length) continue;
+
+    // A numeric invoice serial identifies a candidate even if its amount is corrupt.
+    // Never silently discard it as a supplier/subtotal row.
+    if (header && text(row[header.serial]) && number(row[header.serial]) !== null && !looksLikeInvoice(row, header)) {
+      invalidInvoiceRows.push(i + 1);
+      continue;
+    }
 
     // Supplier/branch/payment labels occur outside invoice tables in the B-Connect report.
     if (!header || !looksLikeInvoice(row, header)) {
@@ -146,14 +154,15 @@ export function parseBConnectRows(rows) {
     });
   }
 
+  if (invalidInvoiceRows.length) warnings.push(`صفوف فواتير ذات قيم غير صالحة: ${invalidInvoiceRows.join("، ")}. لا يمكن اعتماد الملف قبل تصحيحها.`);
   if (!headerCount) warnings.push("لم يتم العثور على رأس جدول فواتير B-Connect المعتمد.");
   if (!invoices.length) warnings.push("لم يتم العثور على أي صف فاتورة صالح.");
 
   return {
-    valid: headerCount > 0 && invoices.length > 0,
+    valid: headerCount > 0 && invoices.length > 0 && invalidInvoiceRows.length === 0,
     invoices,
     warnings,
-    meta: { parser_version: BCONNECT_PARSER_VERSION, header_sections: headerCount, invoice_count: invoices.length },
+    meta: { parser_version: BCONNECT_PARSER_VERSION, header_sections: headerCount, invoice_count: invoices.length, invalid_invoice_rows: invalidInvoiceRows },
   };
 }
 
