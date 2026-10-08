@@ -11,30 +11,6 @@ const labels = { clean: 'سليم', review: 'راجعها', problem: 'مشكلة
 const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
 const money = (v) => Number(v || 0).toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 
-function shiftDate(value, days) {
-  if (!value) return null;
-  const date = new Date(`${value}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-async function loadAppInvoices(dateFrom, dateTo) {
-  const rows = [];
-  let page = 1;
-  while (true) {
-    const result = await performanceApi.invoices({
-      page, page_size: 200, branch: 'all', workflow_status: 'all', payment_type: 'all',
-      purchase_category: 'all', date_from: dateFrom || null, date_to: dateTo || null,
-      sort_by: 'system_invoice_number', sort_direction: 'asc',
-    });
-    const batch = Array.isArray(result?.rows) ? result.rows : [];
-    rows.push(...batch);
-    if (!batch.length || page >= Number(result?.total_pages || 1)) break;
-    page += 1;
-  }
-  return rows;
-}
-
 export default function BConnectInvoiceReview() {
   const [state, setState] = useState({ loading: false, error: '', fileName: '', rows: [], meta: null });
   const [problemsOnly, setProblemsOnly] = useState(true);
