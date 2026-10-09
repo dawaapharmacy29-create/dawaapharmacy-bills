@@ -49,6 +49,16 @@ BEGIN
   IF v_denied->>'error' IS DISTINCT FROM 'invalid_request' THEN
     RAISE EXCEPTION 'mixed_field_patch_not_rejected: %',v_denied;
   END IF;
+  v_denied := public.bconnect_atomic_edit_v1(v_token,'test_atomic_edit_missing01',
+    'invoice-does-not-exist',1,'{"notes":"not found"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'not_found' THEN
+    RAISE EXCEPTION 'missing_invoice_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1(v_token,'test_atomic_edit_badtype01',
+    v_id,v_revision,'{"notes":123}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'invalid_request' THEN
+    RAISE EXCEPTION 'numeric_notes_not_rejected: %',v_denied;
+  END IF;
   -- Verify actual server-side branch, role, ownership and workflow gates.
   v_denied := public.bconnect_atomic_edit_v1('fixture-other-token','test_atomic_edit_other01',
     'fixture-owned-draft',1,'{"notes":"cross branch"}'::jsonb);
