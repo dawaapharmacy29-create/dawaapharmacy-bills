@@ -216,6 +216,14 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (prefill && (!form.supplier_id || !suppliers.some((supplier) => supplier.id === form.supplier_id && supplier.name === form.supplier_name))) {
+      setDupError("يجب تأكيد المورد من سجل الموردين قبل حفظ فاتورة B-Connect");
+      return;
+    }
+    if (prefill && (!String(form.system_invoice_number || "").trim() || !String(form.invoice_date || "").trim() || form.total_value === "" || !Number.isFinite(Number(form.total_value)) || Number(form.total_value) < 0 || !Number.isFinite(Number(form.returned_value || 0)) || Number(form.returned_value || 0) < 0 || Number(form.returned_value || 0) > Number(form.total_value))) {
+      setDupError("راجع رقم الفاتورة والتاريخ والإجمالي والمرتجع قبل الحفظ");
+      return;
+    }
     if (!form.branch) {
       setDupError("يجب اختيار الفرع");
       return;
