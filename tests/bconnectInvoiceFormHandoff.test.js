@@ -48,3 +48,11 @@ test('missing invoice with absent or impossible financial values cannot open pre
  }
  assert.equal(buildBConnectFormHandoff({number:'19522',identity:'missing',bconnect:{...bconnect,return_value:200}}),null);
 });
+
+
+test('rejects impossible calendar dates rather than silently pre-filling them', () => {
+ for (const date of ['31/02/2026', '2026-13-01', '29/02/2025', '2026-00-10']) {
+   assert.equal(buildBConnectFormHandoff({number:'19522',identity:'missing',bconnect:{...bconnect,date}}),null);
+ }
+ assert.equal(buildBConnectFormHandoff({number:'19522',identity:'missing',bconnect:{...bconnect,date:'29/02/2024'}}).proposed.invoice_date,'2024-02-29');
+});
