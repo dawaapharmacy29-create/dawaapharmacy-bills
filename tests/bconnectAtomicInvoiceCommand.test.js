@@ -54,3 +54,13 @@ test('edit tokens are trimmed and whitespace-only revisions are rejected', () =>
   assert.equal(command.expected_revision, 'rev-2');
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: 'invoice-1', expectedRevision: '   ' }), /missing_revision/);
 });
+
+test('rejects missing invoice payload and invalid cash amounts', () => {
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create' }), /invalid_invoice_payload/);
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: [] }), /invalid_invoice_payload/);
+  for (const cash_amount of [-1, 91, 'not-money']) {
+    assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, cash_amount } }), /invalid_cash_amount/);
+  }
+  const command = prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, cash_amount: '25.50' } });
+  assert.equal(command.invoice.cash_amount, 25.5);
+});
