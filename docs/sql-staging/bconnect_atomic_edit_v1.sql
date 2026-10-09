@@ -56,14 +56,14 @@ BEGIN
   FROM jsonb_object_keys(p_patch) AS key;
   IF v_unknown THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_request'); END IF;
 
-  -- Validate JSON types before authentication/locking. Null is allowed only on nullable metadata fields.
+  -- Nullable monetary evidence remains NULL unless the reviewer explicitly changes it.
   IF (p_patch ? 'system_invoice_number' AND jsonb_typeof(p_patch->'system_invoice_number') <> 'string')
      OR (p_patch ? 'branch' AND jsonb_typeof(p_patch->'branch') <> 'string')
      OR (p_patch ? 'supplier_id' AND jsonb_typeof(p_patch->'supplier_id') <> 'string')
      OR (p_patch ? 'supplier_name' AND jsonb_typeof(p_patch->'supplier_name') <> 'string')
      OR (p_patch ? 'invoice_date' AND jsonb_typeof(p_patch->'invoice_date') <> 'string')
      OR (p_patch ? 'total_value' AND jsonb_typeof(p_patch->'total_value') NOT IN ('number','string'))
-     OR (p_patch ? 'returned_value' AND jsonb_typeof(p_patch->'returned_value') NOT IN ('number','string'))
+     OR (p_patch ? 'returned_value' AND jsonb_typeof(p_patch->'returned_value') NOT IN ('number','string','null'))
      OR (p_patch ? 'cash_amount' AND jsonb_typeof(p_patch->'cash_amount') NOT IN ('number','string','null'))
   THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_request'); END IF;
 
@@ -85,7 +85,6 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
   END IF;
 
-  -- Serialize the idempotency key before inspecting the ledger.
   PERFORM pg_advisory_xact_lock(hashtextextended(p_operation_id, 0));
   v_hash := encode(digest(
     jsonb_build_object('invoice_id',p_invoice_id,'revision',p_expected_revision,'patch',p_patch)::text,
@@ -118,7 +117,6 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'stale_revision');
   END IF;
 
-  -- Build and validate the effective snapshot on the locked row.
   BEGIN
     v_number := public.bconnect_canonical_invoice_number_v1(
       CASE WHEN p_patch ? 'system_invoice_number' THEN p_patch->>'system_invoice_number' ELSE v_current.system_invoice_number END);
@@ -128,9 +126,12 @@ BEGIN
     v_date_text := CASE WHEN p_patch ? 'invoice_date' THEN p_patch->>'invoice_date' ELSE to_char(v_current.invoice_date,'YYYY-MM-DD') END;
     v_invoice_date := v_date_text::date;
     v_total := CASE WHEN p_patch ? 'total_value' THEN (p_patch->>'total_value')::numeric ELSE v_current.total_value END;
-    v_returned := CASE WHEN p_patch ? 'returned_value' THEN (p_patch->>'returned_value')::numeric ELSE v_current.returned_value END;
+    v_returned := CASE
+      WHEN p_patch ? 'returned_value' AND jsonb_typeof(p_patch->'returned_value') = 'null' THEN NULL
+      WHEN p_patch ? 'returned_value' THEN (p_patch->>'returned_value')::numeric
+      ELSE v_current.returned_value END;
     v_cash := CASE
-      WHEN p_patch ? 'cash_amount' AND jsonb_typeof(p_patch->'cash_amount') = 'null' THEN 0
+      WHEN p_patch ? 'cash_amount' AND jsonb_typeof(p_patch->'cash_amount') = 'null' THEN NULL
       WHEN p_patch ? 'cash_amount' THEN (p_patch->>'cash_amount')::numeric
       ELSE v_current.cash_amount END;
   EXCEPTION WHEN others THEN
@@ -140,20 +141,19 @@ BEGIN
   IF v_number IS NULL OR v_number !~ '^[0-9]+$' OR v_number !~ '[1-9]'
      OR v_branch NOT IN ('دواء شكري','دواء الشامي')
      OR v_supplier_id IS NULL OR v_supplier_id = '' OR v_supplier_name IS NULL OR v_supplier_name = ''
-     OR v_date_text !~ '^\d{4}-\d{2}-\d{2}$'
+     OR v_date_text !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
      OR to_char(v_invoice_date,'YYYY-MM-DD') <> v_date_text
-     OR v_total IS NULL OR v_total < 0 OR v_returned IS NULL OR v_returned < 0 OR v_returned > v_total
-     OR v_cash IS NULL OR v_cash < 0 OR v_cash > v_total - v_returned
+     OR v_total IS NULL OR v_total < 0
+     OR (v_returned IS NOT NULL AND (v_returned < 0 OR v_returned > v_total))
+     OR (v_cash IS NOT NULL AND (v_cash < 0 OR v_cash > v_total - COALESCE(v_returned,0)))
   THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_invoice'); END IF;
 
-  -- Supplier identity must resolve to one real supplier row; Excel cannot forge it.
   IF NOT EXISTS (
     SELECT 1 FROM public.suppliers s
     WHERE s.id = v_supplier_id AND btrim(s.name) = v_supplier_name
       AND COALESCE(s.is_sample,false) = false
   ) THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_supplier'); END IF;
 
-  -- Reconciliation edit never changes invoice identity. This keeps legacy collision cases fail-closed.
   IF public.bconnect_canonical_invoice_number_v1(v_current.system_invoice_number) IS DISTINCT FROM v_number
      OR v_current.branch IS DISTINCT FROM v_branch THEN
     RETURN jsonb_build_object('ok', false, 'error', 'identity_change_forbidden');
@@ -183,12 +183,12 @@ BEGIN
     exclusion_reason = CASE WHEN p_patch ? 'exclusion_reason' THEN p_patch->>'exclusion_reason' ELSE exclusion_reason END,
     exclusion_note = CASE WHEN p_patch ? 'exclusion_note' THEN p_patch->>'exclusion_note' ELSE exclusion_note END,
     source_branch = CASE WHEN p_patch ? 'source_branch' THEN p_patch->>'source_branch' ELSE source_branch END,
-    destination_branch = CASE WHEN p_patch ? 'destination_branch' THEN p_patch->>'destination_branch' ELSE destination_branch END
+    destination_branch = CASE WHEN p_patch ? 'destination_branch' THEN p_patch->>'destination_branch' ELSE destination_branch END,
+    updated_at = now()
   WHERE id = p_invoice_id
   RETURNING bconnect_revision_v1 INTO v_actual_revision;
 
-  v_result := jsonb_build_object('ok',true,'invoice_id',p_invoice_id,
-    'revision',v_actual_revision);
+  v_result := jsonb_build_object('ok',true,'invoice_id',p_invoice_id,'revision',v_actual_revision);
   INSERT INTO public.bconnect_invoice_operations_v1
     (operation_id,request_hash,invoice_id,result,actor_id)
   VALUES (p_operation_id,v_hash,p_invoice_id,v_result,(v_account->>'id')::uuid);
