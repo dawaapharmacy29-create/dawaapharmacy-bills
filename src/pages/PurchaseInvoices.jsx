@@ -251,7 +251,7 @@ export default function PurchaseInvoices() {
       else createMutation.mutate(formData);
       return;
     }
-    if (handoffSaving) return;
+    if (handoffSaving || createMutation.isPending || updateMutation.isPending) return;
     setHandoffSaving(true);
     setHandoffWriteWarning("");
     try {
