@@ -43,7 +43,7 @@ test("sub-milliunit differences cannot be rounded into a clean verdict",()=>{
 });
 
 test("identical monetary values remain clean after precision fix",()=>{
-  const result=reconcilePurchaseInvoice({...app,total_value:100.0004},{...bc,invoice_value:100.0004});
+  const result=reconcilePurchaseInvoice({...app,total_value:100.0004,invoice_date:"2026-10-06"},{...bc,invoice_value:100.0004});
   assert.equal(result.status,"clean");
   assert.equal(result.financial.difference,0);
 });
