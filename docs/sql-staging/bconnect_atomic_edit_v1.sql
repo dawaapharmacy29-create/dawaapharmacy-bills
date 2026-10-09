@@ -1,6 +1,6 @@
 -- STAGING-ONLY PROTOTYPE. Never run on the production project.
 -- Requires bconnect_atomic_foundation_v1.sql and synthetic invoice fixtures.
--- Edit-only on purpose: create is blocked until invoice-number policy is approved.
+-- Edit-only on purpose: create remains blocked until branch-scoped uniqueness can be enforced safely.
 BEGIN;
 DO $$
 BEGIN
@@ -26,17 +26,74 @@ DECLARE
   v_hash text;
   v_existing public.bconnect_invoice_operations_v1%ROWTYPE;
   v_result jsonb;
-  v_notes text;
   v_actual_revision bigint;
+  v_number text;
+  v_branch text;
+  v_supplier_id text;
+  v_supplier_name text;
+  v_invoice_date date;
+  v_total numeric;
+  v_returned numeric;
+  v_cash numeric;
+  v_unknown boolean;
 BEGIN
   IF p_operation_id IS NULL OR p_operation_id !~ '^[A-Za-z0-9_-]{16,128}$'
      OR p_invoice_id IS NULL OR btrim(p_invoice_id) = ''
      OR p_expected_revision IS NULL OR p_expected_revision < 1
      OR p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object'
-     OR (SELECT count(*) FROM jsonb_object_keys(p_patch)) <> 1
-     OR NOT p_patch ? 'notes'
-     OR jsonb_typeof(p_patch->'notes') NOT IN ('string', 'null')
   THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_request'); END IF;
+
+  SELECT COALESCE(bool_or(key <> ALL (ARRAY[
+    'system_invoice_number','branch','supplier_id','supplier_name','invoice_date',
+    'total_value','returned_value','cash_amount','supplier_invoice_number','payment_type','notes',
+    'purchase_category','purchase_category_source','transaction_type','net_purchase_mode',
+    'exclusion_reason','exclusion_note','source_branch','destination_branch'
+  ])), false)
+  INTO v_unknown
+  FROM jsonb_object_keys(p_patch) AS key;
+  IF v_unknown THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_request'); END IF;
+
+  -- Core source-backed fields are required as a complete reviewed snapshot.
+  IF NOT (p_patch ?& ARRAY['system_invoice_number','branch','supplier_id','supplier_name','invoice_date','total_value','returned_value'])
+     OR jsonb_typeof(p_patch->'system_invoice_number') <> 'string'
+     OR jsonb_typeof(p_patch->'branch') <> 'string'
+     OR jsonb_typeof(p_patch->'supplier_id') <> 'string'
+     OR jsonb_typeof(p_patch->'supplier_name') <> 'string'
+     OR jsonb_typeof(p_patch->'invoice_date') <> 'string'
+     OR jsonb_typeof(p_patch->'total_value') NOT IN ('number','string')
+     OR jsonb_typeof(p_patch->'returned_value') NOT IN ('number','string')
+  THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_request'); END IF;
+
+  BEGIN
+    v_number := public.bconnect_canonical_invoice_number_v1(p_patch->>'system_invoice_number');
+    v_branch := btrim(p_patch->>'branch');
+    v_supplier_id := btrim(p_patch->>'supplier_id');
+    v_supplier_name := btrim(p_patch->>'supplier_name');
+    v_invoice_date := (p_patch->>'invoice_date')::date;
+    v_total := (p_patch->>'total_value')::numeric;
+    v_returned := (p_patch->>'returned_value')::numeric;
+    IF p_patch ? 'cash_amount' AND jsonb_typeof(p_patch->'cash_amount') <> 'null' THEN
+      v_cash := (p_patch->>'cash_amount')::numeric;
+    END IF;
+  EXCEPTION WHEN others THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'invalid_request');
+  END;
+
+  IF v_number IS NULL OR v_number !~ '^[0-9]+$' OR v_number !~ '[1-9]'
+     OR v_branch NOT IN ('دواء شكري','دواء الشامي')
+     OR v_supplier_id = '' OR v_supplier_name = ''
+     OR (p_patch->>'invoice_date') !~ '^\d{4}-\d{2}-\d{2}$'
+     OR to_char(v_invoice_date,'YYYY-MM-DD') <> p_patch->>'invoice_date'
+     OR v_total < 0 OR v_returned < 0 OR v_returned > v_total
+     OR (v_cash IS NOT NULL AND (v_cash < 0 OR v_cash > v_total - v_returned))
+  THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_invoice'); END IF;
+
+  -- Supplier identity must resolve to one real supplier row; Excel cannot forge it.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.suppliers s
+    WHERE s.id = v_supplier_id AND btrim(s.name) = v_supplier_name
+      AND COALESCE(s.is_sample,false) = false
+  ) THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_supplier'); END IF;
 
   v_auth := public.validate_staff_session(p_session_token);
   IF COALESCE((v_auth->>'ok')::boolean, false) IS NOT TRUE THEN
@@ -47,7 +104,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
   END IF;
 
-  -- Lock same idempotency key even if the operation ledger has no row yet.
+  -- Serialize the idempotency key before inspecting the ledger.
   PERFORM pg_advisory_xact_lock(hashtextextended(p_operation_id, 0));
   v_hash := encode(digest(
     jsonb_build_object('invoice_id',p_invoice_id,'revision',p_expected_revision,'patch',p_patch)::text,
@@ -80,10 +137,40 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'stale_revision');
   END IF;
 
-  -- Deliberately narrow: no invoice identity, amount, workflow or audit changes.
-  v_notes := p_patch->>'notes';
-  UPDATE public.purchase_invoices SET notes = v_notes WHERE id = p_invoice_id
-    RETURNING bconnect_revision_v1 INTO v_actual_revision;
+  -- Reconciliation edit never changes invoice identity. This keeps legacy collision cases fail-closed.
+  IF public.bconnect_canonical_invoice_number_v1(v_current.system_invoice_number) IS DISTINCT FROM v_number
+     OR v_current.branch IS DISTINCT FROM v_branch THEN
+    RETURN jsonb_build_object('ok', false, 'error', 'identity_change_forbidden');
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.purchase_invoices p
+    WHERE p.id <> v_current.id
+      AND p.branch = v_branch
+      AND public.bconnect_canonical_invoice_number_v1(p.system_invoice_number) = v_number
+      AND COALESCE(p.is_sample,false)=false
+  ) THEN RETURN jsonb_build_object('ok', false, 'error', 'legacy_identity_collision'); END IF;
+
+  UPDATE public.purchase_invoices SET
+    supplier_id = v_supplier_id,
+    supplier_name = v_supplier_name,
+    invoice_date = v_invoice_date,
+    total_value = v_total,
+    returned_value = v_returned,
+    cash_amount = CASE WHEN p_patch ? 'cash_amount' THEN COALESCE(v_cash,0) ELSE cash_amount END,
+    supplier_invoice_number = CASE WHEN p_patch ? 'supplier_invoice_number' THEN p_patch->>'supplier_invoice_number' ELSE supplier_invoice_number END,
+    payment_type = CASE WHEN p_patch ? 'payment_type' THEN p_patch->>'payment_type' ELSE payment_type END,
+    notes = CASE WHEN p_patch ? 'notes' THEN p_patch->>'notes' ELSE notes END,
+    purchase_category = CASE WHEN p_patch ? 'purchase_category' THEN p_patch->>'purchase_category' ELSE purchase_category END,
+    purchase_category_source = CASE WHEN p_patch ? 'purchase_category_source' THEN p_patch->>'purchase_category_source' ELSE purchase_category_source END,
+    transaction_type = CASE WHEN p_patch ? 'transaction_type' THEN p_patch->>'transaction_type' ELSE transaction_type END,
+    net_purchase_mode = CASE WHEN p_patch ? 'net_purchase_mode' THEN p_patch->>'net_purchase_mode' ELSE net_purchase_mode END,
+    exclusion_reason = CASE WHEN p_patch ? 'exclusion_reason' THEN p_patch->>'exclusion_reason' ELSE exclusion_reason END,
+    exclusion_note = CASE WHEN p_patch ? 'exclusion_note' THEN p_patch->>'exclusion_note' ELSE exclusion_note END,
+    source_branch = CASE WHEN p_patch ? 'source_branch' THEN p_patch->>'source_branch' ELSE source_branch END,
+    destination_branch = CASE WHEN p_patch ? 'destination_branch' THEN p_patch->>'destination_branch' ELSE destination_branch END
+  WHERE id = p_invoice_id
+  RETURNING bconnect_revision_v1 INTO v_actual_revision;
+
   v_result := jsonb_build_object('ok',true,'invoice_id',p_invoice_id,
     'revision',v_actual_revision);
   INSERT INTO public.bconnect_invoice_operations_v1
