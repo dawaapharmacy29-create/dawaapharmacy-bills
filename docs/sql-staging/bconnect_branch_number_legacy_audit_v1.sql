@@ -15,6 +15,26 @@ WHERE coalesce(is_sample,false)=false
 GROUP BY branch,public.bconnect_canonical_invoice_number_v1(system_invoice_number)
 HAVING count(*)>1
 ORDER BY invoice_count DESC,branch,canonical_number;
+-- 1b. Classify legacy same-branch collisions without mutating records.
+-- Matching signatures are only candidates for manual duplicate review.
+-- Different signatures must never be automatically merged or renumbered.
+WITH normalized AS (
+  SELECT id, branch, invoice_date, supplier_id, total_value, returned_value,
+    public.bconnect_canonical_invoice_number_v1(system_invoice_number) AS canonical_number
+  FROM public.purchase_invoices
+  WHERE coalesce(is_sample,false)=false
+    AND system_invoice_number IS NOT NULL AND btrim(system_invoice_number)<>''
+), grouped AS (
+  SELECT branch, canonical_number, count(*) AS invoice_count,
+    count(DISTINCT (invoice_date,supplier_id,total_value,returned_value)) AS distinct_signatures,
+    array_agg(id ORDER BY id) AS invoice_ids
+  FROM normalized
+  GROUP BY branch,canonical_number HAVING count(*)>1
+)
+SELECT branch,canonical_number,invoice_count,invoice_ids,
+  CASE WHEN distinct_signatures=1 THEN 'REVIEW_POSSIBLE_DUPLICATE'
+       ELSE 'REVIEW_CONFLICTING_INVOICES' END AS resolution_status
+FROM grouped ORDER BY branch,canonical_number;
 -- 2. Missing or unknown branch identity (blocking until classified).
 SELECT branch,count(*) AS invoice_count
 FROM public.purchase_invoices
