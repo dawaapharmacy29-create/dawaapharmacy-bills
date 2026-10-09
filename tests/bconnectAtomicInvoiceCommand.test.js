@@ -64,3 +64,9 @@ test('rejects missing invoice payload and invalid cash amounts', () => {
   const command = prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, cash_amount: '25.50' } });
   assert.equal(command.invoice.cash_amount, 25.5);
 });
+
+test('rejects zero-only system invoice numbers in the disabled write contract', () => {
+  for (const system_invoice_number of ['0', '000', '000.0']) {
+    assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, system_invoice_number } }), /invalid_invoice_identity/);
+  }
+});
