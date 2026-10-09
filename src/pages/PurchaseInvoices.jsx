@@ -224,11 +224,8 @@ export default function PurchaseInvoices() {
   useEffect(() => {
     const handoff = location.state?.bconnectHandoff;
     if (!handoff || isLoading || isFetching) return;
-    if (!canSaveInvoice) {
-      setHandoffWarning("ليس لديك صلاحية حفظ الفواتير؛ لا يمكن فتح نموذج B-Connect للتعديل.");
-      navigate(location.pathname, { replace: true, state: null });
-      return;
-    }
+    // B-Connect handoff is strictly read-only; viewing it must not require write permission.
+    // Server-side reads still enforce the caller's invoice visibility permissions.
     setHandoffWarning("");
     setHandoffWriteWarning("");
     setBconnectPrefill(null);
@@ -259,7 +256,7 @@ export default function PurchaseInvoices() {
       }
     }
     navigate(location.pathname, { replace: true, state: null });
-  }, [location.state, isLoading, isFetching, canSaveInvoice, invoices, navigate, location.pathname]);
+  }, [location.state, isLoading, isFetching, invoices, navigate, location.pathname]);
 
   const handleSubmit = async (formData) => {
     if (!activeHandoff) {
