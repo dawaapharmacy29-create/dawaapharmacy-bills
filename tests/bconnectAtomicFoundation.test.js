@@ -9,9 +9,10 @@ test('staging foundation fails closed without explicit approval', () => {
   assert.match(sql, /staging_approval_required/);
 });
 
-test('global uniqueness is database-enforced rather than an unsafe read-before-write check', () => {
-  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS bconnect_global_invoice_number_v1_idx/);
-  assert.match(sql, /bconnect_canonical_invoice_number_v1\(system_invoice_number\)/);
+test('global uniqueness is deliberately deferred pending an explicit numbering decision', () => {
+  assert.match(sql, /uniqueness policy is intentionally UNDECIDED/);
+  assert.match(sql, /^-- CREATE UNIQUE INDEX bconnect_global_invoice_number_v1_idx/m);
+  assert.doesNotMatch(sql, /^CREATE UNIQUE INDEX bconnect_global_invoice_number_v1_idx/m);
 });
 
 test('all invoice update paths advance a shared revision through a database trigger', () => {
