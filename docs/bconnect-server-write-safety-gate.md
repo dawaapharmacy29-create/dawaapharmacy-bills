@@ -35,3 +35,11 @@ Status: **server-side write design only; not implemented or deployed**. The B-Co
 - Audit evidence and invoice changes share a durable transaction boundary.
 - Branch authorization and supplier identity are checked by the server.
 - All tests run against disposable data before any rollout.
+
+## Backend implementation decision gate (2026-10-09)
+
+The current application talks to the existing Supabase `app-data` Edge Function and the `app_paged_purchase_invoices` RPC. The repository does **not** establish that the underlying invoice table is exclusively owned by this repository or that its current unique indexes, triggers, audit tables, staff-session authorization functions and migrations can safely be changed here. Therefore **do not deploy an inferred SQL migration, enable a write flag, or route B-Connect through ordinary create/update**. First inspect the authoritative Supabase schema and the source repository for `app-data`, then implement the atomic command at that authoritative boundary.
+
+Before implementing SQL, collect read-only evidence of: (a) invoice table/view and actual primary key, (b) all indexes and unique constraints for system invoice number, (c) revision/version source and concurrent-update policy, (d) supplier registry ownership, (e) staff-session validator and per-branch permission model, (f) audit/outbox transaction boundary, and (g) existing invoice create/update writers that could bypass uniqueness. A new endpoint alone is not enough if other writers can still create duplicates.
+
+Acceptance requires tests in an **isolated staging Supabase project** with a snapshot or synthetic fixture (never live invoices). Validate concurrent writes and rollback, same-key replay, conflicting payload replay, stale revision, cross-branch global duplicate, forbidden branch, forged server fields, and ambiguous timeout-after-commit. Only after those pass should the UI write capability be considered for an explicitly approved rollout.
