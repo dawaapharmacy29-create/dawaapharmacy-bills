@@ -12,8 +12,7 @@ function validateDate(rawValue) {
   return rawDate;
 }
 
-function normalizeNullableMoney(value, errorCode) {
-  if (value === null || value === '') return null;
+function normalizeRequiredMoney(value, errorCode) {
   const normalized = normalizeMoney(value);
   if (normalized === null || normalized < 0) throw new Error(errorCode);
   return normalized;
@@ -60,13 +59,9 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
       patch.branch = branch;
     }
     if (hasOwn(invoice, 'invoice_date')) patch.invoice_date = validateDate(invoice.invoice_date);
-    if (hasOwn(invoice, 'total_value')) {
-      const total = normalizeMoney(invoice.total_value);
-      if (total === null || total < 0) throw new Error('invalid_amounts');
-      patch.total_value = total;
-    }
-    if (hasOwn(invoice, 'returned_value')) patch.returned_value = normalizeNullableMoney(invoice.returned_value, 'invalid_amounts');
-    if (hasOwn(invoice, 'cash_amount')) patch.cash_amount = normalizeNullableMoney(invoice.cash_amount, 'invalid_cash_amount');
+    if (hasOwn(invoice, 'total_value')) patch.total_value = normalizeRequiredMoney(invoice.total_value, 'invalid_amounts');
+    if (hasOwn(invoice, 'returned_value')) patch.returned_value = normalizeRequiredMoney(invoice.returned_value, 'invalid_amounts');
+    if (hasOwn(invoice, 'cash_amount')) patch.cash_amount = normalizeRequiredMoney(invoice.cash_amount, 'invalid_cash_amount');
 
     const hasSupplierId = hasOwn(invoice, 'supplier_id');
     const hasSupplierName = hasOwn(invoice, 'supplier_name');
