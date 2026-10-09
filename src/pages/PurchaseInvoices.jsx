@@ -45,6 +45,7 @@ export default function PurchaseInvoices() {
   const [bconnectPrefill, setBconnectPrefill] = useState(null);
   const [handoffWarning, setHandoffWarning] = useState("");
   const [activeHandoff, setActiveHandoff] = useState(null);
+  const [handoffSaving, setHandoffSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewInvoice, setViewInvoice] = useState(null);
@@ -242,27 +243,52 @@ export default function PurchaseInvoices() {
     navigate(location.pathname, { replace: true, state: null });
   }, [location.state, isLoading, canSaveInvoice, invoices, navigate, location.pathname]);
 
-  const handleSubmit = (formData) => {
-    if (activeHandoff?.mode === "edit") {
-      const current = invoices.find((inv) => inv.id === activeHandoff.recordId);
-      if (!current || normalizeInvoiceNumber(current.system_invoice_number) !== activeHandoff.expectedInvoiceNumber ||
-          current.branch !== activeHandoff.expectedBranch ||
-          normalizeMoney(current.total_value) !== activeHandoff.expectedTotal ||
-          normalizeMoney(current.returned_value) !== activeHandoff.expectedReturned ||
-          (current.supplier_id ?? null) !== activeHandoff.expectedSupplierId ||
-          normalizeDate(current.invoice_date) !== activeHandoff.expectedDate) {
-        setHandoffWarning("بيانات الفاتورة اتغيرت أثناء المراجعة؛ أعد فتحها من القائمة قبل الحفظ.");
-        setDialogOpen(false);
-        return;
-      }
-    }
-    if (activeHandoff?.mode === "create" && (normalizeInvoiceNumber(formData.system_invoice_number) !== normalizeInvoiceNumber(activeHandoff.proposed.system_invoice_number) || invoices.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === normalizeInvoiceNumber(formData.system_invoice_number)))) {
-      setHandoffWarning("رقم الفاتورة اتغير أو أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
-      setDialogOpen(false);
+  const handleSubmit = async (formData) => {
+    if (!activeHandoff) {
+      if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
+      else createMutation.mutate(formData);
       return;
     }
-    if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
-    else createMutation.mutate(formData);
+    if (handoffSaving) return;
+    setHandoffSaving(true);
+    try {
+      // A fresh read narrows the stale-cache window. This is NOT an atomic server-side lock.
+      const fresh = [];
+      const pageSize = 500;
+      for (let offset = 0; ; offset += pageSize) {
+        const batch = await base44.entities.PurchaseInvoice.list("-created_date", pageSize, offset);
+        fresh.push(...batch);
+        if (batch.length < pageSize) break;
+      }
+      const number = normalizeInvoiceNumber(formData.system_invoice_number);
+      if (activeHandoff.mode === "edit") {
+        const current = fresh.find((inv) => inv.id === activeHandoff.recordId);
+        if (!current || normalizeInvoiceNumber(current.system_invoice_number) !== activeHandoff.expectedInvoiceNumber ||
+            current.branch !== activeHandoff.expectedBranch ||
+            normalizeMoney(current.total_value) !== activeHandoff.expectedTotal ||
+            normalizeMoney(current.returned_value) !== activeHandoff.expectedReturned ||
+            (current.supplier_id ?? null) !== activeHandoff.expectedSupplierId ||
+            normalizeDate(current.invoice_date) !== activeHandoff.expectedDate) {
+          throw new Error("بيانات الفاتورة اتغيرت منذ المراجعة؛ أعد المطابقة قبل الحفظ.");
+        }
+        if (fresh.some((inv) => inv.id !== current.id && inv.branch === formData.branch &&
+            normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
+          throw new Error("رقم الفاتورة موجود بالفعل في نفس الفرع.");
+        }
+        updateMutation.mutate({ id: current.id, data: formData });
+      } else {
+        if (number !== normalizeInvoiceNumber(activeHandoff.proposed.system_invoice_number) ||
+            fresh.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
+          throw new Error("رقم الفاتورة اتغير أو أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
+        }
+        createMutation.mutate(formData);
+      }
+    } catch (error) {
+      setHandoffWarning(error?.message || "تعذر التحقق من الفاتورة؛ لم يُرسل طلب الحفظ.");
+      setDialogOpen(false);
+    } finally {
+      setHandoffSaving(false);
+    }
   };
 
   // Bulk actions
@@ -659,7 +685,7 @@ export default function PurchaseInvoices() {
         onSubmit={handleSubmit}
         invoice={editingInvoice}
         prefill={bconnectPrefill}
-        isLoading={createMutation.isPending || updateMutation.isPending}
+        isLoading={handoffSaving || createMutation.isPending || updateMutation.isPending}
         allInvoices={invoices}
       />
 
