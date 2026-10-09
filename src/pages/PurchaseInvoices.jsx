@@ -317,7 +317,7 @@ export default function PurchaseInvoices() {
         }
         if (fresh.some((inv) => inv.id !== current.id &&
             normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
-          throw new Error("رقم الفاتورة موجود بالفعل في نفس الفرع.");
+          throw new Error("رقم الفاتورة موجود بالفعل في سجلات التطبيق المتاحة؛ لا يمكن تكراره عبر الفروع.");
         }
         writeAttempted = true;
         await updateMutation.mutateAsync({ id: current.id, data: formData });
