@@ -274,13 +274,17 @@ export default function PurchaseInvoices() {
             normalizeDate(current.invoice_date) !== activeHandoff.expectedDate) {
           throw new Error("بيانات الفاتورة اتغيرت منذ المراجعة؛ أعد المطابقة قبل الحفظ.");
         }
-        if (fresh.some((inv) => inv.id !== current.id && inv.branch === formData.branch &&
+        if (number !== activeHandoff.expectedInvoiceNumber || formData.branch !== activeHandoff.expectedBranch) {
+          throw new Error("لا يمكن تغيير رقم أو فرع فاتورة B-Connect أثناء التعديل؛ أعد المطابقة أولًا.");
+        }
+        if (fresh.some((inv) => inv.id !== current.id &&
             normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
           throw new Error("رقم الفاتورة موجود بالفعل في نفس الفرع.");
         }
         await updateMutation.mutateAsync({ id: current.id, data: formData });
       } else {
         if (number !== normalizeInvoiceNumber(activeHandoff.proposed.system_invoice_number) ||
+            formData.branch !== activeHandoff.proposed.branch ||
             fresh.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
           throw new Error("رقم الفاتورة اتغير أو أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
         }
