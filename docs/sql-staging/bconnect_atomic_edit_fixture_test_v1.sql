@@ -49,8 +49,39 @@ BEGIN
   IF v_denied->>'error' IS DISTINCT FROM 'invalid_request' THEN
     RAISE EXCEPTION 'mixed_field_patch_not_rejected: %',v_denied;
   END IF;
+  -- Verify actual server-side branch, role, ownership and workflow gates.
+  v_denied := public.bconnect_atomic_edit_v1('fixture-other-token','test_atomic_edit_other01',
+    'fixture-owned-draft',1,'{"notes":"cross branch"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'forbidden_branch' THEN
+    RAISE EXCEPTION 'cross_branch_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1('fixture-viewer-token','test_atomic_edit_view01',
+    'fixture-owned-draft',1,'{"notes":"viewer"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'forbidden' THEN
+    RAISE EXCEPTION 'viewer_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1('fixture-entry-token','test_atomic_edit_approved01',
+    'fixture-approved',1,'{"notes":"approved"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'forbidden_edit' THEN
+    RAISE EXCEPTION 'approved_invoice_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1('fixture-entry-token','test_atomic_edit_source01',
+    'fixture-source-pending',1,'{"notes":"pending"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'source_review_required' THEN
+    RAISE EXCEPTION 'source_pending_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1('fixture-entry-token','test_atomic_edit_owner01',
+    'fixture-invoice-1',1,'{"notes":"other owner"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'forbidden_edit' THEN
+    RAISE EXCEPTION 'owner_mismatch_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1('fixture-entry-token','test_atomic_edit_owned01',
+    'fixture-owned-draft',1,'{"notes":"owned edit"}'::jsonb);
+  IF v_denied->>'ok' IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'owned_draft_not_editable: %',v_denied;
+  END IF;
   SELECT count(*) INTO v_after_count FROM public.bconnect_invoice_operations_v1;
-  IF v_after_count <> v_before_count THEN
+  IF v_after_count <> v_before_count + 1 THEN
     RAISE EXCEPTION 'rejected_requests_changed_ledger';
   END IF;
   IF (SELECT notes FROM public.purchase_invoices WHERE id=v_id) IS DISTINCT FROM 'original' THEN
