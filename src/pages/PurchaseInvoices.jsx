@@ -279,8 +279,18 @@ export default function PurchaseInvoices() {
           finalReturned < 0 || finalReturned > finalTotal) {
         throw new Error("إجمالي الفاتورة أو المرتجع غير صالح؛ راجع القيم قبل الحفظ.");
       }
-      if (!formData.supplier_id || !formData.supplier_name || !formData.invoice_date) {
-        throw new Error("يجب تأكيد المورد وتاريخ الفاتورة قبل الحفظ.");
+      if (!formData.supplier_id || !formData.supplier_name ||
+          !suppliers.some((supplier) => String(supplier.id) === String(formData.supplier_id) && supplier.name === formData.supplier_name)) {
+        throw new Error("المورد غير مطابق لسجل الموردين؛ أعد اختياره قبل الحفظ.");
+      }
+      const finalDate = normalizeDate(formData.invoice_date);
+      if (!finalDate || !/^\\d{4}-\\d{2}-\\d{2}$/.test(finalDate)) {
+        throw new Error("تاريخ الفاتورة غير صالح؛ راجع التاريخ قبل الحفظ.");
+      }
+      const [year, month, day] = finalDate.split("-").map(Number);
+      const parsedDate = new Date(Date.UTC(year, month - 1, day));
+      if (parsedDate.getUTCFullYear() !== year || parsedDate.getUTCMonth() !== month - 1 || parsedDate.getUTCDate() !== day) {
+        throw new Error("تاريخ الفاتورة غير موجود في التقويم؛ راجع التاريخ قبل الحفظ.");
       }
       // A fresh read narrows the stale-cache window. This is NOT an atomic server-side lock.
       const fresh = [];
