@@ -27,6 +27,7 @@ DECLARE
   v_existing public.bconnect_invoice_operations_v1%ROWTYPE;
   v_result jsonb;
   v_notes text;
+  v_actual_revision bigint;
 BEGIN
   IF p_operation_id IS NULL OR p_operation_id !~ '^[A-Za-z0-9_-]{16,128}$'
      OR p_invoice_id IS NULL OR btrim(p_invoice_id) = ''
@@ -81,9 +82,10 @@ BEGIN
 
   -- Deliberately narrow: no invoice identity, amount, workflow or audit changes.
   v_notes := p_patch->>'notes';
-  UPDATE public.purchase_invoices SET notes = v_notes WHERE id = p_invoice_id;
+  UPDATE public.purchase_invoices SET notes = v_notes WHERE id = p_invoice_id
+    RETURNING bconnect_revision_v1 INTO v_actual_revision;
   v_result := jsonb_build_object('ok',true,'invoice_id',p_invoice_id,
-    'revision',p_expected_revision + 1);
+    'revision',v_actual_revision);
   INSERT INTO public.bconnect_invoice_operations_v1
     (operation_id,request_hash,invoice_id,result,actor_id)
   VALUES (p_operation_id,v_hash,p_invoice_id,v_result,(v_account->>'id')::uuid);
