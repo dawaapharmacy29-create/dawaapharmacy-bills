@@ -27,6 +27,25 @@ export default function BConnectInvoiceReview() {
   const [decisions, setDecisions] = useState({});
   const [decisionNote, setDecisionNote] = useState('');
   const [selectedNumbers, setSelectedNumbers] = useState([]);
+  const exportDecisions = () => {
+    const rows = state.rows.filter((r) => decisions[r.number]).map((r) => ({
+      invoice_number: r.number, decision: decisions[r.number].action,
+      reason: decisions[r.number].note, app_record_id: r.app?.id || null,
+      branch_bconnect: r.bconnect?.branch || null, branch_app: r.app?.branch || null,
+      supplier_bconnect: r.bconnect?.supplier || null, supplier_app: r.app?.supplier_name || null,
+      gross_bconnect: normalizeMoney(r.bconnect?.invoice_value), gross_app: normalizeMoney(r.app?.total_value),
+      difference: r.financial?.difference ?? null,
+      return_bconnect: normalizeMoney(r.bconnect?.return_value), return_app: normalizeMoney(r.app?.returned_value),
+      source_user: r.bconnect?.user || null, app_entered_by: r.app?.entered_by_name || r.app?.entered_by || null,
+      findings: r.reasons || [],
+    }));
+    if (!rows.length) return;
+    const data = { schema: 'bconnect-review-decisions-v1', file_name: state.fileName, exported_at: new Date().toISOString(), execution_status: 'NOT_EXECUTED', decisions: rows };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'bconnect-review-decisions.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
   const decide = (action) => {
     const eligible = state.rows.filter((r) => selectedNumbers.includes(r.number) && classifyBConnectReviewRow(r).selectable);
     if (!eligible.length) return;
@@ -133,6 +152,7 @@ export default function BConnectInvoiceReview() {
           <Button type="button" variant="outline" disabled={!selectedNumbers.length} onClick={() => decide('approved')}>اعتماد مقترح للتنفيذ</Button>
           <input aria-label="سبب استبعاد التعديل" value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} placeholder="سبب الاستبعاد (إلزامي)" className="h-9 min-w-[180px] rounded-lg border px-3 text-sm" />
           <Button type="button" variant="outline" disabled={!selectedNumbers.length || !decisionNote.trim()} onClick={() => decide('excluded')}>استبعاد المقترح</Button>
+          <Button type="button" variant="outline" disabled={!Object.keys(decisions).length} onClick={exportDecisions}>تصدير قرارات المراجعة</Button>
           <Button type="button" disabled title="التنفيذ الفعلي غير متاح قبل التحقق الخادمي والصلاحيات">تنفيذ التعديلات (غير مفعل)</Button>
         </div>
         <p className="text-xs text-gray-500">قرارات مؤقتة: {Object.keys(decisions).length} — تختفي عند رفع ملف جديد أو تحديث الصفحة.</p>
