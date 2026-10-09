@@ -10,7 +10,7 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   const branch = normalizeBranch(invoice?.branch);
   const total = normalizeMoney(invoice?.total_value);
   const returned = invoice?.returned_value == null || invoice.returned_value === '' ? 0 : normalizeMoney(invoice.returned_value);
-  if (!number || !/^[0-9]+$/.test(number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) throw new Error('invalid_invoice_identity');
+  if (!number || !/^[0-9]+$/.test(number) || !/[1-9]/.test(number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) throw new Error('invalid_invoice_identity');
   if (total === null || total < 0 || returned === null || returned < 0 || returned > total) throw new Error('invalid_amounts');
   if (Object.hasOwn(invoice, 'cash_amount')) {
     const cash = normalizeMoney(invoice.cash_amount);
