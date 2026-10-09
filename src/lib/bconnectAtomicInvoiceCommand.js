@@ -9,7 +9,7 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   const branch = normalizeBranch(invoice?.branch);
   const total = normalizeMoney(invoice?.total_value);
   const returned = invoice?.returned_value == null || invoice.returned_value === '' ? 0 : normalizeMoney(invoice.returned_value);
-  if (!number || !['دواء شكري', 'دواء الشامي'].includes(branch)) throw new Error('invalid_invoice_identity');
+  if (!number || !/^[0-9]+$/.test(number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) throw new Error('invalid_invoice_identity');
   if (total === null || total < 0 || returned === null || returned < 0 || returned > total) throw new Error('invalid_amounts');
   const rawDate = String(invoice?.invoice_date ?? '').trim();
   const normalizedDate = normalizeDate(rawDate);
@@ -17,8 +17,8 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   const [year, month, day] = rawDate.split('-').map(Number);
   const parsed = new Date(Date.UTC(year, month - 1, day));
   if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) throw new Error('invalid_invoice_date');
-  if (!String(invoice?.supplier_id ?? '').trim() || !String(invoice?.supplier_name ?? '').trim()) throw new Error('missing_supplier');
-  if (mode === 'edit' && (!recordId || !expectedRevision)) throw new Error('missing_revision');
+  if (typeof invoice?.supplier_id !== 'string' || !invoice.supplier_id.trim() || typeof invoice?.supplier_name !== 'string' || !invoice.supplier_name.trim()) throw new Error('missing_supplier');
+  if (mode === 'edit' && (typeof recordId !== 'string' || !recordId.trim() || typeof expectedRevision !== 'string' || !expectedRevision.trim())) throw new Error('missing_revision');
   if (mode === 'create' && (recordId || expectedRevision)) throw new Error('unexpected_revision');
   return {
     contract: 'bconnect_atomic_invoice_write_v1',
