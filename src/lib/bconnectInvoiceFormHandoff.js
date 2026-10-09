@@ -1,5 +1,13 @@
 import { normalizeBranch, normalizeDate, normalizeInvoiceNumber, normalizeMoney } from './purchaseInvoiceTruth.js';
 
+/** Reject calendar-impossible dates without changing shared reconciliation normalization. */
+function validCalendarDate(value) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
 /** Transfer only source-backed fields into the existing purchase invoice form. */
 export function buildBConnectFormHandoff(row = {}) {
   if (!row.number || !row.bconnect || ['duplicate_app', 'duplicate_bconnect', 'unverified', 'unauthorized_or_incomplete', 'conflict'].includes(row.identity)) return null;
@@ -10,6 +18,7 @@ export function buildBConnectFormHandoff(row = {}) {
   const returned = normalizeMoney(b.return_value);
   const branch = normalizeBranch(b.branch);
   const date = normalizeDate(b.date);
+  if (b.date != null && String(b.date).trim() && !validCalendarDate(date)) return null;
   const serial = normalizeInvoiceNumber(b.serial);
   if (!serial || serial !== normalizeInvoiceNumber(row.number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) return null;
   // Missing invoices need a real gross amount before a useful prefilled form can be offered.
