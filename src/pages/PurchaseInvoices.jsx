@@ -205,7 +205,12 @@ export default function PurchaseInvoices() {
 
   useEffect(() => {
     const handoff = location.state?.bconnectHandoff;
-    if (!handoff || isLoading || !canSaveInvoice) return;
+    if (!handoff || isLoading) return;
+    if (!canSaveInvoice) {
+      setHandoffWarning("ليس لديك صلاحية حفظ الفواتير؛ لا يمكن فتح نموذج B-Connect للتعديل.");
+      navigate(location.pathname, { replace: true, state: null });
+      return;
+    }
     setHandoffWarning("");
     setBconnectPrefill(null);
     setActiveHandoff(null);
