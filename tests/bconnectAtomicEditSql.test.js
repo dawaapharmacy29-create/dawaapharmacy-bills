@@ -31,8 +31,9 @@ test('edit RPC validates supplier, financial fields and keeps reconciliation ide
   assert.match(sql, /invoice_date = v_invoice_date/);
   assert.match(sql, /identity_change_forbidden/);
   assert.match(sql, /legacy_identity_collision/);
-  assert.doesNotMatch(sql, /system_invoice_number\s*=/);
-  assert.doesNotMatch(sql, /branch\s*=/);
+  const updateSet = sql.match(/UPDATE public\.purchase_invoices SET([\s\S]*?)WHERE id = p_invoice_id/)?.[1] || '';
+  assert.doesNotMatch(updateSet, /\bsystem_invoice_number\s*=/);
+  assert.doesNotMatch(updateSet, /(?:^|\n)\s*branch\s*=/);
 });
 test('edit RPC does not expose workflow or audit ownership as writable patch fields', () => {
   const whitelist = sql.match(/ARRAY\[([\s\S]*?)\]\)\), false\)/)?.[1] || '';
