@@ -1,6 +1,6 @@
 # B-Connect invoice save: server-side safety gate
 
-Status: **design only; not deployed**. Current UI uses Base44 `PurchaseInvoice.create/update` after a client-side read. This is not atomic and must not be described as globally duplicate-proof.
+Status: **server-side write design only; not implemented or deployed**. The B-Connect handoff is explicitly **review-only**: the form disables submission, the submit handler returns without writing, and the page rejects any B-Connect handoff save. Ordinary invoice management still uses Base44 `PurchaseInvoice.create/update`; those ordinary paths are not covered by the B-Connect atomic guarantees. Client-side matching is not globally duplicate-proof.
 
 ## Required guarantees before enabling production writes through the handoff
 
@@ -17,8 +17,8 @@ Status: **design only; not deployed**. Current UI uses Base44 `PurchaseInvoice.c
 
 - `src/pages/BConnectInvoiceReview.jsx`: global number lookup and review.
 - `src/lib/bconnectInvoiceFormHandoff.js`: proposed form state, not an authority to write.
-- `src/pages/PurchaseInvoices.jsx`: existing form and **direct Base44 mutation**; the client-side fresh paginated read only narrows stale-data windows.
-- `src/components/invoices/InvoiceFormDialog.jsx`: user validation and confirmation, not a substitute for backend validation.
+- `src/pages/PurchaseInvoices.jsx`: B-Connect handoff is blocked from writing; ordinary invoice create/edit continues using direct Base44 mutations. The client-side paginated read only narrows stale-data windows.
+- `src/components/invoices/InvoiceFormDialog.jsx`: B-Connect review-only form disables submit and guards the submit handler; ordinary form validation is not a substitute for backend validation.
 
 ## Release gate
 
