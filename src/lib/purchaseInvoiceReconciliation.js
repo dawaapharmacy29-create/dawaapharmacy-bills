@@ -43,7 +43,15 @@ export function reconcilePurchaseInvoice(appInput,bconnectInput) {
   else if(!identitySufficient){reasons.push("الأدلة المتاحة غير كافية لإصدار حكم سليم تلقائيًا.");}
   else if(!financialComparable){reasons.push("الهوية مؤكدة لكن القيمة المالية غير متاحة في أحد المصدرين.");}
   else if(!financialMatch){reasons.push(`الهوية مؤكدة لكن يوجد فرق مالي غير مفسر قدره ${Math.abs(totalDifference).toString()} ج.`);}
-  else if(checks.supplier==="mismatch" || checks.invoice_date==="mismatch") {\n    status="review";\n    reasons.push("رقم الفاتورة والفرع والقيمة متطابقة، لكن توجد اختلافات في بيانات المصدر تحتاج مراجعة.");\n    if(checks.supplier==="mismatch") reasons.push("اسم المورد مختلف بين B-Connect والتطبيق.");\n    if(checks.invoice_date==="mismatch") reasons.push("تاريخ الفاتورة مختلف بين B-Connect والتطبيق.");\n  } else {status="clean";reasons.push("رقم الفاتورة والفرع والقيمة المالية متطابقة، ولا توجد اختلافات مؤكدة في المورد أو التاريخ.");\n    if(checks.supplier==="unknown") reasons.push("لم يتم التحقق من اسم المورد في المصدرين.");\n    if(checks.invoice_date==="unknown") reasons.push("لم يتم التحقق من التاريخ في المصدرين.");\n  }
+  else if(checks.supplier==="mismatch" || checks.invoice_date==="mismatch") {
+    status="review";
+    reasons.push("رقم الفاتورة والفرع والقيمة متطابقة، لكن توجد اختلافات في بيانات المصدر تحتاج مراجعة.");
+    if(checks.supplier==="mismatch") reasons.push("اسم المورد مختلف بين B-Connect والتطبيق.");
+    if(checks.invoice_date==="mismatch") reasons.push("تاريخ الفاتورة مختلف بين B-Connect والتطبيق.");
+  } else {status="clean";reasons.push("رقم الفاتورة والفرع والقيمة المالية متطابقة، ولا توجد اختلافات مؤكدة في المورد أو التاريخ.");
+    if(checks.supplier==="unknown") reasons.push("لم يتم التحقق من اسم المورد في المصدرين.");
+    if(checks.invoice_date==="unknown") reasons.push("لم يتم التحقق من التاريخ في المصدرين.");
+  }
   return {engine_version:RECONCILIATION_ENGINE_VERSION,status,identity,
     evidence_sufficiency:{sufficient_for_clean:identitySufficient&&financialComparable,identity_sufficient:identitySufficient},
     checks,financial:{comparable:financialComparable,match:financialMatch,difference:totalDifference,explained_difference:0,unexplained_difference:totalDifference},
