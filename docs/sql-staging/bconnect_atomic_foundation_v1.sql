@@ -1,6 +1,6 @@
 -- STAGING-ONLY PROTOTYPE. DO NOT APPLY TO PRODUCTION.
--- The uniqueness policy is intentionally UNDECIDED; no global uniqueness
--- constraint is installed by this staging foundation.
+-- Approved policy: invoice numbers are unique WITHIN each branch, not globally.
+-- No unique index is installed until legacy same-branch collisions and writer compatibility are verified.
 -- Run in a disposable database after reconciling fixture collisions.
 BEGIN;
 
@@ -20,17 +20,17 @@ RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
     ELSE btrim(p_number) END
 $$;
 
--- WARNING: do not create a global unique index before the product owner
--- confirms global numbering semantics. Live read-only evidence found 179
--- duplicate-number groups, including cross-branch collisions. The index
--- below is intentionally NOT executed, even in this staging foundation.
--- After explicit approval, test a separate uniqueness migration against
--- disposable fixtures and every legacy writer.
--- CREATE UNIQUE INDEX bconnect_global_invoice_number_v1_idx
---   ON public.purchase_invoices (public.bconnect_canonical_invoice_number_v1(system_invoice_number))
+-- Approved branch-scoped uniqueness policy. No index is applied here.
+-- Legacy same-branch collisions must be reviewed before enabling enforcement.
+-- Proposed eventual index (NOT EXECUTED):
+-- CREATE UNIQUE INDEX CONCURRENTLY bconnect_branch_invoice_number_v1_idx
+--   ON public.purchase_invoices
+--   (branch, public.bconnect_canonical_invoice_number_v1(system_invoice_number))
 --   WHERE system_invoice_number IS NOT NULL
 --     AND btrim(system_invoice_number) <> ''
---     AND COALESCE(is_sample, false) = false;
+--     AND COALESCE(is_sample,false)=false;
+-- CAUTION: normalize and validate branch identity before using this index;
+-- legacy writers and nullable/alias branch values require separate handling.
 
 ALTER TABLE public.purchase_invoices
   ADD COLUMN IF NOT EXISTS bconnect_revision_v1 bigint NOT NULL DEFAULT 1;
