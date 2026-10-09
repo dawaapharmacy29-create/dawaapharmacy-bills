@@ -1,4 +1,4 @@
-import { normalizeBranch, normalizeInvoiceNumber, normalizeMoney } from './purchaseInvoiceTruth.js';
+import { normalizeBranch, normalizeInvoiceNumber, normalizeMoney, normalizeDate } from './purchaseInvoiceTruth.js';
 
 // Pure contract preparation. Does not send requests or change persisted invoices.
 export function prepareBconnectWriteCommand({ operationId, mode, invoice, recordId, expectedRevision } = {}) {
@@ -11,6 +11,13 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   const returned = invoice?.returned_value == null || invoice.returned_value === '' ? 0 : normalizeMoney(invoice.returned_value);
   if (!number || !['دواء شكري', 'دواء الشامي'].includes(branch)) throw new Error('invalid_invoice_identity');
   if (total === null || total < 0 || returned === null || returned < 0 || returned > total) throw new Error('invalid_amounts');
+  const rawDate = String(invoice?.invoice_date ?? '').trim();
+  const normalizedDate = normalizeDate(rawDate);
+  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate) || normalizedDate !== rawDate) throw new Error('invalid_invoice_date');
+  const [year, month, day] = rawDate.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) throw new Error('invalid_invoice_date');
+  if (!String(invoice?.supplier_id ?? '').trim() || !String(invoice?.supplier_name ?? '').trim()) throw new Error('missing_supplier');
   if (mode === 'edit' && (!recordId || !expectedRevision)) throw new Error('missing_revision');
   if (mode === 'create' && (recordId || expectedRevision)) throw new Error('unexpected_revision');
   return {
