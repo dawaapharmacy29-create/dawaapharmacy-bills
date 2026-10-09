@@ -11,6 +11,9 @@ DECLARE
   v_stale jsonb;
   v_changed jsonb;
   v_revision bigint;
+  v_denied jsonb;
+  v_before_count bigint;
+  v_after_count bigint;
   v_id text := 'REPLACE_TEST_INVOICE_ID';
   v_token text := 'REPLACE_TEST_STAFF_SESSION_TOKEN';
   v_op text := 'test_atomic_edit_000001';
@@ -24,6 +27,36 @@ BEGIN
   SELECT bconnect_revision_v1 INTO v_revision
     FROM public.purchase_invoices WHERE id=v_id;
   IF v_revision IS NULL THEN RAISE EXCEPTION 'test_invoice_missing'; END IF;
+  -- Fail-closed security checks: none may change the invoice or ledger.
+  SELECT count(*) INTO v_before_count FROM public.bconnect_invoice_operations_v1;
+  v_denied := public.bconnect_atomic_edit_v1('invalid-session','test_atomic_edit_denied01',v_id,v_revision,
+    '{"notes":"unauthorized"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'invalid_session' THEN
+    RAISE EXCEPTION 'invalid_session_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1(v_token,'short',v_id,v_revision,
+    '{"notes":"bad operation"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'invalid_request' THEN
+    RAISE EXCEPTION 'invalid_operation_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1(v_token,'test_atomic_edit_denied02',v_id,v_revision,
+    '{"branch":"دواء الشامي"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'invalid_request' THEN
+    RAISE EXCEPTION 'forbidden_field_not_rejected: %',v_denied;
+  END IF;
+  v_denied := public.bconnect_atomic_edit_v1(v_token,'test_atomic_edit_denied03',v_id,v_revision,
+    '{"notes":"x","system_invoice_number":"999"}'::jsonb);
+  IF v_denied->>'error' IS DISTINCT FROM 'invalid_request' THEN
+    RAISE EXCEPTION 'mixed_field_patch_not_rejected: %',v_denied;
+  END IF;
+  SELECT count(*) INTO v_after_count FROM public.bconnect_invoice_operations_v1;
+  IF v_after_count <> v_before_count THEN
+    RAISE EXCEPTION 'rejected_requests_changed_ledger';
+  END IF;
+  IF (SELECT notes FROM public.purchase_invoices WHERE id=v_id) IS DISTINCT FROM 'original' THEN
+    RAISE EXCEPTION 'rejected_requests_modified_invoice';
+  END IF;
+
   v_first := public.bconnect_atomic_edit_v1(v_token,v_op,v_id,v_revision,
     '{"notes":"atomic fixture one"}'::jsonb);
   IF v_first->>'ok' IS DISTINCT FROM 'true' THEN
