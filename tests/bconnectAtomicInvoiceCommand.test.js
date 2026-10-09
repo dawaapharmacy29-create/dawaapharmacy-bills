@@ -21,6 +21,24 @@ test('edit requires a numeric server revision and record identity', () => {
   assert.equal(command.expected_revision, 2);
 });
 
+test('edit sends only explicitly supplied fields', () => {
+  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice: { total_value: '250.50' }, recordId: 'invoice-1', expectedRevision: 2 });
+  assert.deepEqual(command.invoice, { total_value: 250.5 });
+  assert.equal(Object.hasOwn(command.invoice, 'returned_value'), false);
+  assert.equal(Object.hasOwn(command.invoice, 'cash_amount'), false);
+  assert.equal(Object.hasOwn(command.invoice, 'supplier_id'), false);
+});
+
+test('edit preserves explicit unknown nullable money as null', () => {
+  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice: { returned_value: null, cash_amount: '' }, recordId: 'invoice-1', expectedRevision: 2 });
+  assert.equal(command.invoice.returned_value, null);
+  assert.equal(command.invoice.cash_amount, null);
+});
+
+test('edit rejects an empty patch instead of bumping revision', () => {
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice: {}, recordId: 'invoice-1', expectedRevision: 2 }), /empty_edit_patch/);
+});
+
 test('rejects invalid amounts, operation IDs and unexpected create revisions', () => {
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, returned_value: 101 } }), /invalid_amounts/);
   assert.throws(() => prepareBconnectWriteCommand({ operationId: 'short', mode: 'create', invoice }), /invalid_operation_id/);
@@ -30,6 +48,7 @@ test('rejects invalid amounts, operation IDs and unexpected create revisions', (
 test('rejects nonexistent calendar dates and missing supplier', () => {
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, invoice_date: '2026-02-30' } }), /invalid_invoice_date/);
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, supplier_id: '' } }), /missing_supplier/);
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice: { supplier_id: 'supplier-2' }, recordId: 'invoice-1', expectedRevision: 2 }), /missing_supplier/);
 });
 
 test('rejects malformed invoice number and non-string server identifiers', () => {
