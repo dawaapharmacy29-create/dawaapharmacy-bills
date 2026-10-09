@@ -267,86 +267,9 @@ export default function PurchaseInvoices() {
       else createMutation.mutate(formData);
       return;
     }
-    if (activeHandoff) { setHandoffWriteWarning("حفظ B-Connect متوقف حتى تفعيل التحقق الذري على الخادم."); return; }
-    if (handoffSaving || createMutation.isPending || updateMutation.isPending) return;
-    setHandoffSaving(true);
-    setHandoffWriteWarning("");
-    let writeAttempted = false;
-    try {
-      const finalTotal = normalizeMoney(formData.total_value);
-      const finalReturned = formData.returned_value === "" || formData.returned_value == null
-        ? 0 : normalizeMoney(formData.returned_value);
-      if (finalTotal === null || finalTotal < 0 || finalReturned === null ||
-          finalReturned < 0 || finalReturned > finalTotal) {
-        throw new Error("إجمالي الفاتورة أو المرتجع غير صالح؛ راجع القيم قبل الحفظ.");
-      }
-      if (!formData.supplier_id || !formData.supplier_name ||
-          !suppliers.some((supplier) => String(supplier.id) === String(formData.supplier_id) && supplier.name === formData.supplier_name)) {
-        throw new Error("المورد غير مطابق لسجل الموردين؛ أعد اختياره قبل الحفظ.");
-      }
-      const rawDate = String(formData.invoice_date ?? "").trim();
-      const finalDate = normalizeDate(rawDate);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || finalDate !== rawDate) {
-        throw new Error("تاريخ الفاتورة غير صالح؛ راجع التاريخ قبل الحفظ.");
-      }
-      const [year, month, day] = finalDate.split("-").map(Number);
-      const parsedDate = new Date(Date.UTC(year, month - 1, day));
-      if (parsedDate.getUTCFullYear() !== year || parsedDate.getUTCMonth() !== month - 1 || parsedDate.getUTCDate() !== day) {
-        throw new Error("تاريخ الفاتورة غير موجود في التقويم؛ راجع التاريخ قبل الحفظ.");
-      }
-      // A fresh read narrows the stale-cache window. This is NOT an atomic server-side lock.
-      const fresh = [];
-      const pageSize = 500;
-      for (let offset = 0; ; offset += pageSize) {
-        const batch = await base44.entities.PurchaseInvoice.list("-created_date", pageSize, offset);
-        fresh.push(...batch);
-        if (batch.length < pageSize) break;
-      }
-      const number = normalizeInvoiceNumber(formData.system_invoice_number);
-      if (activeHandoff.mode === "edit") {
-        const current = fresh.find((inv) => inv.id === activeHandoff.recordId);
-        if (!current || normalizeInvoiceNumber(current.system_invoice_number) !== activeHandoff.expectedInvoiceNumber ||
-            current.branch !== activeHandoff.expectedBranch ||
-            normalizeMoney(current.total_value) !== activeHandoff.expectedTotal ||
-            normalizeMoney(current.returned_value) !== activeHandoff.expectedReturned ||
-            (current.supplier_id ?? null) !== activeHandoff.expectedSupplierId ||
-            normalizeDate(current.invoice_date) !== activeHandoff.expectedDate) {
-          throw new Error("بيانات الفاتورة اتغيرت منذ المراجعة؛ أعد المطابقة قبل الحفظ.");
-        }
-        if (number !== activeHandoff.expectedInvoiceNumber || formData.branch !== activeHandoff.expectedBranch) {
-          throw new Error("لا يمكن تغيير رقم أو فرع فاتورة B-Connect أثناء التعديل؛ أعد المطابقة أولًا.");
-        }
-        if (fresh.some((inv) => inv.id !== current.id &&
-            normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
-          throw new Error("رقم الفاتورة موجود بالفعل في سجلات التطبيق المتاحة؛ لا يمكن تكراره عبر الفروع.");
-        }
-        writeAttempted = true;
-        await updateMutation.mutateAsync({ id: current.id, data: formData });
-      } else {
-        if (number !== normalizeInvoiceNumber(activeHandoff.proposed.system_invoice_number) ||
-            formData.branch !== activeHandoff.proposed.branch ||
-            fresh.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
-          throw new Error("رقم الفاتورة اتغير أو أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
-        }
-        writeAttempted = true;
-        await createMutation.mutateAsync(formData);
-      }
-    } catch (error) {
-      const message = writeAttempted
-        ? "تعذر تأكيد نتيجة الحفظ. لا تضغط حفظ مرة أخرى قبل إعادة فتح المراجعة والتأكد من حالة الفاتورة في التطبيق."
-        : (error?.message || "تعذر التحقق من الفاتورة قبل الحفظ؛ لم يُرسل طلب كتابة.");
-      setHandoffWarning(message);
-      setHandoffWriteWarning(message);
-      if (writeAttempted) {
-        setDialogOpen(false);
-        setEditingInvoice(null);
-        setActiveHandoff(null);
-        setBconnectPrefill(null);
-        queryClient.invalidateQueries({ queryKey: ["purchase-invoices"] });
-      }
-    } finally {
-      setHandoffSaving(false);
-    }
+    // B-Connect handoff is review-only until an atomic server write exists.
+    // Ordinary invoice create/edit paths above are unaffected.
+    setHandoffWriteWarning("الحفظ من مراجعة B-Connect غير متاح حتى تفعيل عملية حفظ ذرية على الخادم. راجع البيانات ثم أغلق النموذج بدون حفظ.");
   };
 
   // Bulk actions
