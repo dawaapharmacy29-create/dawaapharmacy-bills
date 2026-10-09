@@ -3,7 +3,7 @@ import {
   invoiceIdentityEvidence,
 } from "./purchaseInvoiceTruth.js";
 
-export const RECONCILIATION_ENGINE_VERSION = "v4";
+export const RECONCILIATION_ENGINE_VERSION = "v5";
 
 function known(value) { return value !== null && value !== undefined && value !== ""; }
 function same(a,b) { return known(a) && known(b) && a === b; }
@@ -43,10 +43,7 @@ export function reconcilePurchaseInvoice(appInput,bconnectInput) {
   else if(!identitySufficient){reasons.push("الأدلة المتاحة غير كافية لإصدار حكم سليم تلقائيًا.");}
   else if(!financialComparable){reasons.push("الهوية مؤكدة لكن القيمة المالية غير متاحة في أحد المصدرين.");}
   else if(!financialMatch){reasons.push(`الهوية مؤكدة لكن يوجد فرق مالي غير مفسر قدره ${Math.abs(totalDifference).toString()} ج.`);}
-  else {status="clean";reasons.push("رقم الفاتورة والفرع متطابقان والقيمة المالية متطابقة.");
-    if(checks.supplier==="mismatch") reasons.push("اسم المورد مختلف بين المصدرين ويُعرض كدليل مساعد فقط.");
-    if(checks.invoice_date==="mismatch") reasons.push("التاريخ مختلف بين المصدرين ويُعرض كدليل مساعد فقط.");
-  }
+  else if(checks.supplier==="mismatch" || checks.invoice_date==="mismatch") {\n    status="review";\n    reasons.push("رقم الفاتورة والفرع والقيمة متطابقة، لكن توجد اختلافات في بيانات المصدر تحتاج مراجعة.");\n    if(checks.supplier==="mismatch") reasons.push("اسم المورد مختلف بين B-Connect والتطبيق.");\n    if(checks.invoice_date==="mismatch") reasons.push("تاريخ الفاتورة مختلف بين B-Connect والتطبيق.");\n  } else {status="clean";reasons.push("رقم الفاتورة والفرع والقيمة المالية متطابقة، ولا توجد اختلافات مؤكدة في المورد أو التاريخ.");\n    if(checks.supplier==="unknown") reasons.push("لم يتم التحقق من اسم المورد في المصدرين.");\n    if(checks.invoice_date==="unknown") reasons.push("لم يتم التحقق من التاريخ في المصدرين.");\n  }
   return {engine_version:RECONCILIATION_ENGINE_VERSION,status,identity,
     evidence_sufficiency:{sufficient_for_clean:identitySufficient&&financialComparable,identity_sufficient:identitySufficient},
     checks,financial:{comparable:financialComparable,match:financialMatch,difference:totalDifference,explained_difference:0,unexplained_difference:totalDifference},
