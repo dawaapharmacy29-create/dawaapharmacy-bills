@@ -5,12 +5,17 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   const operation = String(operationId ?? '').trim();
   if (!/^[A-Za-z0-9_-]{16,128}$/.test(operation)) throw new Error('invalid_operation_id');
   if (mode !== 'create' && mode !== 'edit') throw new Error('invalid_mode');
-  const number = normalizeInvoiceNumber(invoice?.system_invoice_number);
+  if (!invoice || typeof invoice !== 'object' || Array.isArray(invoice)) throw new Error('invalid_invoice_payload');
+  const number = normalizeInvoiceNumber(invoice.system_invoice_number);
   const branch = normalizeBranch(invoice?.branch);
   const total = normalizeMoney(invoice?.total_value);
   const returned = invoice?.returned_value == null || invoice.returned_value === '' ? 0 : normalizeMoney(invoice.returned_value);
   if (!number || !/^[0-9]+$/.test(number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) throw new Error('invalid_invoice_identity');
   if (total === null || total < 0 || returned === null || returned < 0 || returned > total) throw new Error('invalid_amounts');
+  if (Object.hasOwn(invoice, 'cash_amount')) {
+    const cash = normalizeMoney(invoice.cash_amount);
+    if (cash === null || cash < 0 || cash > total - returned) throw new Error('invalid_cash_amount');
+  }
   const rawDate = String(invoice?.invoice_date ?? '').trim();
   const normalizedDate = normalizeDate(rawDate);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || normalizedDate !== rawDate) throw new Error('invalid_invoice_date');
@@ -31,6 +36,7 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   const writable = Object.fromEntries(writableFields
     .filter((key) => Object.prototype.hasOwnProperty.call(invoice, key))
     .map((key) => [key, invoice[key]]));
+  if (Object.hasOwn(writable, 'cash_amount')) writable.cash_amount = normalizeMoney(writable.cash_amount);
   return {
     contract: 'bconnect_atomic_invoice_write_v1',
     operation_id: operation,
