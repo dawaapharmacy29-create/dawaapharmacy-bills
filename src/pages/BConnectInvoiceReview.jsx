@@ -27,6 +27,8 @@ export default function BConnectInvoiceReview() {
   const [decisions, setDecisions] = useState({});
   const [decisionNote, setDecisionNote] = useState('');
   const [selectedNumbers, setSelectedNumbers] = useState([]);
+  const [expandedNumber, setExpandedNumber] = useState(null);
+  const undoDecision = (number) => setDecisions((previous) => { const next = { ...previous }; delete next[number]; return next; });
   const exportDecisions = () => {
     const rows = state.rows.filter((r) => decisions[r.number]).map((r) => ({
       invoice_number: r.number, decision: decisions[r.number].action,
@@ -69,6 +71,7 @@ export default function BConnectInvoiceReview() {
     setState({ loading: true, error: '', fileName: file.name, rows: [], meta: null });
     setDecisions({});
     setSelectedNumbers([]);
+    setExpandedNumber(null);
     try {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
@@ -180,14 +183,14 @@ export default function BConnectInvoiceReview() {
           <span className="text-xs text-gray-600">المعروض {visible.length} من {state.rows.length} فاتورة</span>
         </div>
         <div className="overflow-x-auto"><table className="w-full min-w-[1400px] text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">اختيار</th><th className="p-3 text-right">قرار المراجعة</th><th className="p-3 text-right">التشخيص</th><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">تاريخ B-Connect</th><th className="p-3 text-right">مدخل B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">مدخل التطبيق</th><th className="p-3 text-right">الدليل</th></tr></thead>
-          <tbody>{visible.map((r, i) => { const Icon = icons[r.status]; return <tr key={r.number + '-' + i} className="border-b align-top">
-            <td className="p-3"><input type="checkbox" aria-label={`اختيار فاتورة ${r.number}`} disabled={!classifyBConnectReviewRow(r).selectable} checked={selectedNumbers.includes(r.number)} onChange={(e) => setSelectedNumbers((old) => e.target.checked ? [...old, r.number] : old.filter((n) => n !== r.number))} /></td><td className="p-3 text-xs">{decisions[r.number]?.action === "approved" ? "اعتماد مبدئي" : decisions[r.number]?.action === "excluded" ? `مستبعد: ${decisions[r.number].note}` : "لم يُتخذ قرار"}</td><td className="p-3 text-xs font-medium">{classifyBConnectReviewRow(r).label}</td><td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
+          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">التفاصيل</th><th className="p-3 text-right">اختيار</th><th className="p-3 text-right">قرار المراجعة</th><th className="p-3 text-right">التشخيص</th><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">تاريخ B-Connect</th><th className="p-3 text-right">مدخل B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">مدخل التطبيق</th><th className="p-3 text-right">الدليل</th></tr></thead>
+          <tbody>{visible.map((r, i) => { const Icon = icons[r.status]; return <tbody key={r.number + '-' + i}><tr className="border-b align-top">
+            <td className="p-3"><Button type="button" variant="outline" size="sm" onClick={() => setExpandedNumber(expandedNumber === r.number ? null : r.number)}>{expandedNumber === r.number ? 'إخفاء' : 'عرض'}</Button></td><td className="p-3"><input type="checkbox" aria-label={`اختيار فاتورة ${r.number}`} disabled={!classifyBConnectReviewRow(r).selectable} checked={selectedNumbers.includes(r.number)} onChange={(e) => setSelectedNumbers((old) => e.target.checked ? [...old, r.number] : old.filter((n) => n !== r.number))} /></td><td className="p-3 text-xs">{decisions[r.number]?.action === "approved" ? "اعتماد مبدئي" : decisions[r.number]?.action === "excluded" ? `مستبعد: ${decisions[r.number].note}` : "لم يُتخذ قرار"}{decisions[r.number] && <Button type="button" variant="ghost" size="sm" onClick={() => undoDecision(r.number)}>تراجع عن القرار</Button>}</td><td className="p-3 text-xs font-medium">{classifyBConnectReviewRow(r).label}</td><td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
             <td className="p-3 font-mono font-bold">{r.number}</td><td className="p-3">{r.bconnect?.supplier || '—'}</td>
             <td className="p-3 whitespace-nowrap">{r.bconnect?.date || "—"}</td><td className="p-3">{r.bconnect?.user || "—"}</td><td className="p-3">{money(r.bconnect?.invoice_value)}{money(r.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="p-3">{r.app ? (money(r.app.total_value) === '—' ? '—' : money(r.app.total_value) + ' ج') : '—'}</td>
             <td className="p-3">{money(r.financial?.difference) === '—' ? '—' : money(r.financial.difference) + ' ج'}</td>
             <td className="p-3">{r.app?.entered_by_name || r.app?.entered_by || "غير متاح في بيانات المطابقة"}</td><td className="max-w-[420px] p-3 text-xs leading-6 text-gray-600">{(r.reasons || []).join(' ')}</td>
-          </tr>; })}{!visible.length && <tr><td colSpan={13} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
+          </tr>{expandedNumber === r.number && <tr className="border-b bg-slate-50"><td colSpan={14} className="p-4"><div className="grid gap-3 md:grid-cols-3"><div><strong>هوية الفاتورة</strong><p>الفرع B-Connect: {r.bconnect?.branch || 'غير متاح'}</p><p>الفرع في التطبيق: {r.app?.branch || 'غير متاح'}</p><p>المورد في التطبيق: {r.app?.supplier_name || 'غير متاح'}</p></div><div><strong>التفاصيل المالية</strong><p>الإجمالي B-Connect: {money(r.bconnect?.invoice_value)} ج</p><p>الإجمالي في التطبيق: {money(r.app?.total_value)} ج</p><p>المرتجع B-Connect: {money(r.bconnect?.return_value)} ج</p><p>المرتجع في التطبيق: {money(r.app?.returned_value)} ج</p></div><div><strong>الأدلة والقرار</strong><p>تاريخ التطبيق: {r.app?.invoice_date || 'غير متاح'}</p><p>رقم سجل التطبيق: {r.app?.id || 'غير متاح'}</p><p>التشخيص: {classifyBConnectReviewRow(r).label}</p><p>{(r.reasons || []).join(' — ')}</p></div></div></td></tr>}</tbody>; })}{!visible.length && <tr><td colSpan={14} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
         </table></div>
       </Card>
     </>}
