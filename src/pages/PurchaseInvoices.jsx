@@ -666,6 +666,7 @@ export default function PurchaseInvoices() {
         onSubmit={handleSubmit}
         invoice={editingInvoice}
         prefill={bconnectPrefill}
+        reviewOnly={Boolean(activeHandoff)}
         externalError={handoffWriteWarning}
         isLoading={handoffSaving || createMutation.isPending || updateMutation.isPending}
         allInvoices={invoices}
