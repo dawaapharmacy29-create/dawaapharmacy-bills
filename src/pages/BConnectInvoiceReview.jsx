@@ -23,6 +23,17 @@ export default function BConnectInvoiceReview() {
   const [problemsOnly, setProblemsOnly] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [decisions, setDecisions] = useState({});
+  const [decisionNote, setDecisionNote] = useState('');
+  const [selectedNumbers, setSelectedNumbers] = useState([]);
+  const decide = (action) => {
+    const eligible = state.rows.filter((r) => selectedNumbers.includes(r.number) && r.status !== 'clean');
+    if (!eligible.length) return;
+    if (action === 'excluded' && !decisionNote.trim()) return;
+    setDecisions((old) => Object.fromEntries([...Object.entries(old), ...eligible.map((r) => [r.number, { action, note: decisionNote.trim(), source_id: r.app?.id || null }])]));
+    setSelectedNumbers([]);
+    setDecisionNote('');
+  };
 
   const visible = useMemo(() => state.rows.filter((r) => {
     if (problemsOnly && r.status === 'clean') return false;
@@ -35,6 +46,8 @@ export default function BConnectInvoiceReview() {
   const reviewFile = async (file) => {
     if (!file) return;
     setState({ loading: true, error: '', fileName: file.name, rows: [], meta: null });
+    setDecisions({});
+    setSelectedNumbers([]);
     try {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
@@ -111,6 +124,17 @@ export default function BConnectInvoiceReview() {
       {state.error && <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{state.error}</div>}
     </Card>
     {!!state.rows.length && <>
+      <Card className="space-y-3 border-amber-200 p-4">
+        <div><strong>قرارات المراجعة — تحضير فقط</strong><p className="text-xs text-gray-600">الاعتماد والاستبعاد هنا قرارات مؤقتة داخل الصفحة، لا تحفظ على الخادم ولا تعدّل الفواتير. التنفيذ الفعلي متوقف لحين تأمين مسار الحفظ والمراجعة.</p></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm">المحدد: {selectedNumbers.length}</span>
+          <Button type="button" variant="outline" disabled={!selectedNumbers.length} onClick={() => decide('approved')}>اعتماد مقترح للتنفيذ</Button>
+          <input aria-label="سبب استبعاد التعديل" value={decisionNote} onChange={(e) => setDecisionNote(e.target.value)} placeholder="سبب الاستبعاد (إلزامي)" className="h-9 min-w-[180px] rounded-lg border px-3 text-sm" />
+          <Button type="button" variant="outline" disabled={!selectedNumbers.length || !decisionNote.trim()} onClick={() => decide('excluded')}>استبعاد المقترح</Button>
+          <Button type="button" disabled title="التنفيذ الفعلي غير متاح قبل التحقق الخادمي والصلاحيات">تنفيذ التعديلات (غير مفعل)</Button>
+        </div>
+        <p className="text-xs text-gray-500">قرارات مؤقتة: {Object.keys(decisions).length} — تختفي عند رفع ملف جديد أو تحديث الصفحة.</p>
+      </Card>
       <div className="grid gap-3 md:grid-cols-4">
         <Card className="p-4"><div className="text-xs text-gray-500">فواتير B-Connect</div><div className="text-2xl font-bold">{state.rows.length}</div></Card>
         <Card className="p-4"><div className="text-xs text-gray-500">🟢 سليم</div><div className="text-2xl font-bold">{counts.clean}</div></Card>
@@ -128,14 +152,14 @@ export default function BConnectInvoiceReview() {
           <span className="text-xs text-gray-600">المعروض {visible.length} من {state.rows.length} فاتورة</span>
         </div>
         <div className="overflow-x-auto"><table className="w-full min-w-[1250px] text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">تاريخ B-Connect</th><th className="p-3 text-right">مدخل B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">مدخل التطبيق</th><th className="p-3 text-right">الدليل</th></tr></thead>
+          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">اختيار</th><th className="p-3 text-right">قرار المراجعة</th><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">تاريخ B-Connect</th><th className="p-3 text-right">مدخل B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">مدخل التطبيق</th><th className="p-3 text-right">الدليل</th></tr></thead>
           <tbody>{visible.map((r, i) => { const Icon = icons[r.status]; return <tr key={r.number + '-' + i} className="border-b align-top">
-            <td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
+            <td className="p-3"><input type="checkbox" aria-label={`اختيار فاتورة ${r.number}`} disabled={r.status === "clean" || r.identity === "duplicate_app" || r.identity === "duplicate_bconnect" || r.identity === "unverified" || r.identity === "unauthorized_or_incomplete"} checked={selectedNumbers.includes(r.number)} onChange={(e) => setSelectedNumbers((old) => e.target.checked ? [...old, r.number] : old.filter((n) => n !== r.number))} /></td><td className="p-3 text-xs">{decisions[r.number]?.action === "approved" ? "اعتماد مبدئي" : decisions[r.number]?.action === "excluded" ? `مستبعد: ${decisions[r.number].note}` : "لم يُتخذ قرار"}</td><td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
             <td className="p-3 font-mono font-bold">{r.number}</td><td className="p-3">{r.bconnect?.supplier || '—'}</td>
             <td className="p-3 whitespace-nowrap">{r.bconnect?.date || "—"}</td><td className="p-3">{r.bconnect?.user || "—"}</td><td className="p-3">{money(r.bconnect?.invoice_value)}{money(r.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="p-3">{r.app ? (money(r.app.total_value) === '—' ? '—' : money(r.app.total_value) + ' ج') : '—'}</td>
             <td className="p-3">{money(r.financial?.difference) === '—' ? '—' : money(r.financial.difference) + ' ج'}</td>
             <td className="p-3">{r.app?.entered_by_name || r.app?.entered_by || "غير متاح في بيانات المطابقة"}</td><td className="max-w-[420px] p-3 text-xs leading-6 text-gray-600">{(r.reasons || []).join(' ')}</td>
-          </tr>; })}{!visible.length && <tr><td colSpan={10} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
+          </tr>; })}{!visible.length && <tr><td colSpan={12} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
         </table></div>
       </Card>
     </>}
