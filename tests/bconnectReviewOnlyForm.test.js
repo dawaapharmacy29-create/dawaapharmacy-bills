@@ -23,3 +23,12 @@ test('B-Connect read-only state cannot reach legacy mutations', () => {
   assert.ok(!submit.includes('PurchaseInvoice.create('));
   assert.ok(!submit.includes('PurchaseInvoice.update('));
 });
+
+test('B-Connect read-only handoff is not blocked by invoice write permissions', () => {
+  const start = page.indexOf('const handoff = location.state?.bconnectHandoff;');
+  const end = page.indexOf('navigate(location.pathname, { replace: true, state: null });', start);
+  assert.ok(start >= 0 && end > start);
+  const handoff = page.slice(start, end);
+  assert.ok(!handoff.includes('if (!canSaveInvoice)'));
+  assert.ok(handoff.includes('setActiveHandoff(handoff)'));
+});
