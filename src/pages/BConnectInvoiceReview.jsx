@@ -35,6 +35,14 @@ const invoiceScopeKey = (branch, number) => `${normalizeBranch(branch) || 'unkno
 const rowKey = (row) => invoiceScopeKey(row?.bconnect?.branch || row?.app?.branch, row?.number);
 const dateOnly = (value) => String(value || '').slice(0, 10);
 
+function formatArabicDate(value) {
+  const iso = dateOnly(value);
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value || '—';
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date);
+}
+
 function issueKinds(row) {
   const kinds = new Set();
   const decision = classifyBConnectReviewRow(row);
@@ -87,13 +95,32 @@ function Metric({ label, value, tone = 'slate' }) {
   </div>;
 }
 
-function CompareValue({ label, source, current, moneyValue = false }) {
-  const format = (value) => moneyValue ? (money(value) === '—' ? '—' : `${money(value)} ج`) : (value || '—');
-  const same = String(format(source)) === String(format(current));
-  return <div className={`grid gap-2 rounded-xl border p-3 md:grid-cols-[140px_1fr_1fr] ${same ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/50'}`}>
+function CompareValue({ label, source, current, moneyValue = false, normalize, display }) {
+  const sourceKnown = source !== null && source !== undefined && source !== '';
+  const currentKnown = current !== null && current !== undefined && current !== '';
+  const normalizeValue = (value) => normalize ? normalize(value) : value;
+  const normalizedSource = sourceKnown ? normalizeValue(source) : null;
+  const normalizedCurrent = currentKnown ? normalizeValue(current) : null;
+  const comparable = sourceKnown && currentKnown && normalizedSource !== null && normalizedCurrent !== null;
+  const same = comparable && String(normalizedSource) === String(normalizedCurrent);
+  const tone = !comparable
+    ? 'border-slate-200 bg-slate-50/60'
+    : same
+      ? 'border-slate-200 bg-white'
+      : 'border-amber-200 bg-amber-50/50';
+
+  const format = (value, known) => {
+    if (!known) return 'غير متاح';
+    if (display) return display(value);
+    if (moneyValue) return money(value) === '—' ? 'غير متاح' : `${money(value)} ج`;
+    return value || 'غير متاح';
+  };
+
+  return <div className={`grid gap-2 rounded-xl border p-3 md:grid-cols-[140px_1fr_1fr] ${tone}`}>
     <div className="font-bold text-slate-700">{label}</div>
-    <div><div className="text-[11px] text-slate-400">B-Connect</div><div className="mt-1 break-words font-medium">{format(source)}</div></div>
-    <div><div className="text-[11px] text-slate-400">المسجل في التطبيق</div><div className="mt-1 break-words font-medium">{format(current)}</div></div>
+    <div><div className="text-[11px] text-slate-400">B-Connect</div><div className="mt-1 break-words font-medium">{format(source, sourceKnown)}</div></div>
+    <div><div className="text-[11px] text-slate-400">المسجل في التطبيق</div><div className="mt-1 break-words font-medium">{format(current, currentKnown)}</div></div>
+    {!comparable && <div className="md:col-start-2 md:col-span-2 text-[11px] text-slate-500">لا يُعتبر اختلافًا مؤكدًا لأن القيمة غير متاحة في أحد المصدرين.</div>}
   </div>;
 }
 
@@ -121,12 +148,12 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
       <div className="overflow-y-auto px-5 py-5 md:px-7">
         <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
           <section className="space-y-3">
-            <div className="flex items-center justify-between gap-2"><h3 className="font-black">المقارنة</h3><span className="text-xs text-slate-400">الاختلافات فقط تحتاج قرارًا</span></div>
-            <CompareValue label="الفرع" source={source.branch} current={app.branch} />
+            <div className="flex items-center justify-between gap-2"><h3 className="font-black">المقارنة</h3><span className="text-xs text-slate-400">الاختلافات المؤكدة فقط تحتاج قرارًا</span></div>
+            <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} />
             <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} />
-            <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} />
-            <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue />
-            <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue />
+            <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} />
+            <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} />
+            <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-950">
               <div className="font-black">سبب المراجعة</div>
               <div>{(row.reasons || []).join(' — ') || 'لا توجد اختلافات مسجلة.'}</div>
@@ -152,7 +179,11 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
                 {supplierDiffers && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800">تغيير المورد لن يتم كنص حر. عند تفعيل الحفظ الفعلي يجب اختيار المورد من سجل الموردين حتى تُحفظ هوية المورد الصحيحة.</div>}
               </div>
 
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">التاريخ</span><input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-bold text-slate-600">التاريخ</span>
+                <input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" />
+                <span className="block text-[11px] font-medium text-slate-500">التاريخ الحالي: {formatArabicDate(draft.invoice_date)}</span>
+              </label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الإجمالي</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
@@ -168,10 +199,13 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-white px-5 py-4 md:px-7">
         <div className="text-xs text-slate-500">رقم السجل: <span className="font-mono">{app.id || 'غير موجود'}</span></div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" onClick={onClose}>إلغاء</Button>
           <Button type="button" variant="outline" onClick={onMarkReviewed}>تمت المراجعة</Button>
-          <Button type="button" disabled title="الحفظ الفعلي غير متاح قبل نشر المسار الذري">تم الحفظ</Button>
+          <div className="flex flex-col items-start gap-1">
+            <Button type="button" disabled className="cursor-not-allowed bg-slate-200 text-slate-500 opacity-100 hover:bg-slate-200" title="الحفظ الفعلي غير متاح قبل نشر المسار الذري">تم الحفظ</Button>
+            <span className="text-[10px] font-medium text-slate-400">الحفظ الفعلي غير مفعّل بعد</span>
+          </div>
         </div>
       </div>
     </div>
@@ -330,8 +364,8 @@ export default function BConnectInvoiceReview() {
       <label className="flex cursor-pointer items-center gap-4 p-4 transition hover:bg-slate-50 md:p-5">
         <div className="rounded-2xl bg-teal-50 p-3 text-teal-600"><Upload className="h-6 w-6" /></div>
         <div className="min-w-0 flex-1">
-          <div className="font-black">{state.loading ? 'جاري تحليل الملف ومطابقته...' : state.fileName || 'اختر ملف B-Connect'}</div>
-          <div className="mt-1 text-xs text-slate-500">رفع Excel فقط — نفس رقم الفاتورة مسموح بين الفرعين، والتكرار يُحجب داخل نفس الفرع.</div>
+          <div className="font-black">{state.loading ? 'جاري تحليل الملف ومطابقته...' : state.fileName ? 'تم رفع ملف B-Connect بنجاح' : 'اختر ملف B-Connect'}</div>
+          <div className="mt-1 text-xs text-slate-500">{state.fileName ? <span title={state.fileName}>الملف جاهز للمراجعة — {state.rows.length ? `${state.rows.length} فاتورة` : 'جاري التحليل'}</span> : 'رفع Excel فقط — نفس رقم الفاتورة مسموح بين الفرعين، والتكرار يُحجب داخل نفس الفرع.'}</div>
         </div>
         <span className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-600">اختيار ملف</span>
         <input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} />
@@ -376,7 +410,7 @@ export default function BConnectInvoiceReview() {
                   <td className="px-4 py-3 font-mono font-black text-slate-900">{row.number}</td>
                   <td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td>
                   <td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{row.bconnect?.supplier && row.app?.supplier_name && row.bconnect.supplier !== row.app.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td>
-                  <td className="whitespace-nowrap px-4 py-3"><div>{dateOnly(row.bconnect?.date) || '—'}</div>{row.app?.invoice_date && dateOnly(row.bconnect?.date) !== dateOnly(row.app.invoice_date) && <div className="mt-1 text-[11px] text-amber-600">المسجل: {dateOnly(row.app.invoice_date)}</div>}</td>
+                  <td className="whitespace-nowrap px-4 py-3"><div>{formatArabicDate(row.bconnect?.date)}</div>{row.app?.invoice_date && dateOnly(row.bconnect?.date) !== dateOnly(row.app.invoice_date) && <div className="mt-1 text-[11px] text-amber-600">المسجل: {formatArabicDate(row.app.invoice_date)}</div>}</td>
                   <td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td>
                   <td className="px-4 py-3"><StatusBadge row={row} /></td>
                   <td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2">{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}</td>
