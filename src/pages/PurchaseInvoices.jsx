@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { normalizeDate, normalizeInvoiceNumber, normalizeMoney } from "@/lib/purchaseInvoiceTruth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ export default function PurchaseInvoices() {
   const navigate = useNavigate();
   const [bconnectPrefill, setBconnectPrefill] = useState(null);
   const [handoffWarning, setHandoffWarning] = useState("");
+  const [activeHandoff, setActiveHandoff] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewInvoice, setViewInvoice] = useState(null);
@@ -206,15 +208,20 @@ export default function PurchaseInvoices() {
     if (!handoff || isLoading || !canSaveInvoice) return;
     setHandoffWarning("");
     setBconnectPrefill(null);
+    setActiveHandoff(null);
     if (handoff.mode === "edit") {
       const current = invoices.find((inv) => inv.id === handoff.recordId);
-      if (!current || current.system_invoice_number !== handoff.expectedInvoiceNumber ||
+      if (!current || normalizeInvoiceNumber(current.system_invoice_number) !== handoff.expectedInvoiceNumber ||
           current.branch !== handoff.expectedBranch ||
-          Number(current.total_value) !== handoff.expectedTotal) {
+          normalizeMoney(current.total_value) !== handoff.expectedTotal ||
+          normalizeMoney(current.returned_value) !== handoff.expectedReturned ||
+          (current.supplier_id ?? null) !== handoff.expectedSupplierId ||
+          normalizeDate(current.invoice_date) !== handoff.expectedDate) {
         setHandoffWarning("بيانات الفاتورة اتغيرت أو مش متاحة. افتح الفاتورة من القائمة بعد إعادة المراجعة.");
       } else {
         setEditingInvoice(current);
         setBconnectPrefill(handoff.proposed);
+        setActiveHandoff(handoff);
         setDialogOpen(true);
       }
     } else if (handoff.mode === "create") {
@@ -230,6 +237,24 @@ export default function PurchaseInvoices() {
   }, [location.state, isLoading, canSaveInvoice, invoices, navigate, location.pathname]);
 
   const handleSubmit = (formData) => {
+    if (activeHandoff?.mode === "edit") {
+      const current = invoices.find((inv) => inv.id === activeHandoff.recordId);
+      if (!current || normalizeInvoiceNumber(current.system_invoice_number) !== activeHandoff.expectedInvoiceNumber ||
+          current.branch !== activeHandoff.expectedBranch ||
+          normalizeMoney(current.total_value) !== activeHandoff.expectedTotal ||
+          normalizeMoney(current.returned_value) !== activeHandoff.expectedReturned ||
+          (current.supplier_id ?? null) !== activeHandoff.expectedSupplierId ||
+          normalizeDate(current.invoice_date) !== activeHandoff.expectedDate) {
+        setHandoffWarning("بيانات الفاتورة اتغيرت أثناء المراجعة؛ أعد فتحها من القائمة قبل الحفظ.");
+        setDialogOpen(false);
+        return;
+      }
+    }
+    if (activeHandoff?.mode === "create" && invoices.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === normalizeInvoiceNumber(formData.system_invoice_number))) {
+      setHandoffWarning("رقم الفاتورة أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
+      setDialogOpen(false);
+      return;
+    }
     if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
     else createMutation.mutate(formData);
   };
@@ -381,7 +406,7 @@ export default function PurchaseInvoices() {
   };
 
   const handleView = (inv) => { setViewInvoice(inv); setViewOpen(true); };
-  const handleEdit = (inv) => { setEditingInvoice(inv); setBconnectPrefill(null); setDialogOpen(true); };
+  const handleEdit = (inv) => { setEditingInvoice(inv); setBconnectPrefill(null); setActiveHandoff(null); setDialogOpen(true); };
   const handleSingleDelete = (id) => { setSingleDeleteId(id); setConfirmDelete(true); };
 
   const uniqueSuppliers = [...new Set(invoices.map((i) => i.supplier_name).filter(Boolean))];
@@ -624,7 +649,7 @@ export default function PurchaseInvoices() {
 
       <InvoiceFormDialog
         open={dialogOpen}
-        onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingInvoice(null); setBconnectPrefill(null); } }}
+        onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingInvoice(null); setBconnectPrefill(null); setActiveHandoff(null); } }}
         onSubmit={handleSubmit}
         invoice={editingInvoice}
         prefill={bconnectPrefill}
