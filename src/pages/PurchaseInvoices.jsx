@@ -225,11 +225,12 @@ export default function PurchaseInvoices() {
         setDialogOpen(true);
       }
     } else if (handoff.mode === "create") {
-      if (invoices.some((inv) => inv.system_invoice_number === handoff.proposed.system_invoice_number)) {
+      if (invoices.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === normalizeInvoiceNumber(handoff.proposed.system_invoice_number))) {
         setHandoffWarning("رقم الفاتورة أصبح موجودًا في التطبيق. أعد المطابقة قبل إنشاء فاتورة جديدة.");
       } else {
         setEditingInvoice(null);
         setBconnectPrefill(handoff.proposed);
+        setActiveHandoff(handoff);
         setDialogOpen(true);
       }
     }
@@ -250,8 +251,8 @@ export default function PurchaseInvoices() {
         return;
       }
     }
-    if (activeHandoff?.mode === "create" && invoices.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === normalizeInvoiceNumber(formData.system_invoice_number))) {
-      setHandoffWarning("رقم الفاتورة أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
+    if (activeHandoff?.mode === "create" && (normalizeInvoiceNumber(formData.system_invoice_number) !== normalizeInvoiceNumber(activeHandoff.proposed.system_invoice_number) || invoices.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === normalizeInvoiceNumber(formData.system_invoice_number)))) {
+      setHandoffWarning("رقم الفاتورة اتغير أو أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
       setDialogOpen(false);
       return;
     }
