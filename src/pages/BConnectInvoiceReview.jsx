@@ -53,7 +53,6 @@ function issueKinds(row) {
   if (decision.code === 'blocked') kinds.add('blocked');
   if (text.includes('المورد')) kinds.add('supplier');
   if (text.includes('التاريخ')) kinds.add('date');
-  if (text.includes('مرتجع')) kinds.add('return');
   if (text.includes('قيمة') || text.includes('إجمالي') || text.includes('مالي')) kinds.add('amount');
   if (!kinds.size) kinds.add('other');
 
@@ -95,14 +94,16 @@ function Metric({ label, value, tone = 'slate' }) {
   </div>;
 }
 
-function CompareValue({ label, source, current, moneyValue = false, normalize, display }) {
+function CompareValue({ label, source, current, moneyValue = false, normalize, display, comparison }) {
   const sourceKnown = source !== null && source !== undefined && source !== '';
   const currentKnown = current !== null && current !== undefined && current !== '';
   const normalizeValue = (value) => normalize ? normalize(value) : value;
   const normalizedSource = sourceKnown ? normalizeValue(source) : null;
   const normalizedCurrent = currentKnown ? normalizeValue(current) : null;
-  const comparable = sourceKnown && currentKnown && normalizedSource !== null && normalizedCurrent !== null;
-  const same = comparable && String(normalizedSource) === String(normalizedCurrent);
+  const inferredComparable = sourceKnown && currentKnown && normalizedSource !== null && normalizedCurrent !== null;
+  const inferredSame = inferredComparable && String(normalizedSource) === String(normalizedCurrent);
+  const comparable = comparison ? comparison !== 'unknown' : inferredComparable;
+  const same = comparison ? comparison === 'match' : inferredSame;
   const tone = !comparable
     ? 'border-slate-200 bg-slate-50/60'
     : same
@@ -116,11 +117,14 @@ function CompareValue({ label, source, current, moneyValue = false, normalize, d
     return value || 'غير متاح';
   };
 
+  const displayDiffers = sourceKnown && currentKnown && String(format(source, true)) !== String(format(current, true));
+
   return <div className={`grid gap-2 rounded-xl border p-3 md:grid-cols-[140px_1fr_1fr] ${tone}`}>
     <div className="font-bold text-slate-700">{label}</div>
     <div><div className="text-[11px] text-slate-400">B-Connect</div><div className="mt-1 break-words font-medium">{format(source, sourceKnown)}</div></div>
     <div><div className="text-[11px] text-slate-400">المسجل في التطبيق</div><div className="mt-1 break-words font-medium">{format(current, currentKnown)}</div></div>
     {!comparable && <div className="md:col-start-2 md:col-span-2 text-[11px] text-slate-500">لا يُعتبر اختلافًا مؤكدًا لأن القيمة غير متاحة في أحد المصدرين.</div>}
+    {comparison === 'match' && displayDiffers && <div className="md:col-start-2 md:col-span-2 text-[11px] text-teal-700">مطابق حسب هوية/تطبيع البيانات المعتمد، حتى لو اختلف شكل النص الظاهر.</div>}
   </div>;
 }
 
@@ -130,7 +134,9 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
   const blocked = !handoff || ['duplicate_app', 'duplicate_bconnect', 'unverified', 'unauthorized_or_incomplete', 'conflict'].includes(row.identity);
   const app = row.app || {};
   const source = row.bconnect || {};
-  const supplierDiffers = Boolean(source.supplier && app.supplier_name && source.supplier !== app.supplier_name);
+  const supplierComparison = row.checks?.supplier || 'unknown';
+  const supplierDiffers = supplierComparison === 'mismatch';
+  const isCreate = handoff?.mode === 'create';
 
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div dir="rtl" className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border bg-white shadow-2xl">
@@ -149,10 +155,10 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
         <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-2"><h3 className="font-black">المقارنة</h3><span className="text-xs text-slate-400">الاختلافات المؤكدة فقط تحتاج قرارًا</span></div>
-            <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} />
-            <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} />
-            <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} />
-            <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} />
+            <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} comparison={row.checks?.branch} />
+            <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} comparison={supplierComparison} />
+            <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} comparison={row.checks?.invoice_date} />
+            <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : 'mismatch') : 'unknown'} />
             <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-950">
               <div className="font-black">سبب المراجعة</div>
@@ -162,7 +168,10 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
 
           <section className="rounded-2xl border bg-slate-50/70 p-4 md:p-5">
             <div className="mb-4 flex items-center justify-between gap-2">
-              <div><h3 className="font-black">البيانات المسجلة</h3><p className="mt-1 text-xs text-slate-500">القيم الحالية ظاهرة ومعبأة مسبقًا. رقم الفاتورة والفرع ثابتان.</p></div>
+              <div>
+                <h3 className="font-black">{isCreate ? 'بيانات التسجيل المقترحة' : 'البيانات المسجلة'}</h3>
+                <p className="mt-1 text-xs text-slate-500">{isCreate ? 'لا يوجد سجل حالي لهذه الفاتورة. القيم التالية مقترحة من B-Connect للمراجعة قبل أي تسجيل مستقبلي.' : 'القيم الحالية ظاهرة ومعبأة مسبقًا. رقم الفاتورة والفرع ثابتان.'}</p>
+              </div>
               <ShieldCheck className="h-5 w-5 text-teal-600" />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -171,12 +180,13 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
 
               <div className="sm:col-span-2 rounded-xl border bg-white p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-slate-600">المورد المسجل</span>
+                  <span className="text-xs font-bold text-slate-600">{isCreate ? 'المورد المطلوب تأكيده' : 'المورد المسجل'}</span>
                   {app.supplier_id && <span className="text-[11px] font-mono text-slate-400">ID: {app.supplier_id}</span>}
                 </div>
-                <div className="mt-1 font-bold text-slate-900">{app.supplier_name || 'غير محدد في التطبيق'}</div>
-                <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">اسم المورد في B-Connect: <strong>{source.supplier || 'غير متاح'}</strong></div>
+                <div className="mt-1 font-bold text-slate-900">{isCreate ? (source.supplier || 'غير متاح في B-Connect') : (app.supplier_name || 'غير محدد في التطبيق')}</div>
+                {!isCreate && <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">اسم المورد في B-Connect: <strong>{source.supplier || 'غير متاح'}</strong></div>}
                 {supplierDiffers && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800">تغيير المورد لن يتم كنص حر. عند تفعيل الحفظ الفعلي يجب اختيار المورد من سجل الموردين حتى تُحفظ هوية المورد الصحيحة.</div>}
+                {supplierComparison === 'match' && source.supplier && app.supplier_name && source.supplier !== app.supplier_name && <div className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs leading-6 text-teal-800">المورد مطابق حسب هوية/تطبيع البيانات المعتمد رغم اختلاف صياغة الاسم الظاهرة.</div>}
               </div>
 
               <label className="space-y-1.5">
@@ -198,7 +208,7 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-white px-5 py-4 md:px-7">
-        <div className="text-xs text-slate-500">رقم السجل: <span className="font-mono">{app.id || 'غير موجود'}</span></div>
+        <div className="text-xs text-slate-500">{isCreate ? 'لا يوجد رقم سجل بعد — هذه فاتورة ناقصة للتسجيل.' : <>رقم السجل: <span className="font-mono">{app.id || 'غير موجود'}</span></>}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" onClick={onClose}>إلغاء</Button>
           <Button type="button" variant="outline" onClick={onMarkReviewed}>تمت المراجعة</Button>
@@ -394,7 +404,7 @@ export default function BConnectInvoiceReview() {
           <label className="relative block"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input aria-label="بحث في فواتير B-Connect" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="رقم الفاتورة، المورد، الموظف..." className="h-10 w-full rounded-xl border bg-white pr-10 pl-3 text-sm" /></label>
           <select aria-label="تصفية حسب الفرع" value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select>
           <select aria-label="تصفية حسب نوع الاختلاف" value={issueFilter} onChange={(event) => setIssueFilter(event.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm">
-            <option value="all">كل أنواع الاختلاف</option><option value="supplier">المورد</option><option value="date">التاريخ</option><option value="amount">القيمة المالية</option><option value="return">المرتجع</option><option value="missing">ناقصة للتسجيل</option><option value="duplicate">تكرار</option><option value="blocked">محجوبة</option><option value="other">أخرى</option>
+            <option value="all">كل أنواع الاختلاف</option><option value="supplier">المورد</option><option value="date">التاريخ</option><option value="amount">القيمة المالية</option><option value="missing">ناقصة للتسجيل</option><option value="duplicate">تكرار</option><option value="blocked">محجوبة</option><option value="other">أخرى</option>
           </select>
           <div className="flex h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-bold text-slate-500"><Filter className="h-4 w-4" />{visible.length} نتيجة</div>
         </div>
@@ -406,14 +416,16 @@ export default function BConnectInvoiceReview() {
               {visible.map((row, index) => {
                 const key = rowKey(row);
                 const decision = classifyBConnectReviewRow(row);
+                const supplierMismatch = row.checks?.supplier === 'mismatch';
+                const dateMismatch = row.checks?.invoice_date === 'mismatch';
                 return <tr key={`${key}-${index}`} className="border-t align-middle transition hover:bg-slate-50/70">
                   <td className="px-4 py-3 font-mono font-black text-slate-900">{row.number}</td>
                   <td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td>
-                  <td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{row.bconnect?.supplier && row.app?.supplier_name && row.bconnect.supplier !== row.app.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td>
-                  <td className="whitespace-nowrap px-4 py-3"><div>{formatArabicDate(row.bconnect?.date)}</div>{row.app?.invoice_date && dateOnly(row.bconnect?.date) !== dateOnly(row.app.invoice_date) && <div className="mt-1 text-[11px] text-amber-600">المسجل: {formatArabicDate(row.app.invoice_date)}</div>}</td>
+                  <td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{supplierMismatch && row.app?.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td>
+                  <td className="whitespace-nowrap px-4 py-3"><div>{formatArabicDate(row.bconnect?.date)}</div>{dateMismatch && row.app?.invoice_date && <div className="mt-1 text-[11px] text-amber-600">المسجل: {formatArabicDate(row.app.invoice_date)}</div>}</td>
                   <td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td>
                   <td className="px-4 py-3"><StatusBadge row={row} /></td>
-                  <td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2">{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}</td>
+                  <td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2" title={(row.reasons || []).join(' — ') || decision.label}>{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}</td>
                   <td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' ? 'outline' : 'default'} onClick={() => openReview(row)}>{row.identity === 'missing' ? 'مراجعة للإضافة' : row.status === 'clean' ? 'عرض التفاصيل' : 'مراجعة وتعديل'}</Button></td>
                 </tr>;
               })}
