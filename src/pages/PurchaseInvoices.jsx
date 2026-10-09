@@ -140,7 +140,12 @@ export default function PurchaseInvoices() {
   const createMutation = useMutation({
     mutationFn: async (data) => {
       const inv = await base44.entities.PurchaseInvoice.create(data);
-      await logActivity({ action_type: "create", entity_type: "invoice", entity_id: inv?.id, entity_label: data.system_invoice_number, details: `إنشاء فاتورة ${data.system_invoice_number}` });
+      try {
+        await logActivity({ action_type: "create", entity_type: "invoice", entity_id: inv?.id, entity_label: data.system_invoice_number, details: `إنشاء فاتورة ${data.system_invoice_number}` });
+      } catch (auditError) {
+        console.error("Invoice created, but activity logging failed", auditError);
+        queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
+      }
       return inv;
     },
     onSuccess: (inv) => {
@@ -160,7 +165,8 @@ export default function PurchaseInvoices() {
       if (changes.length > 0) {
         const oldVals = changes.map(f => `${f}: ${JSON.stringify(oldInv[f])}`).join(" | ");
         const newVals = changes.map(f => `${f}: ${JSON.stringify(data[f])}`).join(" | ");
-        await logActivity({
+        try {
+          await logActivity({
           action_type: change_type || "update",
           entity_type: "invoice",
           entity_id: id,
@@ -177,7 +183,11 @@ export default function PurchaseInvoices() {
             : changes.includes("total_value") ? `تغيير القيمة: ${oldInv.total_value} → ${data.total_value}`
             : changes.includes("paid_value") ? `تغيير المدفوع: ${oldInv.paid_value} → ${data.paid_value}`
             : `تعديل: ${changes.join(", ")}`,
-        });
+          });
+        } catch (auditError) {
+          console.error("Invoice updated, but activity logging failed", auditError);
+          queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
+        }
       }
       return { id, data };
     },
