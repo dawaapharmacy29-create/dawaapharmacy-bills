@@ -21,8 +21,15 @@ const money = (v) => {
 export default function BConnectInvoiceReview() {
   const [state, setState] = useState({ loading: false, error: '', fileName: '', rows: [], meta: null });
   const [problemsOnly, setProblemsOnly] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-  const visible = useMemo(() => problemsOnly ? state.rows.filter((r) => r.status !== 'clean') : state.rows, [state.rows, problemsOnly]);
+  const visible = useMemo(() => state.rows.filter((r) => {
+    if (problemsOnly && r.status === 'clean') return false;
+    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+    const q = search.trim().toLowerCase();
+    return !q || [r.number, r.bconnect?.supplier, r.app?.supplier_name, r.bconnect?.user, r.app?.entered_by].some((v) => String(v ?? '').toLowerCase().includes(q));
+  }), [state.rows, problemsOnly, statusFilter, search]);
   const counts = useMemo(() => state.rows.reduce((a, r) => ({ ...a, [r.status]: (a[r.status] || 0) + 1 }), { clean: 0, review: 0, problem: 0 }), [state.rows]);
 
   const reviewFile = async (file) => {
@@ -111,19 +118,24 @@ export default function BConnectInvoiceReview() {
         <Card className="p-4"><div className="text-xs text-gray-500">🔴 مشكلة</div><div className="text-2xl font-bold">{counts.problem}</div></Card>
       </div>
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
           <div className="flex items-center gap-2"><FileSearch className="h-4 w-4"/><strong>{state.fileName}</strong></div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={problemsOnly} onChange={(e) => setProblemsOnly(e.target.checked)}/> المشاكل فقط</label>
         </div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">الدليل</th></tr></thead>
+        <div className="flex flex-wrap items-center gap-3 border-b bg-slate-50/50 px-4 py-3">
+          <input aria-label="بحث برقم الفاتورة أو المورد أو الموظف" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث برقم الفاتورة، المورد، الموظف..." className="h-9 min-w-[220px] flex-1 rounded-lg border bg-white px-3 text-sm" />
+          <select aria-label="تصفية حسب الحالة" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 rounded-lg border bg-white px-3 text-sm"><option value="all">كل الحالات</option><option value="clean">سليم</option><option value="review">تحتاج مراجعة</option><option value="problem">مشكلة</option></select>
+          <span className="text-xs text-gray-600">المعروض {visible.length} من {state.rows.length} فاتورة</span>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[1250px] text-sm">
+          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">تاريخ B-Connect</th><th className="p-3 text-right">مدخل B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">مدخل التطبيق</th><th className="p-3 text-right">الدليل</th></tr></thead>
           <tbody>{visible.map((r, i) => { const Icon = icons[r.status]; return <tr key={r.number + '-' + i} className="border-b align-top">
             <td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
             <td className="p-3 font-mono font-bold">{r.number}</td><td className="p-3">{r.bconnect?.supplier || '—'}</td>
-            <td className="p-3">{money(r.bconnect?.invoice_value)}{money(r.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="p-3">{r.app ? (money(r.app.total_value) === '—' ? '—' : money(r.app.total_value) + ' ج') : '—'}</td>
+            <td className="p-3 whitespace-nowrap">{r.bconnect?.date || "—"}</td><td className="p-3">{r.bconnect?.user || "—"}</td><td className="p-3">{money(r.bconnect?.invoice_value)}{money(r.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="p-3">{r.app ? (money(r.app.total_value) === '—' ? '—' : money(r.app.total_value) + ' ج') : '—'}</td>
             <td className="p-3">{money(r.financial?.difference) === '—' ? '—' : money(r.financial.difference) + ' ج'}</td>
-            <td className="max-w-[420px] p-3 text-xs leading-6 text-gray-600">{(r.reasons || []).join(' ')}</td>
-          </tr>; })}{!visible.length && <tr><td colSpan={7} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
+            <td className="p-3">{r.app?.entered_by_name || r.app?.entered_by || "غير متاح في بيانات المطابقة"}</td><td className="max-w-[420px] p-3 text-xs leading-6 text-gray-600">{(r.reasons || []).join(' ')}</td>
+          </tr>; })}{!visible.length && <tr><td colSpan={10} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
         </table></div>
       </Card>
     </>}
