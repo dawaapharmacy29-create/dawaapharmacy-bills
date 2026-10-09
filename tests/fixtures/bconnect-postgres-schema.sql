@@ -48,3 +48,20 @@ VALUES ('11111111-1111-4111-8111-111111111111',
  encode(digest('fixture-token-only','sha256'),'hex'),now()+interval '1 hour');
 INSERT INTO public.purchase_invoices(id,system_invoice_number,notes,branch,workflow_status,entered_by_account_id,base44_sync_state)
 VALUES ('fixture-invoice-1','10001','original','دواء شكري','draft','11111111-1111-4111-8111-111111111111','active');
+
+-- Non-manager synthetic accounts for permission and ownership coverage.
+INSERT INTO public.staff_accounts(id,username,display_name,role,branch_ids,status)
+VALUES
+ ('22222222-2222-4222-8222-222222222222','fixture_entry','Fixture Entry','invoice_entry','["دواء شكري"]','active'),
+ ('33333333-3333-4333-8333-333333333333','fixture_other','Fixture Other','invoice_entry','["دواء الشامي"]','active'),
+ ('44444444-4444-4444-8444-444444444444','fixture_viewer','Fixture Viewer','viewer','["دواء شكري"]','active');
+INSERT INTO public.staff_sessions(account_id,token_hash,expires_at)
+VALUES
+ ('22222222-2222-4222-8222-222222222222',encode(digest('fixture-entry-token','sha256'),'hex'),now()+interval '1 hour'),
+ ('33333333-3333-4333-8333-333333333333',encode(digest('fixture-other-token','sha256'),'hex'),now()+interval '1 hour'),
+ ('44444444-4444-4444-8444-444444444444',encode(digest('fixture-viewer-token','sha256'),'hex'),now()+interval '1 hour');
+INSERT INTO public.purchase_invoices(id,system_invoice_number,notes,branch,workflow_status,entered_by_account_id,base44_sync_state)
+VALUES
+ ('fixture-owned-draft','10002','owned original','دواء شكري','draft','22222222-2222-4222-8222-222222222222','active'),
+ ('fixture-approved','10003','approved original','دواء شكري','approved','22222222-2222-4222-8222-222222222222','active'),
+ ('fixture-source-pending','10004','pending original','دواء شكري','draft','22222222-2222-4222-8222-222222222222','pending_delete_review');
