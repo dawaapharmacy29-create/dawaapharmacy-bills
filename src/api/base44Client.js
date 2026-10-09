@@ -91,7 +91,7 @@ async function callSecureRpc(functionName, params = {}) {
       if (result?.error === 'invalid_session') window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
       throw new Error(message);
     }
-    return result.data;
+    return result?.data ?? result;
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.');
     throw new Error(errorText(error));
@@ -296,6 +296,12 @@ export const performanceApi = {
     p_month: params.month || null,
   }),
   bconnectInvoiceNumbers: (numbers = []) => callSecureRpc('app_bconnect_invoice_number_check', { p_numbers: numbers }),
+  bconnectAtomicEdit: ({ operationId, invoiceId, expectedRevision, patch }) => callSecureRpc('bconnect_atomic_edit_v1', {
+    p_operation_id: operationId,
+    p_invoice_id: invoiceId,
+    p_expected_revision: expectedRevision,
+    p_patch: patch,
+  }),
   invoices: (params = {}) => callSecureRpc('app_paged_purchase_invoices', {
     p_branch: params.branch || 'all',
     p_date_from: params.date_from || null,
@@ -317,7 +323,7 @@ export const systemHealthApi = {
 
 export const base44ReviewApi = {
   pendingList: (params = {}) => callSecureRpc('app_base44_pending_reviews_list', { p_status: params.status || 'pending', p_limit: params.limit || 200 }),
-  mark: (reviewId, decision, notes = '') => callSecureRpc('app_base44_review_mark', { p_review_id: reviewId, p_decision: decision, p_notes: notes || null }),
+  mark: (reviewId, decision, notes = '') => callSecureRpc('app_base44_review_mark', { p_review_id: reviewId, p_decision: decision, p_notes: p_notes || null }),
 };
 
 export const base44 = {
