@@ -100,7 +100,7 @@ const emptyForm = {
   cash_amount: "",
 };
 
-export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoice, prefill = null, externalError = "", isLoading, allInvoices = [] }) {
+export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoice, prefill = null, externalError = "", reviewOnly = false, isLoading, allInvoices = [] }) {
   const [form, setForm] = useState(emptyForm);
   const [dupError, setDupError] = useState("");
 
@@ -341,7 +341,7 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
           </DialogTitle>
         </DialogHeader>
 
-        {prefill && <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">البيانات من مراجعة B-Connect هي مقترح فقط. راجع المورد والفرع والتاريخ والمبالغ قبل الحفظ. لن يتم الحفظ تلقائيًا.</div>}
+        {prefill && <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">البيانات من مراجعة B-Connect للمعاينة فقط. الحفظ والتحديث متوقفان حتى تفعيل الحماية الذرية على الخادم.</div>}
         {externalError && <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-800">{externalError}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Invoice Numbers */}
@@ -633,8 +633,8 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
           {dupError && <p className="text-red-500 text-xs bg-red-50 p-2 rounded-md">{dupError}</p>}
 
           <DialogFooter className="gap-2 flex-row-reverse">
-            <Button type="submit" disabled={isLoading} className="bg-teal-600 hover:bg-teal-700">
-              {isLoading ? "جاري الحفظ..." : invoice ? "تحديث" : "حفظ الفاتورة"}
+            <Button type="submit" disabled={isLoading || reviewOnly} className="bg-teal-600 hover:bg-teal-700">
+              {reviewOnly ? "الحفظ غير متاح في وضع المراجعة" : isLoading ? "جاري الحفظ..." : invoice ? "تحديث" : "حفظ الفاتورة"}
             </Button>
             <Button type="button" variant="outline" disabled={isLoading} onClick={() => onOpenChange(false)}>إلغاء</Button>
           </DialogFooter>
