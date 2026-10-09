@@ -57,3 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           psql -v ON_ERROR_STOP=1 -f tests/fixtures/bconnect-concurrent-edit.sql
+      - name: Validate read-only legacy number audit on disposable schema
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f docs/sql-staging/bconnect_branch_number_legacy_audit_v1.sql
