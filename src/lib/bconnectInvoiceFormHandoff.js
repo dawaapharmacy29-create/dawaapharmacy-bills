@@ -26,6 +26,12 @@ export function buildBConnectFormHandoff(row = {}) {
       (total !== null && returned !== null && returned > total)) return null;
   // Missing invoices need a real gross amount before a useful prefilled form can be offered.
   if (!edit && total === null) return null;
+  // For edits, compare a partial source amount with the existing value it would retain.
+  if (edit) {
+    const effectiveTotal = total ?? normalizeMoney(row.app.total_value);
+    const effectiveReturned = returned ?? normalizeMoney(row.app.returned_value) ?? 0;
+    if (effectiveTotal === null || effectiveTotal < 0 || effectiveReturned < 0 || effectiveReturned > effectiveTotal) return null;
+  }
   if (edit && (normalizeInvoiceNumber(row.app.system_invoice_number) !== serial || normalizeBranch(row.app.branch) !== branch)) return null;
   if (edit) return {
     mode: 'edit', recordId: row.app.id, expectedInvoiceNumber: serial,
