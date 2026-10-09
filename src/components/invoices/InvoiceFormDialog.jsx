@@ -636,7 +636,7 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
             <Button type="submit" disabled={isLoading} className="bg-teal-600 hover:bg-teal-700">
               {isLoading ? "جاري الحفظ..." : invoice ? "تحديث" : "حفظ الفاتورة"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
+            <Button type="button" variant="outline" disabled={isLoading} onClick={() => onOpenChange(false)}>إلغاء</Button>
           </DialogFooter>
         </form>
       </DialogContent>
