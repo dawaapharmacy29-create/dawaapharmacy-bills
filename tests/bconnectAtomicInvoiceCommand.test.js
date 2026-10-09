@@ -47,3 +47,10 @@ test('atomic command excludes server-owned and unknown invoice fields', () => {
   }
   assert.equal(command.invoice.payment_type, 'نقدي');
 });
+
+test('edit tokens are trimmed and whitespace-only revisions are rejected', () => {
+  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: '  invoice-1  ', expectedRevision: ' rev-2 ' });
+  assert.equal(command.record_id, 'invoice-1');
+  assert.equal(command.expected_revision, 'rev-2');
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: 'invoice-1', expectedRevision: '   ' }), /missing_revision/);
+});
