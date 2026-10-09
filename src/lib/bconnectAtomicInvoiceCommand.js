@@ -35,8 +35,8 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
     contract: 'bconnect_atomic_invoice_write_v1',
     operation_id: operation,
     mode,
-    record_id: mode === 'edit' ? String(recordId) : null,
-    expected_revision: mode === 'edit' ? String(expectedRevision) : null,
+    record_id: mode === 'edit' ? recordId.trim() : null,
+    expected_revision: mode === 'edit' ? expectedRevision.trim() : null,
     invoice: { ...writable, system_invoice_number: number, branch, total_value: total, returned_value: returned, invoice_date: rawDate, supplier_id: invoice.supplier_id.trim(), supplier_name: invoice.supplier_name.trim() },
   };
 }
