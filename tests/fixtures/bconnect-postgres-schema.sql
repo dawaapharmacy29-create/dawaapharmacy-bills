@@ -1,10 +1,10 @@
 -- Synthetic schema for free PostgreSQL CI integration tests ONLY.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- Supabase provides these roles; recreate only inside disposable vanilla PostgreSQL.
-DO $ BEGIN
+DO $fixture_roles$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
-END $;
+END $fixture_roles$;
 CREATE TABLE public.staff_accounts (
   id uuid PRIMARY KEY,
   username text,
