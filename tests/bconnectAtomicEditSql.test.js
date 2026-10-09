@@ -27,3 +27,8 @@ test('edit RPC is narrow and does not mutate identity or amounts', () => {
   assert.match(sql, /UPDATE public\.purchase_invoices SET notes = v_notes/);
   assert.doesNotMatch(sql, /UPDATE public\.purchase_invoices SET (?:system_invoice_number|total_value|branch)/);
 });
+
+test('edit RPC returns database revision, not an assumed increment', () => {
+  assert.match(sql, /RETURNING bconnect_revision_v1 INTO v_actual_revision/);
+  assert.match(sql, /'revision',v_actual_revision/);
+});
