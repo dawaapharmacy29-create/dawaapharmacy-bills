@@ -25,6 +25,7 @@ CREATE TABLE public.purchase_invoices (
   system_invoice_number text,
   is_sample boolean DEFAULT false,
   notes text,
+  supplier_name text,
   branch text,
   workflow_status text,
   entered_by_account_id uuid,
