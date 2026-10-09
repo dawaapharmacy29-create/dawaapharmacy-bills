@@ -20,12 +20,23 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   if (typeof invoice?.supplier_id !== 'string' || !invoice.supplier_id.trim() || typeof invoice?.supplier_name !== 'string' || !invoice.supplier_name.trim()) throw new Error('missing_supplier');
   if (mode === 'edit' && (typeof recordId !== 'string' || !recordId.trim() || typeof expectedRevision !== 'string' || !expectedRevision.trim())) throw new Error('missing_revision');
   if (mode === 'create' && (recordId || expectedRevision)) throw new Error('unexpected_revision');
+  // Never forward server-owned or unknown fields (id, revision, audit metadata) from form state.
+  // This is a client contract boundary; the backend must independently validate every field.
+  const writableFields = [
+    'supplier_invoice_number', 'entered_by', 'payment_type', 'status', 'notes',
+    'purchase_category', 'purchase_category_source', 'transaction_type',
+    'net_purchase_mode', 'exclusion_reason', 'exclusion_note',
+    'source_branch', 'destination_branch', 'cash_amount',
+  ];
+  const writable = Object.fromEntries(writableFields
+    .filter((key) => Object.prototype.hasOwnProperty.call(invoice, key))
+    .map((key) => [key, invoice[key]]));
   return {
     contract: 'bconnect_atomic_invoice_write_v1',
     operation_id: operation,
     mode,
     record_id: mode === 'edit' ? String(recordId) : null,
     expected_revision: mode === 'edit' ? String(expectedRevision) : null,
-    invoice: { ...invoice, system_invoice_number: number, branch, total_value: total, returned_value: returned },
+    invoice: { ...writable, system_invoice_number: number, branch, total_value: total, returned_value: returned, invoice_date: rawDate, supplier_id: invoice.supplier_id.trim(), supplier_name: invoice.supplier_name.trim() },
   };
 }
