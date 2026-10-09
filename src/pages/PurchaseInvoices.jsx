@@ -272,6 +272,16 @@ export default function PurchaseInvoices() {
     setHandoffWriteWarning("");
     let writeAttempted = false;
     try {
+      const finalTotal = normalizeMoney(formData.total_value);
+      const finalReturned = formData.returned_value === "" || formData.returned_value == null
+        ? 0 : normalizeMoney(formData.returned_value);
+      if (finalTotal === null || finalTotal < 0 || finalReturned === null ||
+          finalReturned < 0 || finalReturned > finalTotal) {
+        throw new Error("إجمالي الفاتورة أو المرتجع غير صالح؛ راجع القيم قبل الحفظ.");
+      }
+      if (!formData.supplier_id || !formData.supplier_name || !formData.invoice_date) {
+        throw new Error("يجب تأكيد المورد وتاريخ الفاتورة قبل الحفظ.");
+      }
       // A fresh read narrows the stale-cache window. This is NOT an atomic server-side lock.
       const fresh = [];
       const pageSize = 500;
