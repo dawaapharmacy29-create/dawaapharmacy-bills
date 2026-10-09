@@ -35,8 +35,8 @@ CREATE TABLE public.purchase_invoices (
   supplier_id text,
   invoice_date date,
   total_value numeric NOT NULL DEFAULT 0,
-  cash_amount numeric,
-  returned_value numeric,
+  cash_amount numeric NOT NULL DEFAULT 0,
+  returned_value numeric NOT NULL DEFAULT 0,
   branch text,
   payment_type text,
   purchase_category text,
@@ -50,7 +50,7 @@ CREATE TABLE public.purchase_invoices (
   workflow_status text,
   entered_by_account_id uuid,
   base44_sync_state text,
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz
 );
 CREATE OR REPLACE FUNCTION public.validate_staff_session(p_session_token text)
 RETURNS jsonb LANGUAGE sql AS $$
@@ -76,9 +76,9 @@ VALUES ('11111111-1111-4111-8111-111111111111',
  encode(digest('fixture-token-only','sha256'),'hex'),now()+interval '1 hour');
 INSERT INTO public.purchase_invoices(
  id,system_invoice_number,notes,branch,workflow_status,entered_by_account_id,base44_sync_state,
- supplier_id,supplier_name,invoice_date,total_value,returned_value,cash_amount,payment_type,purchase_category)
+ supplier_id,supplier_name,invoice_date,total_value,returned_value,cash_amount,payment_type,purchase_category,updated_at)
 VALUES ('fixture-invoice-1','10001','original','دواء شكري','draft','11111111-1111-4111-8111-111111111111','active',
- 'supplier-1','مورد تجريبي','2026-10-01',100,10,20,'آجل','medicines');
+ 'supplier-1','مورد تجريبي','2026-10-01',100,10,20,'آجل','medicines',clock_timestamp()-interval '1 minute');
 
 -- Non-manager synthetic accounts for permission and ownership coverage.
 INSERT INTO public.staff_accounts(id,username,display_name,role,branch_ids,status)
@@ -93,8 +93,8 @@ VALUES
  ('44444444-4444-4444-8444-444444444444',encode(digest('fixture-viewer-token','sha256'),'hex'),now()+interval '1 hour');
 INSERT INTO public.purchase_invoices(
  id,system_invoice_number,notes,branch,workflow_status,entered_by_account_id,base44_sync_state,
- supplier_id,supplier_name,invoice_date,total_value,returned_value,cash_amount)
+ supplier_id,supplier_name,invoice_date,total_value,returned_value,cash_amount,updated_at)
 VALUES
- ('fixture-owned-draft','10002','owned original','دواء شكري','draft','22222222-2222-4222-8222-222222222222','active','supplier-1','مورد تجريبي','2026-10-02',120,0,0),
- ('fixture-approved','10003','approved original','دواء شكري','approved','22222222-2222-4222-8222-222222222222','active','supplier-1','مورد تجريبي','2026-10-03',130,0,0),
- ('fixture-source-pending','10004','pending original','دواء شكري','draft','22222222-2222-4222-8222-222222222222','pending_delete_review','supplier-1','مورد تجريبي','2026-10-04',140,0,0);
+ ('fixture-owned-draft','10002','owned original','دواء شكري','draft','22222222-2222-4222-8222-222222222222','active','supplier-1','مورد تجريبي','2026-10-02',120,0,0,clock_timestamp()-interval '1 minute'),
+ ('fixture-approved','10003','approved original','دواء شكري','approved','22222222-2222-4222-8222-222222222222','active','supplier-1','مورد تجريبي','2026-10-03',130,0,0,clock_timestamp()-interval '1 minute'),
+ ('fixture-source-pending','10004','pending original','دواء شكري','draft','22222222-2222-4222-8222-222222222222','pending_delete_review','supplier-1','مورد تجريبي','2026-10-04',140,0,0,clock_timestamp()-interval '1 minute');
