@@ -29,10 +29,13 @@ test('edit sends only explicitly supplied fields', () => {
   assert.equal(Object.hasOwn(command.invoice, 'supplier_id'), false);
 });
 
-test('edit preserves explicit unknown nullable money as null', () => {
-  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice: { returned_value: null, cash_amount: '' }, recordId: 'invoice-1', expectedRevision: 2 });
-  assert.equal(command.invoice.returned_value, null);
-  assert.equal(command.invoice.cash_amount, null);
+test('edit rejects null or blank mandatory monetary fields when explicitly supplied', () => {
+  for (const returned_value of [null, '']) {
+    assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice: { returned_value }, recordId: 'invoice-1', expectedRevision: 2 }), /invalid_amounts/);
+  }
+  for (const cash_amount of [null, '']) {
+    assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice: { cash_amount }, recordId: 'invoice-1', expectedRevision: 2 }), /invalid_cash_amount/);
+  }
 });
 
 test('edit rejects an empty patch instead of bumping revision', () => {
