@@ -4,14 +4,14 @@ on:
   pull_request:
     paths:
       - 'docs/sql-staging/**'
-      - 'tests/fixtures/bconnect-postgres-schema.sql'
+      - 'tests/fixtures/**'
       - '.github/workflows/bconnect-postgres-integration.yml'
   push:
     branches:
       - feat/bconnect-invoice-reconciliation-20261006
     paths:
       - 'docs/sql-staging/**'
-      - 'tests/fixtures/bconnect-postgres-schema.sql'
+      - 'tests/fixtures/**'
       - '.github/workflows/bconnect-postgres-integration.yml'
 permissions:
   contents: read
@@ -53,3 +53,7 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f /tmp/bconnect_fixture_test.sql
           result="$(psql -At -v ON_ERROR_STOP=1 -c "SELECT notes FROM public.purchase_invoices WHERE id='fixture-invoice-1'")"
           test "$result" = 'original'
+      - name: Verify concurrent edits use optimistic revision gate
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f tests/fixtures/bconnect-concurrent-edit.sql
