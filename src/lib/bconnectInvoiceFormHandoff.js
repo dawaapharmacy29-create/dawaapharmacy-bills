@@ -13,6 +13,8 @@ export function buildBConnectFormHandoff(row = {}) {
   if (!row.number || !row.bconnect || ['duplicate_app', 'duplicate_bconnect', 'unverified', 'unauthorized_or_incomplete', 'conflict'].includes(row.identity)) return null;
   const edit = row.identity === 'confirmed' && Boolean(row.app?.id);
   if (!edit && row.identity !== 'missing') return null;
+  // A confirmed identity without a unique, stable app record cannot be safely edited.
+  if (row.identity === 'confirmed' && !edit) return null;
   const b = row.bconnect;
   const total = normalizeMoney(b.invoice_value);
   const returned = normalizeMoney(b.return_value);
