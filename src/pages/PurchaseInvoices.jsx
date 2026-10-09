@@ -46,6 +46,7 @@ export default function PurchaseInvoices() {
   const [handoffWarning, setHandoffWarning] = useState("");
   const [activeHandoff, setActiveHandoff] = useState(null);
   const [handoffSaving, setHandoffSaving] = useState(false);
+  const [handoffWriteWarning, setHandoffWriteWarning] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewInvoice, setViewInvoice] = useState(null);
@@ -213,6 +214,7 @@ export default function PurchaseInvoices() {
       return;
     }
     setHandoffWarning("");
+    setHandoffWriteWarning("");
     setBconnectPrefill(null);
     setActiveHandoff(null);
     if (handoff.mode === "edit") {
@@ -251,6 +253,7 @@ export default function PurchaseInvoices() {
     }
     if (handoffSaving) return;
     setHandoffSaving(true);
+    setHandoffWriteWarning("");
     try {
       // A fresh read narrows the stale-cache window. This is NOT an atomic server-side lock.
       const fresh = [];
@@ -275,17 +278,18 @@ export default function PurchaseInvoices() {
             normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
           throw new Error("رقم الفاتورة موجود بالفعل في نفس الفرع.");
         }
-        updateMutation.mutate({ id: current.id, data: formData });
+        await updateMutation.mutateAsync({ id: current.id, data: formData });
       } else {
         if (number !== normalizeInvoiceNumber(activeHandoff.proposed.system_invoice_number) ||
             fresh.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
           throw new Error("رقم الفاتورة اتغير أو أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
         }
-        createMutation.mutate(formData);
+        await createMutation.mutateAsync(formData);
       }
     } catch (error) {
-      setHandoffWarning(error?.message || "تعذر التحقق من الفاتورة؛ لم يُرسل طلب الحفظ.");
-      setDialogOpen(false);
+      const message = error?.message || "تعذر حفظ الفاتورة؛ راجع البيانات وحاول مرة أخرى.";
+      setHandoffWarning(message);
+      setHandoffWriteWarning(message);
     } finally {
       setHandoffSaving(false);
     }
@@ -685,6 +689,7 @@ export default function PurchaseInvoices() {
         onSubmit={handleSubmit}
         invoice={editingInvoice}
         prefill={bconnectPrefill}
+        externalError={handoffWriteWarning}
         isLoading={handoffSaving || createMutation.isPending || updateMutation.isPending}
         allInvoices={invoices}
       />
