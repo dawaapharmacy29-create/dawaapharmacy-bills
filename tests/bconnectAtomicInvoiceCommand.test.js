@@ -36,3 +36,14 @@ test('rejects malformed invoice number and non-string server identifiers', () =>
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, supplier_id: { id: 'supplier-1' } } }), /missing_supplier/);
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: {}, expectedRevision: 'rev-2' }), /missing_revision/);
 });
+
+test('atomic command excludes server-owned and unknown invoice fields', () => {
+  const command = prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: {
+    ...invoice, id: 'forged-id', revision: 'forged-revision', created_at: 'forged-time',
+    audit_actor: 'forged-actor', unknown_field: 'forged-value', payment_type: 'نقدي',
+  } });
+  for (const key of ['id', 'revision', 'created_at', 'audit_actor', 'unknown_field']) {
+    assert.equal(Object.hasOwn(command.invoice, key), false, key);
+  }
+  assert.equal(command.invoice.payment_type, 'نقدي');
+});
