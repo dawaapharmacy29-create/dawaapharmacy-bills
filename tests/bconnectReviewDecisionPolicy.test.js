@@ -10,3 +10,11 @@ test('verified difference can be proposed for human review', () => {
  assert.equal(r.selectable,true);assert.deepEqual(r.differences,['قيمة الفاتورة']);
 });
 test('unexplained review without a concrete difference is blocked', () => assert.equal(classify({status:'review',identity:'confirmed',checks:{supplier:'unknown'},financial:{difference:null}}).selectable,false));
+
+test('problem verdict cannot be overridden by confirmed identity and monetary difference', () => {
+ const row = {status:'problem',identity:'confirmed',checks:{supplier:'match',invoice_date:'match'},financial:{difference:100}};
+ assert.equal(classify(row).selectable,false);
+});
+test('unrecognized status cannot enter decision queue', () => {
+ assert.equal(classify({status:'pending',identity:'confirmed',financial:{difference:5}}).selectable,false);
+});
