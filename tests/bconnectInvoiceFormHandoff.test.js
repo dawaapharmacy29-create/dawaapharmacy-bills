@@ -32,3 +32,12 @@ test('duplicates and unverified rows never offer a form handoff', () => {
 test('missing or unrecognized branch cannot be silently assigned', () => {
  assert.equal(buildBConnectFormHandoff({number:'19522',identity:'missing',bconnect:{...bconnect,branch:'مخزن غير معروف'}}),null);
 });
+
+test('rejects handoff if source number differs from reviewed number', () => {
+ assert.equal(buildBConnectFormHandoff({number:'999',identity:'missing',bconnect}),null);
+});
+test('rejects editing when the app branch or number conflicts with B-Connect', () => {
+ const app={id:'app-1',system_invoice_number:'19522',branch:'دواء الشامي',total_value:100};
+ assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app,bconnect}),null);
+ assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app:{...app,branch:'دواء شكري',system_invoice_number:'999'},bconnect}),null);
+});
