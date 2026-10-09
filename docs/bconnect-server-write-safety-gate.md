@@ -23,3 +23,15 @@ Status: **design only; not deployed**. Current UI uses Base44 `PurchaseInvoice.c
 ## Release gate
 
 **Do not merge or deploy** the handoff as an atomic or concurrency-safe workflow until the backend implementation, contract tests, permissions and production rollout are explicitly approved. Do not modify live records as part of this design work.
+
+## Non-production contract acceptance checks
+
+- Create requests carry a stable idempotency key and normalized global invoice number.
+- Concurrent creates of the same number result in exactly one committed invoice.
+- Edits require a server revision match; stale edits return conflict without overwriting.
+- Replaying an operation with the same key and payload returns its prior result.
+- Replaying a key with a different payload is rejected.
+- A timeout after commit is resolved by querying the original operation status.
+- Audit evidence and invoice changes share a durable transaction boundary.
+- Branch authorization and supplier identity are checked by the server.
+- All tests run against disposable data before any rollout.
