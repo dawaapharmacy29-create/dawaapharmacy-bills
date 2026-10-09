@@ -283,8 +283,9 @@ export default function PurchaseInvoices() {
           !suppliers.some((supplier) => String(supplier.id) === String(formData.supplier_id) && supplier.name === formData.supplier_name)) {
         throw new Error("المورد غير مطابق لسجل الموردين؛ أعد اختياره قبل الحفظ.");
       }
-      const finalDate = normalizeDate(formData.invoice_date);
-      if (!finalDate || !/^\d{4}-\d{2}-\d{2}$/.test(finalDate)) {
+      const rawDate = String(formData.invoice_date ?? "").trim();
+      const finalDate = normalizeDate(rawDate);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || finalDate !== rawDate) {
         throw new Error("تاريخ الفاتورة غير صالح؛ راجع التاريخ قبل الحفظ.");
       }
       const [year, month, day] = finalDate.split("-").map(Number);
