@@ -264,6 +264,7 @@ export default function PurchaseInvoices() {
     if (handoffSaving || createMutation.isPending || updateMutation.isPending) return;
     setHandoffSaving(true);
     setHandoffWriteWarning("");
+    let writeAttempted = false;
     try {
       // A fresh read narrows the stale-cache window. This is NOT an atomic server-side lock.
       const fresh = [];
@@ -291,6 +292,7 @@ export default function PurchaseInvoices() {
             normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
           throw new Error("رقم الفاتورة موجود بالفعل في نفس الفرع.");
         }
+        writeAttempted = true;
         await updateMutation.mutateAsync({ id: current.id, data: formData });
       } else {
         if (number !== normalizeInvoiceNumber(activeHandoff.proposed.system_invoice_number) ||
@@ -298,12 +300,19 @@ export default function PurchaseInvoices() {
             fresh.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === number)) {
           throw new Error("رقم الفاتورة اتغير أو أصبح مسجلًا؛ أعد المطابقة قبل الحفظ.");
         }
+        writeAttempted = true;
         await createMutation.mutateAsync(formData);
       }
     } catch (error) {
-      const message = error?.message || "تعذر حفظ الفاتورة؛ راجع البيانات وحاول مرة أخرى.";
+      const message = writeAttempted
+        ? "تعذر تأكيد نتيجة الحفظ. لا تضغط حفظ مرة أخرى قبل إعادة فتح المراجعة والتأكد من حالة الفاتورة في التطبيق."
+        : (error?.message || "تعذر التحقق من الفاتورة قبل الحفظ؛ لم يُرسل طلب كتابة.");
       setHandoffWarning(message);
       setHandoffWriteWarning(message);
+      if (writeAttempted) {
+        setActiveHandoff(null);
+        queryClient.invalidateQueries({ queryKey: ["purchase-invoices"] });
+      }
     } finally {
       setHandoffSaving(false);
     }
