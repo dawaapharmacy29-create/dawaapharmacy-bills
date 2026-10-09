@@ -8,10 +8,12 @@ DECLARE
   v_retry jsonb;
   v_stale jsonb;
   v_changed jsonb;
+  v_partial jsonb;
   v_revision bigint;
   v_denied jsonb;
   v_before_count bigint;
   v_after_count bigint;
+  v_before_updated_at timestamptz;
   v_id text := 'REPLACE_TEST_INVOICE_ID';
   v_token text := 'REPLACE_TEST_STAFF_SESSION_TOKEN';
   v_op text := 'test_atomic_edit_000001';
@@ -23,7 +25,7 @@ BEGIN
   IF v_id LIKE 'REPLACE_%' OR v_token LIKE 'REPLACE_%' THEN
     RAISE EXCEPTION 'test_fixture_not_configured';
   END IF;
-  SELECT bconnect_revision_v1 INTO v_revision FROM public.purchase_invoices WHERE id=v_id;
+  SELECT bconnect_revision_v1, updated_at INTO v_revision, v_before_updated_at FROM public.purchase_invoices WHERE id=v_id;
   IF v_revision IS NULL THEN RAISE EXCEPTION 'test_invoice_missing'; END IF;
 
   -- Fail-closed security and validation checks: none may change this invoice or ledger.
@@ -73,6 +75,7 @@ BEGIN
       AND p.returned_value=5.5 AND p.cash_amount=20 AND p.payment_type='نقدي'
       AND p.purchase_category='supplies_accessories' AND p.transaction_type='external_purchase'
       AND p.notes='atomic fixture one' AND p.bconnect_revision_v1=v_revision+1
+      AND p.updated_at > v_before_updated_at
   ) THEN RAISE EXCEPTION 'reopen_readback_mismatch'; END IF;
 
   v_retry := public.bconnect_atomic_edit_v1(v_token,v_op,v_id,v_revision,v_full_patch);
@@ -81,5 +84,18 @@ BEGIN
   IF v_changed->>'error' IS DISTINCT FROM 'idempotency_conflict' THEN RAISE EXCEPTION 'operation_reuse_not_rejected: %',v_changed; END IF;
   v_stale := public.bconnect_atomic_edit_v1(v_token,'test_atomic_edit_000002',v_id,v_revision,'{"notes":"stale fixture"}'::jsonb);
   IF v_stale->>'error' IS DISTINCT FROM 'stale_revision' THEN RAISE EXCEPTION 'stale_revision_not_rejected: %',v_stale; END IF;
+
+  -- Partial edit must preserve untouched fields and allow unknown monetary evidence to remain NULL.
+  v_partial := public.bconnect_atomic_edit_v1(v_token,'test_atomic_edit_null0001',v_id,v_revision+1,'{"returned_value":null}'::jsonb);
+  IF v_partial->>'ok' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'partial_null_write_failed: %',v_partial; END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.purchase_invoices p WHERE p.id=v_id
+      AND p.returned_value IS NULL
+      AND p.cash_amount=20
+      AND p.total_value=150.5
+      AND p.supplier_id='supplier-2'
+      AND p.notes='atomic fixture one'
+      AND p.bconnect_revision_v1=v_revision+2
+  ) THEN RAISE EXCEPTION 'partial_null_preservation_mismatch'; END IF;
 END $$;
 ROLLBACK;
