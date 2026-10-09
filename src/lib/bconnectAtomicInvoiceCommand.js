@@ -13,7 +13,7 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   if (total === null || total < 0 || returned === null || returned < 0 || returned > total) throw new Error('invalid_amounts');
   const rawDate = String(invoice?.invoice_date ?? '').trim();
   const normalizedDate = normalizeDate(rawDate);
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate) || normalizedDate !== rawDate) throw new Error('invalid_invoice_date');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || normalizedDate !== rawDate) throw new Error('invalid_invoice_date');
   const [year, month, day] = rawDate.split('-').map(Number);
   const parsed = new Date(Date.UTC(year, month - 1, day));
   if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) throw new Error('invalid_invoice_date');
