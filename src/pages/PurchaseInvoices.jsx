@@ -310,7 +310,9 @@ export default function PurchaseInvoices() {
       setHandoffWarning(message);
       setHandoffWriteWarning(message);
       if (writeAttempted) {
+        setDialogOpen(false);
         setActiveHandoff(null);
+        setBconnectPrefill(null);
         queryClient.invalidateQueries({ queryKey: ["purchase-invoices"] });
       }
     } finally {
