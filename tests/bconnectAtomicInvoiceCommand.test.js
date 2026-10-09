@@ -14,16 +14,17 @@ test('create command canonicalizes identity and amounts', () => {
   assert.equal(command.record_id, null);
 });
 
-test('edit requires a server revision and record identity', () => {
+test('edit requires a numeric server revision and record identity', () => {
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice }), /missing_revision/);
-  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: 'invoice-1', expectedRevision: 'rev-2' });
-  assert.equal(command.expected_revision, 'rev-2');
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: 'invoice-1', expectedRevision: 'rev-2' }), /missing_revision/);
+  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: 'invoice-1', expectedRevision: 2 });
+  assert.equal(command.expected_revision, 2);
 });
 
 test('rejects invalid amounts, operation IDs and unexpected create revisions', () => {
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, returned_value: 101 } }), /invalid_amounts/);
   assert.throws(() => prepareBconnectWriteCommand({ operationId: 'short', mode: 'create', invoice }), /invalid_operation_id/);
-  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice, expectedRevision: 'x' }), /unexpected_revision/);
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice, expectedRevision: 1 }), /unexpected_revision/);
 });
 
 test('rejects nonexistent calendar dates and missing supplier', () => {
@@ -34,25 +35,28 @@ test('rejects nonexistent calendar dates and missing supplier', () => {
 test('rejects malformed invoice number and non-string server identifiers', () => {
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, system_invoice_number: 'ABC-1' } }), /invalid_invoice_identity/);
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, supplier_id: { id: 'supplier-1' } } }), /missing_supplier/);
-  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: {}, expectedRevision: 'rev-2' }), /missing_revision/);
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: {}, expectedRevision: 2 }), /missing_revision/);
 });
 
 test('atomic command excludes server-owned and unknown invoice fields', () => {
   const command = prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: {
     ...invoice, id: 'forged-id', revision: 'forged-revision', created_at: 'forged-time',
     audit_actor: 'forged-actor', unknown_field: 'forged-value', payment_type: 'نقدي',
+    status: 'معتمدة', workflow_status: 'approved', entered_by: 'forged-user', entered_by_account_id: 'forged-account',
   } });
-  for (const key of ['id', 'revision', 'created_at', 'audit_actor', 'unknown_field']) {
+  for (const key of ['id', 'revision', 'created_at', 'audit_actor', 'unknown_field', 'status', 'workflow_status', 'entered_by', 'entered_by_account_id']) {
     assert.equal(Object.hasOwn(command.invoice, key), false, key);
   }
   assert.equal(command.invoice.payment_type, 'نقدي');
 });
 
-test('edit tokens are trimmed and whitespace-only revisions are rejected', () => {
-  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: '  invoice-1  ', expectedRevision: ' rev-2 ' });
+test('edit identifiers are trimmed and invalid revisions are rejected', () => {
+  const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: '  invoice-1  ', expectedRevision: '2' });
   assert.equal(command.record_id, 'invoice-1');
-  assert.equal(command.expected_revision, 'rev-2');
-  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: 'invoice-1', expectedRevision: '   ' }), /missing_revision/);
+  assert.equal(command.expected_revision, 2);
+  for (const expectedRevision of ['   ', 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: 'invoice-1', expectedRevision }), /missing_revision/);
+  }
 });
 
 test('rejects missing invoice payload and invalid cash amounts', () => {
