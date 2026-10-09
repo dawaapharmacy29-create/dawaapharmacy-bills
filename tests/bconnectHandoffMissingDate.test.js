@@ -8,7 +8,7 @@ const base = {
 };
 
 test('B-Connect missing invoice never inherits the form default date', () => {
-  for (const date of [null, undefined, '', ' ', '2026-02-30', '2026-10-01T12:00:00Z']) {
+  for (const date of [null, undefined, '', ' ', '2026-02-30']) {
     assert.equal(buildBConnectFormHandoff({
       ...base, bconnect: { ...base.bconnect, date },
     }), null, String(date));
@@ -20,4 +20,9 @@ test('B-Connect valid dated missing invoice can enter review-only handoff', () =
   assert.equal(result.mode, 'create');
   assert.equal(result.proposed.invoice_date, '2026-10-01');
   assert.equal(result.proposed.system_invoice_number, '19258');
+});
+
+test('B-Connect ISO date-time normalizes to a real calendar day', () => {
+  const result = buildBConnectFormHandoff({ ...base, bconnect: { ...base.bconnect, date: '2026-10-01T12:00:00Z' } });
+  assert.equal(result?.proposed.invoice_date, '2026-10-01');
 });
