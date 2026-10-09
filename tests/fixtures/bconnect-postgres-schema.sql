@@ -35,8 +35,8 @@ CREATE TABLE public.purchase_invoices (
   supplier_id text,
   invoice_date date,
   total_value numeric NOT NULL DEFAULT 0,
-  cash_amount numeric NOT NULL DEFAULT 0,
-  returned_value numeric NOT NULL DEFAULT 0,
+  cash_amount numeric,
+  returned_value numeric,
   branch text,
   payment_type text,
   purchase_category text,
@@ -49,7 +49,8 @@ CREATE TABLE public.purchase_invoices (
   destination_branch text,
   workflow_status text,
   entered_by_account_id uuid,
-  base44_sync_state text
+  base44_sync_state text,
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE OR REPLACE FUNCTION public.validate_staff_session(p_session_token text)
 RETURNS jsonb LANGUAGE sql AS $$
