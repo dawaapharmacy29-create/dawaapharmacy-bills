@@ -23,12 +23,21 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
   const parsed = new Date(Date.UTC(year, month - 1, day));
   if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() !== month - 1 || parsed.getUTCDate() !== day) throw new Error('invalid_invoice_date');
   if (typeof invoice?.supplier_id !== 'string' || !invoice.supplier_id.trim() || typeof invoice?.supplier_name !== 'string' || !invoice.supplier_name.trim()) throw new Error('missing_supplier');
-  if (mode === 'edit' && (typeof recordId !== 'string' || !recordId.trim() || typeof expectedRevision !== 'string' || !expectedRevision.trim())) throw new Error('missing_revision');
-  if (mode === 'create' && (recordId || expectedRevision)) throw new Error('unexpected_revision');
-  // Never forward server-owned or unknown fields (id, revision, audit metadata) from form state.
-  // This is a client contract boundary; the backend must independently validate every field.
+
+  let revision = null;
+  if (mode === 'edit') {
+    if (typeof recordId !== 'string' || !recordId.trim()) throw new Error('missing_revision');
+    const numericRevision = typeof expectedRevision === 'number' ? expectedRevision : Number(String(expectedRevision ?? '').trim());
+    if (!Number.isSafeInteger(numericRevision) || numericRevision < 1) throw new Error('missing_revision');
+    revision = numericRevision;
+  } else if (recordId || expectedRevision != null) {
+    throw new Error('unexpected_revision');
+  }
+
+  // Never forward server-owned or unknown fields (id, workflow/audit identity, revision metadata) from form state.
+  // This is a client contract boundary; the backend independently validates every field.
   const writableFields = [
-    'supplier_invoice_number', 'entered_by', 'payment_type', 'status', 'notes',
+    'supplier_invoice_number', 'payment_type', 'notes',
     'purchase_category', 'purchase_category_source', 'transaction_type',
     'net_purchase_mode', 'exclusion_reason', 'exclusion_note',
     'source_branch', 'destination_branch', 'cash_amount',
@@ -42,7 +51,7 @@ export function prepareBconnectWriteCommand({ operationId, mode, invoice, record
     operation_id: operation,
     mode,
     record_id: mode === 'edit' ? recordId.trim() : null,
-    expected_revision: mode === 'edit' ? expectedRevision.trim() : null,
+    expected_revision: revision,
     invoice: { ...writable, system_invoice_number: number, branch, total_value: total, returned_value: returned, invoice_date: rawDate, supplier_id: invoice.supplier_id.trim(), supplier_name: invoice.supplier_name.trim() },
   };
 }
