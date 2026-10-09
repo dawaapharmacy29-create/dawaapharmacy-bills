@@ -207,7 +207,7 @@ export default function PurchaseInvoices() {
 
   useEffect(() => {
     const handoff = location.state?.bconnectHandoff;
-    if (!handoff || isLoading) return;
+    if (!handoff || isLoading || isFetching) return;
     if (!canSaveInvoice) {
       setHandoffWarning("ليس لديك صلاحية حفظ الفواتير؛ لا يمكن فتح نموذج B-Connect للتعديل.");
       navigate(location.pathname, { replace: true, state: null });
@@ -243,7 +243,7 @@ export default function PurchaseInvoices() {
       }
     }
     navigate(location.pathname, { replace: true, state: null });
-  }, [location.state, isLoading, canSaveInvoice, invoices, navigate, location.pathname]);
+  }, [location.state, isLoading, isFetching, canSaveInvoice, invoices, navigate, location.pathname]);
 
   const handleSubmit = async (formData) => {
     if (!activeHandoff) {
@@ -689,7 +689,7 @@ export default function PurchaseInvoices() {
 
       <InvoiceFormDialog
         open={dialogOpen}
-        onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingInvoice(null); setBconnectPrefill(null); setActiveHandoff(null); } }}
+        onOpenChange={(open) => { if (!open && (handoffSaving || createMutation.isPending || updateMutation.isPending)) return; setDialogOpen(open); if (!open) { setEditingInvoice(null); setBconnectPrefill(null); setActiveHandoff(null); setHandoffWriteWarning(""); } }}
         onSubmit={handleSubmit}
         invoice={editingInvoice}
         prefill={bconnectPrefill}
