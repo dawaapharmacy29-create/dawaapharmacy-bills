@@ -11,6 +11,8 @@ import { normalizeBranch, normalizeInvoiceNumber, normalizeMoney } from '@/lib/p
 const labels = { clean: 'سليم', review: 'تحتاج مراجعة', problem: 'مشكلة' };
 const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
 const dateOnly = (value) => String(value || '').slice(0, 10);
+const fieldText = (value) => value === null || value === undefined ? '' : String(value);
+const nullableMoney = (value) => value === '' || value === null || value === undefined ? null : normalizeMoney(value);
 
 const money = (value) => {
   const normalized = normalizeMoney(value);
@@ -40,6 +42,7 @@ function writeErrorText(error) {
     invalid_request: 'بيانات الحفظ غير مكتملة أو غير صالحة.',
     invalid_session: 'انتهت جلسة الدخول. سجل الدخول مرة أخرى.',
     idempotency_conflict: 'تم اكتشاف تعارض في محاولة الحفظ. أعد فتح الفاتورة.',
+    empty_edit_patch: 'لا يوجد تعديل جديد للحفظ.',
   };
   return map[code] || code || 'تعذر حفظ الفاتورة.';
 }
@@ -88,6 +91,21 @@ function CompareValue({ label, source, current, moneyValue = false, normalize, d
   </div>;
 }
 
+function buildChangedPatch(app, draft) {
+  const patch = {};
+  if (String(draft.supplier_id || '') !== String(app.supplier_id || '') || String(draft.supplier_name || '') !== String(app.supplier_name || '')) {
+    patch.supplier_id = String(draft.supplier_id || '');
+    patch.supplier_name = String(draft.supplier_name || '');
+  }
+  if (dateOnly(draft.invoice_date) !== dateOnly(app.invoice_date)) patch.invoice_date = draft.invoice_date;
+  if (nullableMoney(draft.total_value) !== nullableMoney(app.total_value)) patch.total_value = draft.total_value;
+  if (nullableMoney(draft.returned_value) !== nullableMoney(app.returned_value)) patch.returned_value = draft.returned_value === '' ? null : draft.returned_value;
+  if (nullableMoney(draft.cash_amount) !== nullableMoney(app.cash_amount)) patch.cash_amount = draft.cash_amount === '' ? null : draft.cash_amount;
+  if (String(draft.payment_type || '') !== String(app.payment_type || '')) patch.payment_type = draft.payment_type || null;
+  if (String(draft.notes || '') !== String(app.notes || '')) patch.notes = draft.notes || null;
+  return patch;
+}
+
 export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVerifiedSave }) {
   const [draft, setDraft] = useState({ supplier_id: '', supplier_name: '', invoice_date: '', total_value: '', returned_value: '', cash_amount: '', payment_type: '', notes: '' });
   const [suppliers, setSuppliers] = useState([]);
@@ -98,13 +116,14 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
     if (!row) return;
     const app = row.app || {};
     const source = row.bconnect || {};
+    const existing = !!app.id;
     setDraft({
       supplier_id: app.supplier_id || '',
       supplier_name: app.supplier_name || '',
-      invoice_date: dateOnly(app.invoice_date || source.date),
-      total_value: String(app.total_value ?? source.invoice_value ?? ''),
-      returned_value: String(app.returned_value ?? source.return_value ?? 0),
-      cash_amount: String(app.cash_amount ?? 0),
+      invoice_date: existing ? dateOnly(app.invoice_date) : dateOnly(source.date),
+      total_value: existing ? fieldText(app.total_value) : fieldText(source.invoice_value),
+      returned_value: existing ? fieldText(app.returned_value) : fieldText(source.return_value),
+      cash_amount: existing ? fieldText(app.cash_amount) : '',
       payment_type: app.payment_type || '',
       notes: app.notes || '',
     });
@@ -138,7 +157,9 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
     ? [{ id: app.supplier_id, name: app.supplier_name || 'المورد المسجل' }, ...suppliers]
     : suppliers;
   const fieldsDisabled = blocked || readOnly || isCreate || saveState.saving;
-  const canSave = !fieldsDisabled && !!app.id && hasRevision && !!draft.supplier_id && !!draft.supplier_name;
+  const changedPatch = buildChangedPatch(app, draft);
+  const hasChanges = Object.keys(changedPatch).length > 0;
+  const canSave = !fieldsDisabled && !!app.id && hasRevision && hasChanges && !!draft.supplier_id && !!draft.supplier_name;
   const modeLabel = readOnly ? 'عرض التفاصيل فقط' : isCreate ? 'مراجعة بيانات التسجيل المقترحة' : blocked ? 'عرض وتحقيق فقط' : 'مراجعة وتعديل وحفظ آمن';
 
   const chooseSupplier = (supplierId) => {
@@ -151,18 +172,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
     setSaveState({ saving: true, error: '', success: '' });
     try {
       const operationId = `bconnect_${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`}`;
-      const invoice = {
-        system_invoice_number: row.number,
-        branch,
-        supplier_id: String(draft.supplier_id || ''),
-        supplier_name: String(draft.supplier_name || ''),
-        invoice_date: draft.invoice_date,
-        total_value: draft.total_value,
-        returned_value: draft.returned_value === '' ? 0 : draft.returned_value,
-        cash_amount: draft.cash_amount === '' ? 0 : draft.cash_amount,
-        payment_type: draft.payment_type || '',
-        notes: draft.notes || '',
-      };
+      const invoice = buildChangedPatch(app, draft);
+      if (!Object.keys(invoice).length) throw new Error('empty_edit_patch');
       const command = prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: String(app.id || ''), expectedRevision: revision });
       const result = await performanceApi.bconnectAtomicEdit({
         operationId: command.operation_id,
@@ -181,17 +192,17 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
       const reconciled = reconcilePurchaseInvoice(refreshedApp, source);
       const updatedRow = { number: row.number, bconnect: source, app: refreshedApp, ...reconciled };
       onVerifiedSave(updatedRow);
-      setDraft((old) => ({ ...old,
-        supplier_id: refreshedApp.supplier_id || old.supplier_id,
-        supplier_name: refreshedApp.supplier_name || old.supplier_name,
+      setDraft({
+        supplier_id: refreshedApp.supplier_id || '',
+        supplier_name: refreshedApp.supplier_name || '',
         invoice_date: dateOnly(refreshedApp.invoice_date),
-        total_value: String(refreshedApp.total_value ?? ''),
-        returned_value: String(refreshedApp.returned_value ?? 0),
-        cash_amount: String(refreshedApp.cash_amount ?? 0),
+        total_value: fieldText(refreshedApp.total_value),
+        returned_value: fieldText(refreshedApp.returned_value),
+        cash_amount: fieldText(refreshedApp.cash_amount),
         payment_type: refreshedApp.payment_type || '',
         notes: refreshedApp.notes || '',
-      }));
-      setSaveState({ saving: false, error: '', success: 'تم حفظ التعديل فعليًا والتحقق منه بإعادة قراءة الفاتورة من قاعدة البيانات.' });
+      });
+      setSaveState({ saving: false, error: '', success: 'تم حفظ الحقول التي عدّلتها فقط، والتحقق منها بإعادة قراءة الفاتورة من قاعدة البيانات.' });
     } catch (error) {
       setSaveState({ saving: false, error: writeErrorText(error), success: '' });
     }
@@ -215,7 +226,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-950"><div className="font-black">سبب المراجعة</div><div>{(row.reasons || []).join(' — ') || 'لا توجد اختلافات مسجلة.'}</div></div>
           </section>
           <section className="rounded-2xl border bg-slate-50/70 p-4 md:p-5">
-            <div className="mb-4 flex items-center justify-between gap-2"><div><h3 className="font-black">{isCreate ? 'بيانات التسجيل المقترحة' : 'البيانات المسجلة'}</h3><p className="mt-1 text-xs text-slate-500">{isCreate ? 'الإضافة الفعلية ما زالت محجوبة.' : readOnly ? 'هذه الفاتورة سليمة؛ البيانات للعرض فقط.' : 'رقم الفاتورة والفرع ثابتان، والحفظ يتم ذريًا.'}</p></div><ShieldCheck className="h-5 w-5 text-teal-600" /></div>
+            <div className="mb-4 flex items-center justify-between gap-2"><div><h3 className="font-black">{isCreate ? 'بيانات التسجيل المقترحة' : 'البيانات المسجلة'}</h3><p className="mt-1 text-xs text-slate-500">{isCreate ? 'الإضافة الفعلية ما زالت محجوبة.' : readOnly ? 'هذه الفاتورة سليمة؛ البيانات للعرض فقط.' : 'رقم الفاتورة والفرع ثابتان، ولا يُحفظ إلا الحقل الذي عدّلته.'}</p></div><ShieldCheck className="h-5 w-5 text-teal-600" /></div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">رقم الفاتورة</span><input disabled value={row.number || ''} className="h-10 w-full rounded-xl border bg-slate-100 px-3 text-sm font-bold text-slate-500" /></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الفرع</span><input disabled value={normalizeBranch(source.branch || app.branch) || ''} className="h-10 w-full rounded-xl border bg-slate-100 px-3 text-sm font-bold text-slate-500" /></label>
@@ -227,8 +238,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
               </div>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">التاريخ</span><input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /><span className="block text-[11px] text-slate-500">{formatArabicDate(draft.invoice_date)}</span></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الإجمالي</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" placeholder="غير متاح" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" placeholder="غير متاح" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">طريقة الدفع</span><input value={draft.payment_type} onChange={(e) => setDraft((old) => ({ ...old, payment_type: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">ملاحظات</span><textarea rows={3} value={draft.notes} onChange={(e) => setDraft((old) => ({ ...old, notes: e.target.value }))} disabled={fieldsDisabled} className="w-full rounded-xl border bg-white px-3 py-2 text-sm disabled:bg-slate-100" /></label>
             </div>
@@ -236,7 +247,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
             {isCreate && !blocked && <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">إضافة الفواتير الناقصة غير مفعّلة.</div>}
             {readOnly && !blocked && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">الفاتورة سليمة؛ العرض فقط.</div>}
             {!blocked && !readOnly && !isCreate && !hasRevision && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">رقم النسخة غير متاح. أعد رفع ملف B-Connect.</div>}
-            {!blocked && !readOnly && !isCreate && hasRevision && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">الحفظ الفعلي مفعّل للفواتير الموجودة فقط، مع إعادة قراءة بعد الحفظ.</div>}
+            {!blocked && !readOnly && !isCreate && hasRevision && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">الحفظ الفعلي مفعّل للفواتير الموجودة فقط. القيم غير المتاحة تظل غير متاحة ما لم تغيّرها بنفسك.</div>}
+            {!blocked && !readOnly && !isCreate && hasRevision && !hasChanges && <div className="mt-3 text-xs text-slate-500">عدّل حقلًا واحدًا على الأقل لتفعيل زر الحفظ.</div>}
             {saveState.error && <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{saveState.error}</div>}
             {saveState.success && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">{saveState.success}</div>}
           </section>
