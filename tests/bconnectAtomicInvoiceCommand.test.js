@@ -30,3 +30,9 @@ test('rejects nonexistent calendar dates and missing supplier', () => {
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, invoice_date: '2026-02-30' } }), /invalid_invoice_date/);
   assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, supplier_id: '' } }), /missing_supplier/);
 });
+
+test('rejects malformed invoice number and non-string server identifiers', () => {
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, system_invoice_number: 'ABC-1' } }), /invalid_invoice_identity/);
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'create', invoice: { ...invoice, supplier_id: { id: 'supplier-1' } } }), /missing_supplier/);
+  assert.throws(() => prepareBconnectWriteCommand({ operationId, mode: 'edit', invoice, recordId: {}, expectedRevision: 'rev-2' }), /missing_revision/);
+});
