@@ -11,10 +11,14 @@ export function buildBConnectFormHandoff(row = {}) {
   const branch = normalizeBranch(b.branch);
   const date = normalizeDate(b.date);
   const serial = normalizeInvoiceNumber(b.serial);
-  if (!serial || !['دواء شكري', 'دواء الشامي'].includes(branch)) return null;
+  if (!serial || serial !== normalizeInvoiceNumber(row.number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) return null;
+  if (edit && (normalizeInvoiceNumber(row.app.system_invoice_number) !== serial || normalizeBranch(row.app.branch) !== branch)) return null;
   if (edit) return {
     mode: 'edit', recordId: row.app.id, expectedInvoiceNumber: serial,
     expectedBranch: branch, expectedTotal: normalizeMoney(row.app.total_value),
+    expectedReturned: normalizeMoney(row.app.returned_value),
+    expectedSupplierId: row.app.supplier_id ?? null,
+    expectedDate: normalizeDate(row.app.invoice_date),
     source: 'bconnect-review', proposed: {
       ...row.app,
       system_invoice_number: serial,
