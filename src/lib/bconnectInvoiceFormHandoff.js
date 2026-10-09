@@ -18,7 +18,8 @@ export function buildBConnectFormHandoff(row = {}) {
   const returned = normalizeMoney(b.return_value);
   const branch = normalizeBranch(b.branch);
   const date = normalizeDate(b.date);
-  if (b.date != null && String(b.date).trim() && !validCalendarDate(date)) return null;
+  // A missing or invalid source date must never become the form default (today).
+  if (!validCalendarDate(date)) return null;
   const serial = normalizeInvoiceNumber(b.serial);
   if (!serial || serial !== normalizeInvoiceNumber(row.number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) return null;
   // Never pass impossible source amounts to the form, including on confirmed invoices.
