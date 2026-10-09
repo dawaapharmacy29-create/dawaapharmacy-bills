@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,10 @@ const NET_MODE_OPTIONS = [
 ];
 
 export default function PurchaseInvoices() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [bconnectPrefill, setBconnectPrefill] = useState(null);
+  const [handoffWarning, setHandoffWarning] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewInvoice, setViewInvoice] = useState(null);
@@ -196,6 +201,34 @@ export default function PurchaseInvoices() {
     },
   });
 
+  useEffect(() => {
+    const handoff = location.state?.bconnectHandoff;
+    if (!handoff || isLoading || !canSaveInvoice) return;
+    setHandoffWarning("");
+    setBconnectPrefill(null);
+    if (handoff.mode === "edit") {
+      const current = invoices.find((inv) => inv.id === handoff.recordId);
+      if (!current || current.system_invoice_number !== handoff.expectedInvoiceNumber ||
+          current.branch !== handoff.expectedBranch ||
+          Number(current.total_value) !== handoff.expectedTotal) {
+        setHandoffWarning("بيانات الفاتورة اتغيرت أو مش متاحة. افتح الفاتورة من القائمة بعد إعادة المراجعة.");
+      } else {
+        setEditingInvoice(current);
+        setBconnectPrefill(handoff.proposed);
+        setDialogOpen(true);
+      }
+    } else if (handoff.mode === "create") {
+      if (invoices.some((inv) => inv.system_invoice_number === handoff.proposed.system_invoice_number)) {
+        setHandoffWarning("رقم الفاتورة أصبح موجودًا في التطبيق. أعد المطابقة قبل إنشاء فاتورة جديدة.");
+      } else {
+        setEditingInvoice(null);
+        setBconnectPrefill(handoff.proposed);
+        setDialogOpen(true);
+      }
+    }
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, isLoading, canSaveInvoice, invoices, navigate, location.pathname]);
+
   const handleSubmit = (formData) => {
     if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
     else createMutation.mutate(formData);
@@ -348,7 +381,7 @@ export default function PurchaseInvoices() {
   };
 
   const handleView = (inv) => { setViewInvoice(inv); setViewOpen(true); };
-  const handleEdit = (inv) => { setEditingInvoice(inv); setDialogOpen(true); };
+  const handleEdit = (inv) => { setEditingInvoice(inv); setBconnectPrefill(null); setDialogOpen(true); };
   const handleSingleDelete = (id) => { setSingleDeleteId(id); setConfirmDelete(true); };
 
   const uniqueSuppliers = [...new Set(invoices.map((i) => i.supplier_name).filter(Boolean))];
@@ -387,12 +420,13 @@ export default function PurchaseInvoices() {
           <p className="text-gray-500 text-sm mt-0.5">{filtered.length} من {invoices.length} فاتورة</p>
         </div>
         {canSaveInvoice && (
-          <Button onClick={() => { setEditingInvoice(null); setDialogOpen(true); }} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
+          <Button onClick={() => { setEditingInvoice(null); setBconnectPrefill(null); setDialogOpen(true); }} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
             <Plus className="w-4 h-4" /> إضافة فاتورة
           </Button>
         )}
       </div>
 
+      {handoffWarning && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{handoffWarning}</div>}
       <InvoiceStats invoices={invoices} />
 
       {/* Month Buttons */}
@@ -590,9 +624,10 @@ export default function PurchaseInvoices() {
 
       <InvoiceFormDialog
         open={dialogOpen}
-        onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingInvoice(null); }}
+        onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingInvoice(null); setBconnectPrefill(null); } }}
         onSubmit={handleSubmit}
         invoice={editingInvoice}
+        prefill={bconnectPrefill}
         isLoading={createMutation.isPending || updateMutation.isPending}
         allInvoices={invoices}
       />
