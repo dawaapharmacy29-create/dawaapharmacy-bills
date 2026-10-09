@@ -10,8 +10,9 @@ test("supplier/date drift requires review even when number, branch and amount ma
 test("same number and amount without branch never becomes green",()=>{const r=reconcilePurchaseInvoice({system_invoice_number:"19527",total_value:411.483},{serial:19527,invoice_value:411.483});assert.equal(r.status,"review");assert.equal(r.identity,"candidate");});
 test("branch mismatch is a hard problem",()=>{const r=reconcilePurchaseInvoice({...app,branch:"دواء الشامي",total_value:411.483},bc);assert.equal(r.status,"problem");});
 test("different program number is a hard conflict",()=>{const r=reconcilePurchaseInvoice(app,{...bc,serial:99999});assert.equal(r.status,"problem");assert.equal(r.identity,"conflict");});
-test("duplicate detection is global across branches",()=>{const d=findDuplicateProgramNumbers([app,{...app,id:"b",branch:"دواء الشامي"}]);assert.equal(d.length,1);assert.equal(d[0].key,"19527");assert.equal(d[0].count,2);});
-test("integer-like Excel numbers normalize into one global identity",()=>{const d=findDuplicateProgramNumbers([{system_invoice_number:"19527.0",branch:"دواء شكري"},{system_invoice_number:19527,branch:"دواء الشامي"}]);assert.equal(d.length,1);});
+test("same invoice number across branches is allowed",()=>{const d=findDuplicateProgramNumbers([app,{...app,id:"b",branch:"دواء الشامي"}]);assert.equal(d.length,0);});
+test("duplicate detection is scoped to the same branch",()=>{const d=findDuplicateProgramNumbers([app,{...app,id:"b",branch:"دواء شكري"}]);assert.equal(d.length,1);assert.equal(d[0].branch,"دواء شكري");assert.equal(d[0].number,"19527");assert.equal(d[0].key,"دواء شكري::19527");assert.equal(d[0].count,2);});
+test("integer-like Excel numbers normalize within the branch",()=>{const d=findDuplicateProgramNumbers([{system_invoice_number:"19527.0",branch:"دواء شكري"},{system_invoice_number:19527,branch:"شكري"}]);assert.equal(d.length,1);assert.equal(d[0].number,"19527");});
 
 test("invalid monetary input cannot produce a clean verdict",()=>{
   for(const invalid of ["NaN","Infinity","-Infinity","not-a-number"]){
