@@ -56,3 +56,10 @@ test('rejects impossible calendar dates rather than silently pre-filling them', 
  }
  assert.equal(buildBConnectFormHandoff({number:'19522',identity:'missing',bconnect:{...bconnect,date:'29/02/2024'}}).proposed.invoice_date,'2024-02-29');
 });
+
+test('confirmed invoice rejects impossible source amounts before editing', () => {
+ const app={id:'app-1',system_invoice_number:'19522',branch:'دواء شكري',total_value:100};
+ for (const changes of [{invoice_value:-1},{return_value:-1},{invoice_value:10,return_value:11}]) {
+   assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app,bconnect:{...bconnect,...changes}}),null);
+ }
+});
