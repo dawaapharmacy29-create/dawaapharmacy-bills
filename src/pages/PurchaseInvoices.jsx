@@ -154,6 +154,9 @@ export default function PurchaseInvoices() {
       queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
       queryClient.invalidateQueries({ queryKey: ["pending-invoices-count"] });
       setDialogOpen(false);
+      setActiveHandoff(null);
+      setBconnectPrefill(null);
+      setHandoffWriteWarning("");
     },
   });
   const updateMutation = useMutation({
@@ -199,6 +202,9 @@ export default function PurchaseInvoices() {
       queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
       setDialogOpen(false);
       setEditingInvoice(null);
+      setActiveHandoff(null);
+      setBconnectPrefill(null);
+      setHandoffWriteWarning("");
     },
   });
   const deleteMutation = useMutation({
@@ -311,6 +317,7 @@ export default function PurchaseInvoices() {
       setHandoffWriteWarning(message);
       if (writeAttempted) {
         setDialogOpen(false);
+        setEditingInvoice(null);
         setActiveHandoff(null);
         setBconnectPrefill(null);
         queryClient.invalidateQueries({ queryKey: ["purchase-invoices"] });
