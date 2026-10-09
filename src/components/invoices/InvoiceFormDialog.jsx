@@ -100,7 +100,7 @@ const emptyForm = {
   cash_amount: "",
 };
 
-export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoice, prefill = null, isLoading, allInvoices = [] }) {
+export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoice, prefill = null, externalError = "", isLoading, allInvoices = [] }) {
   const [form, setForm] = useState(emptyForm);
   const [dupError, setDupError] = useState("");
 
@@ -341,6 +341,7 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
         </DialogHeader>
 
         {prefill && <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">البيانات من مراجعة B-Connect هي مقترح فقط. راجع المورد والفرع والتاريخ والمبالغ قبل الحفظ. لن يتم الحفظ تلقائيًا.</div>}
+        {externalError && <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-800">{externalError}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Invoice Numbers */}
           <div className="grid grid-cols-2 gap-2">
