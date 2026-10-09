@@ -21,8 +21,11 @@ export function buildBConnectFormHandoff(row = {}) {
   if (b.date != null && String(b.date).trim() && !validCalendarDate(date)) return null;
   const serial = normalizeInvoiceNumber(b.serial);
   if (!serial || serial !== normalizeInvoiceNumber(row.number) || !['دواء شكري', 'دواء الشامي'].includes(branch)) return null;
+  // Never pass impossible source amounts to the form, including on confirmed invoices.
+  if ((total !== null && total < 0) || (returned !== null && returned < 0) ||
+      (total !== null && returned !== null && returned > total)) return null;
   // Missing invoices need a real gross amount before a useful prefilled form can be offered.
-  if (!edit && (total === null || total < 0 || (returned !== null && (returned < 0 || returned > total)))) return null;
+  if (!edit && total === null) return null;
   if (edit && (normalizeInvoiceNumber(row.app.system_invoice_number) !== serial || normalizeBranch(row.app.branch) !== branch)) return null;
   if (edit) return {
     mode: 'edit', recordId: row.app.id, expectedInvoiceNumber: serial,
