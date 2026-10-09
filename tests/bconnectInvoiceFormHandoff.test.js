@@ -63,3 +63,12 @@ test('confirmed invoice rejects impossible source amounts before editing', () =>
    assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app,bconnect:{...bconnect,...changes}}),null);
  }
 });
+
+test('partial edit amounts are validated against values retained from the app', () => {
+ const app={id:'app-1',system_invoice_number:'19522',branch:'دواء شكري',total_value:100,returned_value:90};
+ assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app,bconnect:{...bconnect,invoice_value:50,return_value:null}}),null);
+ assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app,bconnect:{...bconnect,invoice_value:null,return_value:110}}),null);
+ const safe=buildBConnectFormHandoff({number:'19522',identity:'confirmed',app,bconnect:{...bconnect,invoice_value:120,return_value:null}});
+ assert.equal(safe.proposed.total_value,120);
+ assert.equal(safe.proposed.returned_value,90);
+});
