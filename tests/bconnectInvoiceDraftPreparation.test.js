@@ -31,3 +31,15 @@ test('never assigns a branch based on supplier name', () => {
   assert.equal(result.ready_for_review, false);
   assert.equal(result.invoice.branch, null);
 });
+
+test('missing gross value is not silently treated as zero', () => {
+  for (const value of [null, undefined, '', '  ']) {
+    const result = prepareBConnectInvoiceDraft({...source, invoice_value:value}, supplier);
+    assert.equal(result.ready_for_review, false);
+    assert.equal(result.invoice.total_value, null);
+  }
+});
+test('day-first dates normalize and impossible calendar dates are rejected', () => {
+  assert.equal(prepareBConnectInvoiceDraft({...source,date:'15/09/2026'}, supplier).invoice.invoice_date,'2026-09-15');
+  assert.equal(prepareBConnectInvoiceDraft({...source,date:'31/02/2026'}, supplier).ready_for_review,false);
+});
