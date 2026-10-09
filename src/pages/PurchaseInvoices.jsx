@@ -284,7 +284,7 @@ export default function PurchaseInvoices() {
         throw new Error("المورد غير مطابق لسجل الموردين؛ أعد اختياره قبل الحفظ.");
       }
       const finalDate = normalizeDate(formData.invoice_date);
-      if (!finalDate || !/^\\d{4}-\\d{2}-\\d{2}$/.test(finalDate)) {
+      if (!finalDate || !/^\d{4}-\d{2}-\d{2}$/.test(finalDate)) {
         throw new Error("تاريخ الفاتورة غير صالح؛ راجع التاريخ قبل الحفظ.");
       }
       const [year, month, day] = finalDate.split("-").map(Number);
