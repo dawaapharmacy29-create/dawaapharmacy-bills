@@ -35,17 +35,21 @@ const invoiceScopeKey = (branch, number) => `${normalizeBranch(branch) || 'unkno
 const rowKey = (row) => invoiceScopeKey(row?.bconnect?.branch || row?.app?.branch, row?.number);
 const dateOnly = (value) => String(value || '').slice(0, 10);
 
-function issueKind(row) {
+function issueKinds(row) {
+  const kinds = new Set();
   const decision = classifyBConnectReviewRow(row);
-  if (decision.code === 'missing') return 'missing';
-  if (decision.code === 'duplicate') return 'duplicate';
   const text = (row.reasons || []).join(' ').toLowerCase();
-  if (text.includes('المورد')) return 'supplier';
-  if (text.includes('التاريخ')) return 'date';
-  if (text.includes('مرتجع')) return 'return';
-  if (text.includes('قيمة') || text.includes('إجمالي') || text.includes('مالي')) return 'amount';
-  if (decision.code === 'blocked') return 'blocked';
-  return 'other';
+
+  if (decision.code === 'missing') kinds.add('missing');
+  if (decision.code === 'duplicate') kinds.add('duplicate');
+  if (decision.code === 'blocked') kinds.add('blocked');
+  if (text.includes('المورد')) kinds.add('supplier');
+  if (text.includes('التاريخ')) kinds.add('date');
+  if (text.includes('مرتجع')) kinds.add('return');
+  if (text.includes('قيمة') || text.includes('إجمالي') || text.includes('مالي')) kinds.add('amount');
+  if (!kinds.size) kinds.add('other');
+
+  return [...kinds];
 }
 
 function tabMatches(row, tab) {
@@ -99,6 +103,7 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
   const blocked = !handoff || ['duplicate_app', 'duplicate_bconnect', 'unverified', 'unauthorized_or_incomplete', 'conflict'].includes(row.identity);
   const app = row.app || {};
   const source = row.bconnect || {};
+  const supplierDiffers = Boolean(source.supplier && app.supplier_name && source.supplier !== app.supplier_name);
 
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div dir="rtl" className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border bg-white shadow-2xl">
@@ -136,7 +141,17 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">رقم الفاتورة</span><input disabled value={row.number || ''} className="h-10 w-full rounded-xl border bg-slate-100 px-3 text-sm font-bold text-slate-500" /></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الفرع</span><input disabled value={normalizeBranch(source.branch || app.branch) || ''} className="h-10 w-full rounded-xl border bg-slate-100 px-3 text-sm font-bold text-slate-500" /></label>
-              <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">المورد</span><input value={draft.supplier_name} onChange={(e) => setDraft((old) => ({ ...old, supplier_name: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+
+              <div className="sm:col-span-2 rounded-xl border bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-600">المورد المسجل</span>
+                  {app.supplier_id && <span className="text-[11px] font-mono text-slate-400">ID: {app.supplier_id}</span>}
+                </div>
+                <div className="mt-1 font-bold text-slate-900">{app.supplier_name || 'غير محدد في التطبيق'}</div>
+                <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">اسم المورد في B-Connect: <strong>{source.supplier || 'غير متاح'}</strong></div>
+                {supplierDiffers && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-800">تغيير المورد لن يتم كنص حر. عند تفعيل الحفظ الفعلي يجب اختيار المورد من سجل الموردين حتى تُحفظ هوية المورد الصحيحة.</div>}
+              </div>
+
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">التاريخ</span><input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الإجمالي</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
@@ -146,7 +161,7 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
             </div>
 
             {blocked && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-6 text-rose-700">هذه الحالة محجوبة من التعديل الآمن لأن هوية الفاتورة أو الأدلة غير كافية. المراجعة فقط متاحة.</div>}
-            {!blocked && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs leading-6 text-teal-800">واجهة التعديل جاهزة، لكن الحفظ الفعلي على قاعدة البيانات سيظل محجوبًا حتى نشر مسار الحفظ الذري المعتمد في Production. لن نظهر نجاحًا وهميًا.</div>}
+            {!blocked && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs leading-6 text-teal-800">واجهة المراجعة جاهزة، لكن الحفظ الفعلي على قاعدة البيانات سيظل محجوبًا حتى نشر مسار الحفظ الذري المعتمد في Production. لن نظهر نجاحًا وهميًا.</div>}
           </section>
         </div>
       </div>
@@ -170,9 +185,8 @@ export default function BConnectInvoiceReview() {
   const [branchFilter, setBranchFilter] = useState('all');
   const [issueFilter, setIssueFilter] = useState('all');
   const [decisions, setDecisions] = useState({});
-  const [selectedKeys, setSelectedKeys] = useState([]);
   const [reviewRow, setReviewRow] = useState(null);
-  const [draft, setDraft] = useState({ supplier_name: '', invoice_date: '', total_value: '', returned_value: '', cash_amount: '', payment_type: '', notes: '' });
+  const [draft, setDraft] = useState({ invoice_date: '', total_value: '', returned_value: '', cash_amount: '', payment_type: '', notes: '' });
 
   const decisionCounts = useMemo(() => state.rows.reduce((acc, row) => {
     const code = classifyBConnectReviewRow(row).code;
@@ -197,7 +211,7 @@ export default function BConnectInvoiceReview() {
     if (!tabMatches(row, activeTab)) return false;
     const branch = normalizeBranch(row.bconnect?.branch || row.app?.branch);
     if (branchFilter !== 'all' && branch !== branchFilter) return false;
-    if (issueFilter !== 'all' && issueKind(row) !== issueFilter) return false;
+    if (issueFilter !== 'all' && !issueKinds(row).includes(issueFilter)) return false;
     const query = search.trim().toLowerCase();
     return !query || [row.number, row.bconnect?.branch, row.bconnect?.supplier, row.app?.supplier_name, row.bconnect?.user, row.app?.entered_by_name, row.app?.entered_by]
       .some((value) => String(value ?? '').toLowerCase().includes(query));
@@ -207,7 +221,6 @@ export default function BConnectInvoiceReview() {
     const app = row.app || {};
     const source = row.bconnect || {};
     setDraft({
-      supplier_name: app.supplier_name || source.supplier || '',
       invoice_date: dateOnly(app.invoice_date || source.date),
       total_value: String(app.total_value ?? source.invoice_value ?? ''),
       returned_value: String(app.returned_value ?? source.return_value ?? ''),
@@ -229,9 +242,11 @@ export default function BConnectInvoiceReview() {
     if (!file) return;
     setState({ loading: true, error: '', fileName: file.name, rows: [], meta: null });
     setDecisions({});
-    setSelectedKeys([]);
     setReviewRow(null);
     setActiveTab('review');
+    setSearch('');
+    setBranchFilter('all');
+    setIssueFilter('all');
     try {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
@@ -325,7 +340,7 @@ export default function BConnectInvoiceReview() {
     </Card>
 
     {!!state.rows.length && <>
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric label="إجمالي الفواتير" value={state.rows.length} />
         <Metric label="سليم" value={counts.clean} tone="green" />
         <Metric label="تحتاج مراجعة" value={counts.review} tone="amber" />
@@ -361,8 +376,8 @@ export default function BConnectInvoiceReview() {
                   <td className="px-4 py-3 font-mono font-black text-slate-900">{row.number}</td>
                   <td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td>
                   <td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{row.bconnect?.supplier && row.app?.supplier_name && row.bconnect.supplier !== row.app.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><div>{dateOnly(row.bconnect?.date) || '—'}</div>{row.app?.invoice_date && dateOnly(row.bconnect?.date) !== dateOnly(row.app.invoice_date) && <div className="mt-1 text-[11px] text-amber-600">المسجل: {dateOnly(row.app.invoice_date)}</div>}</td>
-                  <td className="px-4 py-3 whitespace-nowrap font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td>
+                  <td className="whitespace-nowrap px-4 py-3"><div>{dateOnly(row.bconnect?.date) || '—'}</div>{row.app?.invoice_date && dateOnly(row.bconnect?.date) !== dateOnly(row.app.invoice_date) && <div className="mt-1 text-[11px] text-amber-600">المسجل: {dateOnly(row.app.invoice_date)}</div>}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td>
                   <td className="px-4 py-3"><StatusBadge row={row} /></td>
                   <td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2">{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}</td>
                   <td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' ? 'outline' : 'default'} onClick={() => openReview(row)}>{row.identity === 'missing' ? 'مراجعة للإضافة' : row.status === 'clean' ? 'عرض التفاصيل' : 'مراجعة وتعديل'}</Button></td>
