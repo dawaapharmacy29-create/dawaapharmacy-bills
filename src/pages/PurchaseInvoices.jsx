@@ -267,6 +267,7 @@ export default function PurchaseInvoices() {
       else createMutation.mutate(formData);
       return;
     }
+    if (activeHandoff) { setHandoffWriteWarning("حفظ B-Connect متوقف حتى تفعيل التحقق الذري على الخادم."); return; }
     if (handoffSaving || createMutation.isPending || updateMutation.isPending) return;
     setHandoffSaving(true);
     setHandoffWriteWarning("");
