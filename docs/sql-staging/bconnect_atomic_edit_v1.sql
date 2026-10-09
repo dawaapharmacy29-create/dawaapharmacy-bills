@@ -37,6 +37,7 @@ DECLARE
   v_returned numeric;
   v_cash numeric;
   v_unknown boolean;
+  v_bad_text_type boolean;
 BEGIN
   IF p_operation_id IS NULL OR p_operation_id !~ '^[A-Za-z0-9_-]{16,128}$'
      OR p_invoice_id IS NULL OR btrim(p_invoice_id) = ''
@@ -65,6 +66,15 @@ BEGIN
      OR (p_patch ? 'returned_value' AND jsonb_typeof(p_patch->'returned_value') NOT IN ('number','string'))
      OR (p_patch ? 'cash_amount' AND jsonb_typeof(p_patch->'cash_amount') NOT IN ('number','string','null'))
   THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_request'); END IF;
+
+  SELECT COALESCE(bool_or(jsonb_typeof(p_patch->key) NOT IN ('string','null')), false)
+  INTO v_bad_text_type
+  FROM unnest(ARRAY[
+    'supplier_invoice_number','payment_type','notes','purchase_category','purchase_category_source',
+    'transaction_type','net_purchase_mode','exclusion_reason','exclusion_note','source_branch','destination_branch'
+  ]) AS key
+  WHERE p_patch ? key;
+  IF v_bad_text_type THEN RETURN jsonb_build_object('ok', false, 'error', 'invalid_request'); END IF;
 
   v_auth := public.validate_staff_session(p_session_token);
   IF COALESCE((v_auth->>'ok')::boolean, false) IS NOT TRUE THEN
