@@ -1,6 +1,11 @@
 name: BConnect isolated PostgreSQL integration
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/sql-staging/**'
+      - 'tests/fixtures/bconnect-postgres-schema.sql'
+      - '.github/workflows/bconnect-postgres-integration.yml'
   push:
     branches:
       - feat/bconnect-invoice-reconciliation-20261006
