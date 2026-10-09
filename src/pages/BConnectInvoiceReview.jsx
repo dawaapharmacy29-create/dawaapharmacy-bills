@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { parseBConnectWorkbook } from '@/lib/bconnectPurchaseInvoiceParser';
 import { reconcilePurchaseInvoice } from '@/lib/purchaseInvoiceReconciliation';
 import { normalizeInvoiceNumber, normalizeMoney } from '@/lib/purchaseInvoiceTruth';
+import { classifyBConnectReviewRow } from '@/lib/bconnectReviewDecisionPolicy';
 
 const labels = { clean: 'سليم', review: 'راجعها', problem: 'مشكلة' };
 const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
@@ -27,7 +28,7 @@ export default function BConnectInvoiceReview() {
   const [decisionNote, setDecisionNote] = useState('');
   const [selectedNumbers, setSelectedNumbers] = useState([]);
   const decide = (action) => {
-    const eligible = state.rows.filter((r) => selectedNumbers.includes(r.number) && r.status !== 'clean');
+    const eligible = state.rows.filter((r) => selectedNumbers.includes(r.number) && classifyBConnectReviewRow(r).selectable);
     if (!eligible.length) return;
     if (action === 'excluded' && !decisionNote.trim()) return;
     setDecisions((old) => Object.fromEntries([...Object.entries(old), ...eligible.map((r) => [r.number, { action, note: decisionNote.trim(), source_id: r.app?.id || null }])]));
@@ -41,6 +42,7 @@ export default function BConnectInvoiceReview() {
     const q = search.trim().toLowerCase();
     return !q || [r.number, r.bconnect?.supplier, r.app?.supplier_name, r.bconnect?.user, r.app?.entered_by].some((v) => String(v ?? '').toLowerCase().includes(q));
   }), [state.rows, problemsOnly, statusFilter, search]);
+  const decisionCounts = useMemo(() => state.rows.reduce((a, r) => { const code = classifyBConnectReviewRow(r).code; a[code] = (a[code] || 0) + 1; return a; }, {}), [state.rows]);
   const counts = useMemo(() => state.rows.reduce((a, r) => ({ ...a, [r.status]: (a[r.status] || 0) + 1 }), { clean: 0, review: 0, problem: 0 }), [state.rows]);
 
   const reviewFile = async (file) => {
@@ -135,6 +137,12 @@ export default function BConnectInvoiceReview() {
         </div>
         <p className="text-xs text-gray-500">قرارات مؤقتة: {Object.keys(decisions).length} — تختفي عند رفع ملف جديد أو تحديث الصفحة.</p>
       </Card>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="p-4"><div className="text-xs text-gray-500">تكرارات تتطلب تحقيقًا</div><div className="text-xl font-bold">{decisionCounts.duplicate || 0}</div></Card>
+        <Card className="p-4"><div className="text-xs text-gray-500">فواتير ناقصة للتسجيل</div><div className="text-xl font-bold">{decisionCounts.missing || 0}</div></Card>
+        <Card className="p-4"><div className="text-xs text-gray-500">اختلافات قابلة للمراجعة</div><div className="text-xl font-bold">{decisionCounts.proposed || 0}</div></Card>
+        <Card className="p-4"><div className="text-xs text-gray-500">حالات محجوبة لنقص الأدلة</div><div className="text-xl font-bold">{decisionCounts.blocked || 0}</div></Card>
+      </div>
       <div className="grid gap-3 md:grid-cols-4">
         <Card className="p-4"><div className="text-xs text-gray-500">فواتير B-Connect</div><div className="text-2xl font-bold">{state.rows.length}</div></Card>
         <Card className="p-4"><div className="text-xs text-gray-500">🟢 سليم</div><div className="text-2xl font-bold">{counts.clean}</div></Card>
@@ -151,15 +159,15 @@ export default function BConnectInvoiceReview() {
           <select aria-label="تصفية حسب الحالة" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-9 rounded-lg border bg-white px-3 text-sm"><option value="all">كل الحالات</option><option value="clean">سليم</option><option value="review">تحتاج مراجعة</option><option value="problem">مشكلة</option></select>
           <span className="text-xs text-gray-600">المعروض {visible.length} من {state.rows.length} فاتورة</span>
         </div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[1250px] text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">اختيار</th><th className="p-3 text-right">قرار المراجعة</th><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">تاريخ B-Connect</th><th className="p-3 text-right">مدخل B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">مدخل التطبيق</th><th className="p-3 text-right">الدليل</th></tr></thead>
+        <div className="overflow-x-auto"><table className="w-full min-w-[1400px] text-sm">
+          <thead className="bg-gray-50 text-xs text-gray-500"><tr><th className="p-3 text-right">اختيار</th><th className="p-3 text-right">قرار المراجعة</th><th className="p-3 text-right">التشخيص</th><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">رقم البرنامج</th><th className="p-3 text-right">المورد B-Connect</th><th className="p-3 text-right">تاريخ B-Connect</th><th className="p-3 text-right">مدخل B-Connect</th><th className="p-3 text-right">قيمة B-Connect</th><th className="p-3 text-right">قيمة التطبيق</th><th className="p-3 text-right">الفرق</th><th className="p-3 text-right">مدخل التطبيق</th><th className="p-3 text-right">الدليل</th></tr></thead>
           <tbody>{visible.map((r, i) => { const Icon = icons[r.status]; return <tr key={r.number + '-' + i} className="border-b align-top">
-            <td className="p-3"><input type="checkbox" aria-label={`اختيار فاتورة ${r.number}`} disabled={r.status === "clean" || r.identity === "duplicate_app" || r.identity === "duplicate_bconnect" || r.identity === "unverified" || r.identity === "unauthorized_or_incomplete"} checked={selectedNumbers.includes(r.number)} onChange={(e) => setSelectedNumbers((old) => e.target.checked ? [...old, r.number] : old.filter((n) => n !== r.number))} /></td><td className="p-3 text-xs">{decisions[r.number]?.action === "approved" ? "اعتماد مبدئي" : decisions[r.number]?.action === "excluded" ? `مستبعد: ${decisions[r.number].note}` : "لم يُتخذ قرار"}</td><td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
+            <td className="p-3"><input type="checkbox" aria-label={`اختيار فاتورة ${r.number}`} disabled={!classifyBConnectReviewRow(r).selectable} checked={selectedNumbers.includes(r.number)} onChange={(e) => setSelectedNumbers((old) => e.target.checked ? [...old, r.number] : old.filter((n) => n !== r.number))} /></td><td className="p-3 text-xs">{decisions[r.number]?.action === "approved" ? "اعتماد مبدئي" : decisions[r.number]?.action === "excluded" ? `مستبعد: ${decisions[r.number].note}` : "لم يُتخذ قرار"}</td><td className="p-3 text-xs font-medium">{classifyBConnectReviewRow(r).label}</td><td className="p-3"><span className="inline-flex items-center gap-1 font-semibold"><Icon className="h-4 w-4"/>{labels[r.status]}</span></td>
             <td className="p-3 font-mono font-bold">{r.number}</td><td className="p-3">{r.bconnect?.supplier || '—'}</td>
             <td className="p-3 whitespace-nowrap">{r.bconnect?.date || "—"}</td><td className="p-3">{r.bconnect?.user || "—"}</td><td className="p-3">{money(r.bconnect?.invoice_value)}{money(r.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="p-3">{r.app ? (money(r.app.total_value) === '—' ? '—' : money(r.app.total_value) + ' ج') : '—'}</td>
             <td className="p-3">{money(r.financial?.difference) === '—' ? '—' : money(r.financial.difference) + ' ج'}</td>
             <td className="p-3">{r.app?.entered_by_name || r.app?.entered_by || "غير متاح في بيانات المطابقة"}</td><td className="max-w-[420px] p-3 text-xs leading-6 text-gray-600">{(r.reasons || []).join(' ')}</td>
-          </tr>; })}{!visible.length && <tr><td colSpan={12} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
+          </tr>; })}{!visible.length && <tr><td colSpan={13} className="p-10 text-center text-gray-400">لا توجد نتائج ضمن الفلتر الحالي.</td></tr>}</tbody>
         </table></div>
       </Card>
     </>}
