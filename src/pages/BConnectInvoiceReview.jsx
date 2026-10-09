@@ -70,14 +70,24 @@ function tabMatches(row, tab) {
 }
 
 function StatusBadge({ row }) {
+  const decision = classifyBConnectReviewRow(row);
   const Icon = icons[row.status];
-  const styles = {
+  const baseStyles = {
     clean: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     review: 'bg-amber-50 text-amber-700 border-amber-200',
     problem: 'bg-rose-50 text-rose-700 border-rose-200',
   };
-  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${styles[row.status]}`}>
-    <Icon className="h-3.5 w-3.5" />{labels[row.status]}
+  const special = decision.code === 'missing'
+    ? { label: 'ناقصة للتسجيل', style: 'bg-sky-50 text-sky-700 border-sky-200' }
+    : decision.code === 'duplicate'
+      ? { label: 'تكرار — تحقيق يدوي', style: 'bg-rose-50 text-rose-700 border-rose-200' }
+      : decision.code === 'blocked'
+        ? { label: 'محجوبة', style: 'bg-slate-100 text-slate-700 border-slate-300' }
+        : null;
+  const label = special?.label || labels[row.status];
+  const style = special?.style || baseStyles[row.status];
+  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${style}`}>
+    <Icon className="h-3.5 w-3.5" />{label}
   </span>;
 }
 
@@ -365,7 +375,7 @@ export default function BConnectInvoiceReview() {
   const tabs = [
     ['all', 'الكل'],
     ['review', 'تحتاج مراجعة'],
-    ['problem', 'مشكلة'],
+    ['problem', 'كل المشاكل'],
     ['missing', 'ناقصة للتسجيل'],
     ['duplicate', 'تكرارات'],
     ['clean', 'سليم'],
@@ -398,7 +408,7 @@ export default function BConnectInvoiceReview() {
         <Metric label="إجمالي الفواتير" value={state.rows.length} />
         <Metric label="سليم" value={counts.clean} tone="green" />
         <Metric label="تحتاج مراجعة" value={counts.review} tone="amber" />
-        <Metric label="مشكلة" value={counts.problem} tone="red" />
+        <Metric label="كل المشاكل" value={counts.problem} tone="red" />
       </div>
 
       <Card className="overflow-hidden border-slate-200">
