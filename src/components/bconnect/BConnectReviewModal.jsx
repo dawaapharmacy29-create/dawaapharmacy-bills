@@ -12,7 +12,7 @@ const labels = { clean: 'سليم', review: 'تحتاج مراجعة', problem: 
 const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
 const dateOnly = (value) => String(value || '').slice(0, 10);
 const fieldText = (value) => value === null || value === undefined ? '' : String(value);
-const nullableMoney = (value) => value === '' || value === null || value === undefined ? null : normalizeMoney(value);
+const normalizedMoneyOrNull = (value) => value === '' || value === null || value === undefined ? null : normalizeMoney(value);
 
 const money = (value) => {
   const normalized = normalizeMoney(value);
@@ -98,9 +98,9 @@ function buildChangedPatch(app, draft) {
     patch.supplier_name = String(draft.supplier_name || '');
   }
   if (dateOnly(draft.invoice_date) !== dateOnly(app.invoice_date)) patch.invoice_date = draft.invoice_date;
-  if (nullableMoney(draft.total_value) !== nullableMoney(app.total_value)) patch.total_value = draft.total_value;
-  if (nullableMoney(draft.returned_value) !== nullableMoney(app.returned_value)) patch.returned_value = draft.returned_value === '' ? null : draft.returned_value;
-  if (nullableMoney(draft.cash_amount) !== nullableMoney(app.cash_amount)) patch.cash_amount = draft.cash_amount === '' ? null : draft.cash_amount;
+  if (normalizedMoneyOrNull(draft.total_value) !== normalizedMoneyOrNull(app.total_value)) patch.total_value = draft.total_value;
+  if (draft.returned_value !== '' && normalizedMoneyOrNull(draft.returned_value) !== normalizedMoneyOrNull(app.returned_value)) patch.returned_value = draft.returned_value;
+  if (draft.cash_amount !== '' && normalizedMoneyOrNull(draft.cash_amount) !== normalizedMoneyOrNull(app.cash_amount)) patch.cash_amount = draft.cash_amount;
   if (String(draft.payment_type || '') !== String(app.payment_type || '')) patch.payment_type = draft.payment_type || null;
   if (String(draft.notes || '') !== String(app.notes || '')) patch.notes = draft.notes || null;
   return patch;
@@ -238,8 +238,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
               </div>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">التاريخ</span><input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /><span className="block text-[11px] text-slate-500">{formatArabicDate(draft.invoice_date)}</span></label>
               <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الإجمالي</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" placeholder="غير متاح" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" placeholder="غير متاح" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">طريقة الدفع</span><input value={draft.payment_type} onChange={(e) => setDraft((old) => ({ ...old, payment_type: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
               <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">ملاحظات</span><textarea rows={3} value={draft.notes} onChange={(e) => setDraft((old) => ({ ...old, notes: e.target.value }))} disabled={fieldsDisabled} className="w-full rounded-xl border bg-white px-3 py-2 text-sm disabled:bg-slate-100" /></label>
             </div>
@@ -247,7 +247,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
             {isCreate && !blocked && <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">إضافة الفواتير الناقصة غير مفعّلة.</div>}
             {readOnly && !blocked && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">الفاتورة سليمة؛ العرض فقط.</div>}
             {!blocked && !readOnly && !isCreate && !hasRevision && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">رقم النسخة غير متاح. أعد رفع ملف B-Connect.</div>}
-            {!blocked && !readOnly && !isCreate && hasRevision && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">الحفظ الفعلي مفعّل للفواتير الموجودة فقط. القيم غير المتاحة تظل غير متاحة ما لم تغيّرها بنفسك.</div>}
+            {!blocked && !readOnly && !isCreate && hasRevision && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">الحفظ الفعلي مفعّل للفواتير الموجودة فقط. أي حقل لم تغيّره لا يُرسل للحفظ ولا يتغير في قاعدة البيانات.</div>}
             {!blocked && !readOnly && !isCreate && hasRevision && !hasChanges && <div className="mt-3 text-xs text-slate-500">عدّل حقلًا واحدًا على الأقل لتفعيل زر الحفظ.</div>}
             {saveState.error && <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{saveState.error}</div>}
             {saveState.success && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">{saveState.success}</div>}
