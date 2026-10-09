@@ -132,11 +132,20 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
   if (!row) return null;
   const handoff = buildBConnectFormHandoff(row);
   const blocked = !handoff || ['duplicate_app', 'duplicate_bconnect', 'unverified', 'unauthorized_or_incomplete', 'conflict'].includes(row.identity);
+  const readOnly = row.status === 'clean';
+  const fieldsDisabled = blocked || readOnly;
   const app = row.app || {};
   const source = row.bconnect || {};
   const supplierComparison = row.checks?.supplier || 'unknown';
   const supplierDiffers = supplierComparison === 'mismatch';
   const isCreate = handoff?.mode === 'create';
+  const modeLabel = readOnly
+    ? 'عرض التفاصيل فقط'
+    : isCreate
+      ? 'مراجعة بيانات التسجيل المقترحة'
+      : blocked
+        ? 'عرض وتحقيق فقط'
+        : 'مراجعة وتعديل داخل نفس الصفحة';
 
   return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div dir="rtl" className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border bg-white shadow-2xl">
@@ -146,7 +155,7 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
             <h2 className="text-xl font-black">مراجعة الفاتورة {row.number}</h2>
             <StatusBadge row={row} />
           </div>
-          <p className="mt-1 text-sm text-slate-500">{normalizeBranch(source.branch || app.branch) || 'فرع غير معروف'} — المراجعة والتعديل داخل نفس الصفحة</p>
+          <p className="mt-1 text-sm text-slate-500">{normalizeBranch(source.branch || app.branch) || 'فرع غير معروف'} — {modeLabel}</p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={onClose}><X className="ml-1 h-4 w-4" />إغلاق</Button>
       </div>
@@ -170,7 +179,7 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
             <div className="mb-4 flex items-center justify-between gap-2">
               <div>
                 <h3 className="font-black">{isCreate ? 'بيانات التسجيل المقترحة' : 'البيانات المسجلة'}</h3>
-                <p className="mt-1 text-xs text-slate-500">{isCreate ? 'لا يوجد سجل حالي لهذه الفاتورة. القيم التالية مقترحة من B-Connect للمراجعة قبل أي تسجيل مستقبلي.' : 'القيم الحالية ظاهرة ومعبأة مسبقًا. رقم الفاتورة والفرع ثابتان.'}</p>
+                <p className="mt-1 text-xs text-slate-500">{isCreate ? 'لا يوجد سجل حالي لهذه الفاتورة. القيم التالية مقترحة من B-Connect للمراجعة قبل أي تسجيل مستقبلي.' : readOnly ? 'هذه الفاتورة سليمة؛ البيانات للعرض فقط ولا تحتاج تعديلًا.' : 'القيم الحالية ظاهرة ومعبأة مسبقًا. رقم الفاتورة والفرع ثابتان.'}</p>
               </div>
               <ShieldCheck className="h-5 w-5 text-teal-600" />
             </div>
@@ -191,18 +200,19 @@ function ReviewModal({ row, draft, setDraft, onClose, onMarkReviewed }) {
 
               <label className="space-y-1.5">
                 <span className="text-xs font-bold text-slate-600">التاريخ</span>
-                <input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" />
+                <input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" />
                 <span className="block text-[11px] font-medium text-slate-500">التاريخ الحالي: {formatArabicDate(draft.invoice_date)}</span>
               </label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الإجمالي</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">طريقة الدفع</span><input value={draft.payment_type} onChange={(e) => setDraft((old) => ({ ...old, payment_type: e.target.value }))} disabled={blocked} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">ملاحظات</span><textarea rows={3} value={draft.notes} onChange={(e) => setDraft((old) => ({ ...old, notes: e.target.value }))} disabled={blocked} className="w-full rounded-xl border bg-white px-3 py-2 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الإجمالي</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">المرتجع</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">طريقة الدفع</span><input value={draft.payment_type} onChange={(e) => setDraft((old) => ({ ...old, payment_type: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
+              <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">ملاحظات</span><textarea rows={3} value={draft.notes} onChange={(e) => setDraft((old) => ({ ...old, notes: e.target.value }))} disabled={fieldsDisabled} className="w-full rounded-xl border bg-white px-3 py-2 text-sm disabled:bg-slate-100" /></label>
             </div>
 
             {blocked && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-6 text-rose-700">هذه الحالة محجوبة من التعديل الآمن لأن هوية الفاتورة أو الأدلة غير كافية. المراجعة فقط متاحة.</div>}
-            {!blocked && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs leading-6 text-teal-800">واجهة المراجعة جاهزة، لكن الحفظ الفعلي على قاعدة البيانات سيظل محجوبًا حتى نشر مسار الحفظ الذري المعتمد في Production. لن نظهر نجاحًا وهميًا.</div>}
+            {readOnly && !blocked && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs leading-6 text-emerald-800">الفاتورة سليمة حسب الأدلة الحالية. هذه الشاشة للعرض فقط ولا تحتاج أي تعديل.</div>}
+            {!blocked && !readOnly && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs leading-6 text-teal-800">واجهة المراجعة جاهزة، لكن الحفظ الفعلي على قاعدة البيانات سيظل محجوبًا حتى نشر مسار الحفظ الذري المعتمد في Production. لن نظهر نجاحًا وهميًا.</div>}
           </section>
         </div>
       </div>
@@ -418,6 +428,15 @@ export default function BConnectInvoiceReview() {
                 const decision = classifyBConnectReviewRow(row);
                 const supplierMismatch = row.checks?.supplier === 'mismatch';
                 const dateMismatch = row.checks?.invoice_date === 'mismatch';
+                const actionLabel = row.identity === 'missing'
+                  ? 'مراجعة للإضافة'
+                  : decision.code === 'duplicate'
+                    ? 'تحقيق يدوي'
+                    : decision.code === 'blocked' || row.status === 'problem'
+                      ? 'عرض المشكلة'
+                      : row.status === 'clean'
+                        ? 'عرض التفاصيل'
+                        : 'مراجعة وتعديل';
                 return <tr key={`${key}-${index}`} className="border-t align-middle transition hover:bg-slate-50/70">
                   <td className="px-4 py-3 font-mono font-black text-slate-900">{row.number}</td>
                   <td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td>
@@ -426,7 +445,7 @@ export default function BConnectInvoiceReview() {
                   <td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td>
                   <td className="px-4 py-3"><StatusBadge row={row} /></td>
                   <td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2" title={(row.reasons || []).join(' — ') || decision.label}>{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}</td>
-                  <td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' ? 'outline' : 'default'} onClick={() => openReview(row)}>{row.identity === 'missing' ? 'مراجعة للإضافة' : row.status === 'clean' ? 'عرض التفاصيل' : 'مراجعة وتعديل'}</Button></td>
+                  <td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' || decision.code === 'blocked' || decision.code === 'duplicate' ? 'outline' : 'default'} onClick={() => openReview(row)}>{actionLabel}</Button></td>
                 </tr>;
               })}
               {!visible.length && <tr><td colSpan={8} className="px-4 py-14 text-center text-slate-400"><FileSearch className="mx-auto mb-2 h-7 w-7" />لا توجد نتائج ضمن الفلاتر الحالية.</td></tr>}
