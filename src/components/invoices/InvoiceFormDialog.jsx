@@ -217,6 +217,7 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (reviewOnly) return;
     if (prefill && (!form.supplier_id || !suppliers.some((supplier) => String(supplier.id) === String(form.supplier_id) && supplier.name === form.supplier_name))) {
       setDupError("يجب تأكيد المورد من سجل الموردين قبل حفظ فاتورة B-Connect");
       return;
