@@ -109,6 +109,7 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
   const branchMembers = teamMembers.filter((m) => (m.branches || []).includes(form.branch));
 
   useEffect(() => {
+    if (!open) return;
     if (invoice) {
       setForm({
         system_invoice_number: invoice.system_invoice_number || "",
