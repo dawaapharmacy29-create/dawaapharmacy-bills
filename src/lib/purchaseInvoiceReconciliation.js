@@ -3,7 +3,7 @@ import {
   invoiceIdentityEvidence,
 } from "./purchaseInvoiceTruth.js";
 
-export const RECONCILIATION_ENGINE_VERSION = "v5";
+export const RECONCILIATION_ENGINE_VERSION = "v6";
 
 function known(value) { return value !== null && value !== undefined && value !== ""; }
 function same(a,b) { return known(a) && known(b) && a === b; }
@@ -12,8 +12,6 @@ function moneyDelta(a,b) {
   if (!known(a)||!known(b)) return null;
   const left=Number(a), right=Number(b);
   if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
-  // Do not round before deciding whether a discrepancy exists.
-  // Rounding can turn a real sub-milliunit difference into a false clean verdict.
   const delta=left-right;
   return Number.isFinite(delta) ? Number(delta.toPrecision(10)) : null;
 }
@@ -62,9 +60,15 @@ export function findDuplicateProgramNumbers(invoices=[]) {
   const groups=new Map();
   for(const raw of invoices){
     const invoice=canonicalPurchaseInvoice(raw);
-    if(!invoice.system_invoice_number) continue;
-    const key=invoice.system_invoice_number;
+    if(!invoice.system_invoice_number || !invoice.branch) continue;
+    const key=`${invoice.branch}::${invoice.system_invoice_number}`;
     const rows=groups.get(key)||[]; rows.push(invoice); groups.set(key,rows);
   }
-  return [...groups.entries()].filter(([,rows])=>rows.length>1).map(([key,rows])=>({key,count:rows.length,invoices:rows}));
+  return [...groups.entries()].filter(([,rows])=>rows.length>1).map(([key,rows])=>({
+    key,
+    branch: rows[0]?.branch || null,
+    number: rows[0]?.system_invoice_number || null,
+    count:rows.length,
+    invoices:rows,
+  }));
 }
