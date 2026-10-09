@@ -1,6 +1,6 @@
 -- STAGING-ONLY PROTOTYPE. DO NOT APPLY TO PRODUCTION.
--- This migration is intentionally gated on a clean, globally unique invoice number
--- and requires explicit product-owner confirmation of that numbering policy.
+-- The uniqueness policy is intentionally UNDECIDED; no global uniqueness
+-- constraint is installed by this staging foundation.
 -- Run in a disposable database after reconciling fixture collisions.
 BEGIN;
 
@@ -20,12 +20,17 @@ RETURNS text LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
     ELSE btrim(p_number) END
 $$;
 
--- Must fail on existing duplicates rather than silently altering or deleting data.
-CREATE UNIQUE INDEX IF NOT EXISTS bconnect_global_invoice_number_v1_idx
-  ON public.purchase_invoices (public.bconnect_canonical_invoice_number_v1(system_invoice_number))
-  WHERE system_invoice_number IS NOT NULL
-    AND btrim(system_invoice_number) <> ''
-    AND COALESCE(is_sample, false) = false;
+-- WARNING: do not create a global unique index before the product owner
+-- confirms global numbering semantics. Live read-only evidence found 179
+-- duplicate-number groups, including cross-branch collisions. The index
+-- below is intentionally NOT executed, even in this staging foundation.
+-- After explicit approval, test a separate uniqueness migration against
+-- disposable fixtures and every legacy writer.
+-- CREATE UNIQUE INDEX bconnect_global_invoice_number_v1_idx
+--   ON public.purchase_invoices (public.bconnect_canonical_invoice_number_v1(system_invoice_number))
+--   WHERE system_invoice_number IS NOT NULL
+--     AND btrim(system_invoice_number) <> ''
+--     AND COALESCE(is_sample, false) = false;
 
 ALTER TABLE public.purchase_invoices
   ADD COLUMN IF NOT EXISTS bconnect_revision_v1 bigint NOT NULL DEFAULT 1;
