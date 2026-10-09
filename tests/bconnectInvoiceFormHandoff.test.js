@@ -41,3 +41,10 @@ test('rejects editing when the app branch or number conflicts with B-Connect', (
  assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app,bconnect}),null);
  assert.equal(buildBConnectFormHandoff({number:'19522',identity:'confirmed',app:{...app,branch:'دواء شكري',system_invoice_number:'999'},bconnect}),null);
 });
+
+test('missing invoice with absent or impossible financial values cannot open prefilled create form', () => {
+ for (const value of [null, undefined, '', 'not-a-number', -5]) {
+   assert.equal(buildBConnectFormHandoff({number:'19522',identity:'missing',bconnect:{...bconnect,invoice_value:value}}),null);
+ }
+ assert.equal(buildBConnectFormHandoff({number:'19522',identity:'missing',bconnect:{...bconnect,return_value:200}}),null);
+});
