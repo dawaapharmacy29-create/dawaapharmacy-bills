@@ -6,7 +6,7 @@ const app={system_invoice_number:"19527",branch:"دواء شكري",supplier_nam
 const bc={serial:19527,branch:"الادارة فرع شكري",supplier:"المتحدة المنصورة للتوزيع",date:"2026-10-06 01:28:35",invoice_value:411.483};
 
 test("real 19527 stays review with exact 4.203 difference",()=>{const r=reconcilePurchaseInvoice(app,bc);assert.equal(r.identity,"confirmed");assert.equal(r.status,"review");assert.equal(r.financial.difference,4.203);});
-test("supplier/date drift cannot block a proven exact match",()=>{const r=reconcilePurchaseInvoice({...app,total_value:411.483,supplier_name:"المتحده"},bc);assert.equal(r.status,"clean");assert.equal(r.checks.invoice_date,"mismatch");});
+test("supplier/date drift requires review even when number, branch and amount match",()=>{const r=reconcilePurchaseInvoice({...app,total_value:411.483,supplier_name:"مورد آخر"},bc);assert.equal(r.status,"review");assert.equal(r.checks.supplier,"mismatch");assert.equal(r.checks.invoice_date,"mismatch");});
 test("same number and amount without branch never becomes green",()=>{const r=reconcilePurchaseInvoice({system_invoice_number:"19527",total_value:411.483},{serial:19527,invoice_value:411.483});assert.equal(r.status,"review");assert.equal(r.identity,"candidate");});
 test("branch mismatch is a hard problem",()=>{const r=reconcilePurchaseInvoice({...app,branch:"دواء الشامي",total_value:411.483},bc);assert.equal(r.status,"problem");});
 test("different program number is a hard conflict",()=>{const r=reconcilePurchaseInvoice(app,{...bc,serial:99999});assert.equal(r.status,"problem");assert.equal(r.identity,"conflict");});
@@ -47,3 +47,5 @@ test("identical monetary values remain clean after precision fix",()=>{
   assert.equal(result.status,"clean");
   assert.equal(result.financial.difference,0);
 });
+
+test("all verified fields equal can be clean",()=>{const r=reconcilePurchaseInvoice({...app,total_value:411.483,invoice_date:"2026-10-06"},bc);assert.equal(r.status,"clean");});
