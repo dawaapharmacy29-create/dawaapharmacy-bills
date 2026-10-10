@@ -13,6 +13,13 @@ const icons = { clean: CheckCircle2, review: AlertTriangle, problem: XCircle };
 const dateOnly = (value) => String(value || '').slice(0, 10);
 const fieldText = (value) => value === null || value === undefined ? '' : String(value);
 const normalizedMoneyOrNull = (value) => value === '' || value === null || value === undefined ? null : normalizeMoney(value);
+const normalizeUserName = (value) => String(value ?? '')
+  .normalize('NFKC')
+  .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
 
 const money = (value) => {
   const normalized = normalizeMoney(value);
@@ -152,6 +159,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
   const { blocked, readOnly, isCreate, revision, hasRevision } = context;
   const app = row.app || {};
   const source = row.bconnect || {};
+  const appEnteredBy = app.entered_by_name || app.entered_by || '';
   const supplierComparison = row.checks?.supplier || 'unknown';
   const supplierChoices = app.supplier_id && !suppliers.some((supplier) => String(supplier.id) === String(app.supplier_id))
     ? [{ id: app.supplier_id, name: app.supplier_name || 'المورد المسجل' }, ...suppliers]
@@ -220,6 +228,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
             <div className="flex items-center justify-between gap-2"><h3 className="font-black">المقارنة</h3><span className="text-xs text-slate-400">الاختلافات المؤكدة فقط تحتاج قرارًا</span></div>
             <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} comparison={row.checks?.branch} />
             <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} comparison={supplierComparison} />
+            <CompareValue label="المستخدم" source={source.user} current={appEnteredBy} normalize={normalizeUserName} />
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] leading-5 text-slate-500">مقارنة المستخدم للمراجعة فقط؛ لا تغيّر تصنيف الفاتورة ولا تحفظ اسم مستخدم B-Connect تلقائيًا.</div>
             <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} comparison={row.checks?.invoice_date} />
             <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : 'mismatch') : 'unknown'} />
             <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />
