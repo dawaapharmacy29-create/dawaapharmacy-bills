@@ -100,7 +100,7 @@ const emptyForm = {
   cash_amount: "",
 };
 
-export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoice, isLoading, allInvoices = [] }) {
+export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoice, prefill = null, externalError = "", reviewOnly = false, isLoading, allInvoices = [] }) {
   const [form, setForm] = useState(emptyForm);
   const [dupError, setDupError] = useState("");
 
@@ -109,6 +109,7 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
   const branchMembers = teamMembers.filter((m) => (m.branches || []).includes(form.branch));
 
   useEffect(() => {
+    if (!open) return;
     if (invoice) {
       setForm({
         system_invoice_number: invoice.system_invoice_number || "",
@@ -132,12 +133,13 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
         source_branch: invoice.source_branch || "",
         destination_branch: invoice.destination_branch || "",
         cash_amount: invoice.cash_amount !== undefined ? invoice.cash_amount : "",
+        ...(prefill || {}),
       });
     } else {
-      setForm(emptyForm);
+      setForm({ ...emptyForm, ...(prefill || {}) });
     }
     setDupError("");
-  }, [invoice, open]);
+  }, [invoice, prefill, open]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -215,6 +217,15 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (reviewOnly) return;
+    if (prefill && (!form.supplier_id || !suppliers.some((supplier) => String(supplier.id) === String(form.supplier_id) && supplier.name === form.supplier_name))) {
+      setDupError("يجب تأكيد المورد من سجل الموردين قبل حفظ فاتورة B-Connect");
+      return;
+    }
+    if (prefill && (!String(form.system_invoice_number || "").trim() || !String(form.invoice_date || "").trim() || form.total_value === "" || !Number.isFinite(Number(form.total_value)) || Number(form.total_value) < 0 || !Number.isFinite(Number(form.returned_value || 0)) || Number(form.returned_value || 0) < 0 || Number(form.returned_value || 0) > Number(form.total_value))) {
+      setDupError("راجع رقم الفاتورة والتاريخ والإجمالي والمرتجع قبل الحفظ");
+      return;
+    }
     if (!form.branch) {
       setDupError("يجب اختيار الفرع");
       return;
@@ -331,6 +342,8 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
           </DialogTitle>
         </DialogHeader>
 
+        {prefill && <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">البيانات من مراجعة B-Connect للمعاينة فقط. الحفظ والتحديث متوقفان حتى تفعيل الحماية الذرية على الخادم.</div>}
+        {externalError && <div role="alert" className="rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-800">{externalError}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Invoice Numbers */}
           <div className="grid grid-cols-2 gap-2">
@@ -621,10 +634,10 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
           {dupError && <p className="text-red-500 text-xs bg-red-50 p-2 rounded-md">{dupError}</p>}
 
           <DialogFooter className="gap-2 flex-row-reverse">
-            <Button type="submit" disabled={isLoading} className="bg-teal-600 hover:bg-teal-700">
-              {isLoading ? "جاري الحفظ..." : invoice ? "تحديث" : "حفظ الفاتورة"}
+            <Button type="submit" disabled={isLoading || reviewOnly} className="bg-teal-600 hover:bg-teal-700">
+              {reviewOnly ? "الحفظ غير متاح في وضع المراجعة" : isLoading ? "جاري الحفظ..." : invoice ? "تحديث" : "حفظ الفاتورة"}
             </Button>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
+            <Button type="button" variant="outline" disabled={isLoading} onClick={() => onOpenChange(false)}>إلغاء</Button>
           </DialogFooter>
         </form>
       </DialogContent>

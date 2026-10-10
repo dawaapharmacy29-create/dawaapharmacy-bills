@@ -91,7 +91,7 @@ async function callSecureRpc(functionName, params = {}) {
       if (result?.error === 'invalid_session') window.dispatchEvent(new CustomEvent('dawaa-session-expired'));
       throw new Error(message);
     }
-    return result.data;
+    return result?.data ?? result;
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.');
     throw new Error(errorText(error));
@@ -294,6 +294,13 @@ export const performanceApi = {
     p_date_from: params.date_from || null,
     p_date_to: params.date_to || null,
     p_month: params.month || null,
+  }),
+  bconnectInvoiceNumbers: (numbers = []) => callSecureRpc('app_bconnect_invoice_number_check', { p_numbers: numbers }),
+  bconnectAtomicEdit: ({ operationId, invoiceId, expectedRevision, patch }) => callSecureRpc('bconnect_atomic_edit_v1', {
+    p_operation_id: operationId,
+    p_invoice_id: invoiceId,
+    p_expected_revision: expectedRevision,
+    p_patch: patch,
   }),
   invoices: (params = {}) => callSecureRpc('app_paged_purchase_invoices', {
     p_branch: params.branch || 'all',

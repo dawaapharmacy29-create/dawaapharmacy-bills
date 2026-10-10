@@ -86,6 +86,7 @@ export default function FastPurchaseInvoices() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline"><Link to="/invoices/bconnect-review">مراجعة B-Connect</Link></Button>
           <Button variant="outline" onClick={() => query.refetch()} disabled={query.isFetching} className="gap-2"><RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} /> تحديث</Button>
           <Button asChild variant="outline"><Link to="/invoices/manage">الإدارة المتقدمة</Link></Button>
           <Button asChild className="gap-2 bg-teal-600 hover:bg-teal-700"><Link to="/invoices/new"><FilePlus2 className="h-4 w-4" /> فاتورة جديدة</Link></Button>

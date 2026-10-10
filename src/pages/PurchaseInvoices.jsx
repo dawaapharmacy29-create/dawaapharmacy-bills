@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { normalizeDate, normalizeInvoiceNumber, normalizeMoney } from "@/lib/purchaseInvoiceTruth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,13 @@ const NET_MODE_OPTIONS = [
 ];
 
 export default function PurchaseInvoices() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [bconnectPrefill, setBconnectPrefill] = useState(null);
+  const [handoffWarning, setHandoffWarning] = useState("");
+  const [activeHandoff, setActiveHandoff] = useState(null);
+  const [handoffSaving, setHandoffSaving] = useState(false);
+  const [handoffWriteWarning, setHandoffWriteWarning] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewInvoice, setViewInvoice] = useState(null);
@@ -131,7 +140,12 @@ export default function PurchaseInvoices() {
   const createMutation = useMutation({
     mutationFn: async (data) => {
       const inv = await base44.entities.PurchaseInvoice.create(data);
-      await logActivity({ action_type: "create", entity_type: "invoice", entity_id: inv?.id, entity_label: data.system_invoice_number, details: `إنشاء فاتورة ${data.system_invoice_number}` });
+      try {
+        await logActivity({ action_type: "create", entity_type: "invoice", entity_id: inv?.id, entity_label: data.system_invoice_number, details: `إنشاء فاتورة ${data.system_invoice_number}` });
+      } catch (auditError) {
+        console.error("Invoice created, but activity logging failed", auditError);
+        queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
+      }
       return inv;
     },
     onSuccess: (inv) => {
@@ -140,6 +154,9 @@ export default function PurchaseInvoices() {
       queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
       queryClient.invalidateQueries({ queryKey: ["pending-invoices-count"] });
       setDialogOpen(false);
+      setActiveHandoff(null);
+      setBconnectPrefill(null);
+      setHandoffWriteWarning("");
     },
   });
   const updateMutation = useMutation({
@@ -151,7 +168,8 @@ export default function PurchaseInvoices() {
       if (changes.length > 0) {
         const oldVals = changes.map(f => `${f}: ${JSON.stringify(oldInv[f])}`).join(" | ");
         const newVals = changes.map(f => `${f}: ${JSON.stringify(data[f])}`).join(" | ");
-        await logActivity({
+        try {
+          await logActivity({
           action_type: change_type || "update",
           entity_type: "invoice",
           entity_id: id,
@@ -168,7 +186,11 @@ export default function PurchaseInvoices() {
             : changes.includes("total_value") ? `تغيير القيمة: ${oldInv.total_value} → ${data.total_value}`
             : changes.includes("paid_value") ? `تغيير المدفوع: ${oldInv.paid_value} → ${data.paid_value}`
             : `تعديل: ${changes.join(", ")}`,
-        });
+          });
+        } catch (auditError) {
+          console.error("Invoice updated, but activity logging failed", auditError);
+          queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
+        }
       }
       return { id, data };
     },
@@ -180,6 +202,9 @@ export default function PurchaseInvoices() {
       queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
       setDialogOpen(false);
       setEditingInvoice(null);
+      setActiveHandoff(null);
+      setBconnectPrefill(null);
+      setHandoffWriteWarning("");
     },
   });
   const deleteMutation = useMutation({
@@ -196,9 +221,52 @@ export default function PurchaseInvoices() {
     },
   });
 
-  const handleSubmit = (formData) => {
-    if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
-    else createMutation.mutate(formData);
+  useEffect(() => {
+    const handoff = location.state?.bconnectHandoff;
+    if (!handoff || isLoading || isFetching) return;
+    // B-Connect handoff is strictly read-only; viewing it must not require write permission.
+    // Server-side reads still enforce the caller's invoice visibility permissions.
+    setHandoffWarning("");
+    setHandoffWriteWarning("");
+    setBconnectPrefill(null);
+    setActiveHandoff(null);
+    if (handoff.mode === "edit") {
+      const current = invoices.find((inv) => inv.id === handoff.recordId);
+      if (!current || normalizeInvoiceNumber(current.system_invoice_number) !== handoff.expectedInvoiceNumber ||
+          current.branch !== handoff.expectedBranch ||
+          normalizeMoney(current.total_value) !== handoff.expectedTotal ||
+          normalizeMoney(current.returned_value) !== handoff.expectedReturned ||
+          (current.supplier_id ?? null) !== handoff.expectedSupplierId ||
+          normalizeDate(current.invoice_date) !== handoff.expectedDate) {
+        setHandoffWarning("بيانات الفاتورة اتغيرت أو مش متاحة. افتح الفاتورة من القائمة بعد إعادة المراجعة.");
+      } else {
+        setEditingInvoice(current);
+        setBconnectPrefill(handoff.proposed);
+        setActiveHandoff(handoff);
+        setDialogOpen(true);
+      }
+    } else if (handoff.mode === "create") {
+      if (invoices.some((inv) => normalizeInvoiceNumber(inv.system_invoice_number) === normalizeInvoiceNumber(handoff.proposed.system_invoice_number))) {
+        setHandoffWarning("رقم الفاتورة أصبح موجودًا في التطبيق. أعد المطابقة قبل إنشاء فاتورة جديدة.");
+      } else {
+        setEditingInvoice(null);
+        setBconnectPrefill(handoff.proposed);
+        setActiveHandoff(handoff);
+        setDialogOpen(true);
+      }
+    }
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, isLoading, isFetching, invoices, navigate, location.pathname]);
+
+  const handleSubmit = async (formData) => {
+    if (!activeHandoff) {
+      if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
+      else createMutation.mutate(formData);
+      return;
+    }
+    // B-Connect handoff is review-only until an atomic server write exists.
+    // Ordinary invoice create/edit paths above are unaffected.
+    setHandoffWriteWarning("الحفظ من مراجعة B-Connect غير متاح حتى تفعيل عملية حفظ ذرية على الخادم. راجع البيانات ثم أغلق النموذج بدون حفظ.");
   };
 
   // Bulk actions
@@ -348,7 +416,7 @@ export default function PurchaseInvoices() {
   };
 
   const handleView = (inv) => { setViewInvoice(inv); setViewOpen(true); };
-  const handleEdit = (inv) => { setEditingInvoice(inv); setDialogOpen(true); };
+  const handleEdit = (inv) => { setEditingInvoice(inv); setBconnectPrefill(null); setActiveHandoff(null); setDialogOpen(true); };
   const handleSingleDelete = (id) => { setSingleDeleteId(id); setConfirmDelete(true); };
 
   const uniqueSuppliers = [...new Set(invoices.map((i) => i.supplier_name).filter(Boolean))];
@@ -387,12 +455,13 @@ export default function PurchaseInvoices() {
           <p className="text-gray-500 text-sm mt-0.5">{filtered.length} من {invoices.length} فاتورة</p>
         </div>
         {canSaveInvoice && (
-          <Button onClick={() => { setEditingInvoice(null); setDialogOpen(true); }} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
+          <Button onClick={() => { setEditingInvoice(null); setBconnectPrefill(null); setDialogOpen(true); }} className="bg-teal-600 hover:bg-teal-700 text-white gap-2">
             <Plus className="w-4 h-4" /> إضافة فاتورة
           </Button>
         )}
       </div>
 
+      {handoffWarning && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{handoffWarning}</div>}
       <InvoiceStats invoices={invoices} />
 
       {/* Month Buttons */}
@@ -590,10 +659,13 @@ export default function PurchaseInvoices() {
 
       <InvoiceFormDialog
         open={dialogOpen}
-        onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingInvoice(null); }}
+        onOpenChange={(open) => { if (!open && (handoffSaving || createMutation.isPending || updateMutation.isPending)) return; setDialogOpen(open); if (!open) { setEditingInvoice(null); setBconnectPrefill(null); setActiveHandoff(null); setHandoffWriteWarning(""); } }}
         onSubmit={handleSubmit}
         invoice={editingInvoice}
-        isLoading={createMutation.isPending || updateMutation.isPending}
+        prefill={bconnectPrefill}
+        reviewOnly={Boolean(activeHandoff)}
+        externalError={handoffWriteWarning}
+        isLoading={handoffSaving || createMutation.isPending || updateMutation.isPending}
         allInvoices={invoices}
       />
 
