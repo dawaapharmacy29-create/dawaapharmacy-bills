@@ -23,9 +23,9 @@ test("parses hierarchical B-Connect invoice sections without treating subtotals 
   assert.equal(result.invoices[1].serial, "19527");
   assert.equal(result.invoices[1].invoice_value, 411.483);
   assert.equal(result.invoices[1].supplier, "المتحدة المنصورة للتوزيع");
-  assert.equal(result.invoices[1].branch, "الادارة فرع شكري");
+  assert.equal(result.invoices[1].branch, "دواء شكري");
   assert.equal(result.invoices[2].supplier, "دواء الشامي");
-  assert.equal(result.invoices[2].branch, "الادارة فرع شكري");
+  assert.equal(result.invoices[2].branch, "دواء شكري");
 });
 
 test("fails closed when required invoice headers are absent", () => {
@@ -55,10 +55,10 @@ test("golden report shape keeps all 11 invoices under Shokry and preserves exact
   ];
   const result = parseBConnectRows(rows);
   assert.equal(result.valid, true);
-  assert.equal(result.meta.parser_version, "v2");
+  assert.equal(result.meta.parser_version, "v3");
   assert.equal(result.invoices.length, 11);
   assert.equal(new Set(result.invoices.map((row) => row.serial)).size, 11);
-  assert.ok(result.invoices.every((row) => row.branch === "الادارة فرع شكري"));
+  assert.ok(result.invoices.every((row) => row.branch === "دواء شكري"));
   assert.equal(result.invoices.find((row) => row.serial === "19519").supplier, "دواء الشامي");
   assert.equal(Math.round(result.invoices.reduce((sum, row) => sum + row.invoice_value, 0) * 1000) / 1000, 6206.383);
 });
@@ -72,7 +72,7 @@ test("supplier names that look like branches never overwrite branch context", ()
   ];
   const result = parseBConnectRows(rows);
   assert.equal(result.invoices[0].supplier, "دواء الشامي");
-  assert.equal(result.invoices[0].branch, "الادارة فرع شكري");
+  assert.equal(result.invoices[0].branch, "دواء شكري");
 });
 
 test("corrupt invoice amount blocks the whole report rather than disappearing", () => {
@@ -163,7 +163,7 @@ test("real report payment, branch, supplier and print footer rows are never invo
   assert.equal(result.invoices.length, 1);
   assert.deepEqual(result.meta.invalid_invoice_rows, []);
   assert.equal(result.invoices[0].supplier, "المتحدة المنصورة للتوزيع");
-  assert.equal(result.invoices[0].branch, "الادارة فرع شكري");
+  assert.equal(result.invoices[0].branch, "دواء شكري");
 });
 
 
@@ -267,5 +267,5 @@ test("real B-Connect layout with Excel serial dates, repeated headers and three 
   assert.equal(Math.round(parsed.invoices.reduce((sum,x) => sum + x.invoice_value, 0)*1000)/1000,6206.383);
   assert.equal(parsed.invoices.find(x => x.serial === "19527").date?.slice(0,10),"2026-10-06");
   assert.equal(parsed.invoices.find(x => x.serial === "19520").payment_type,"نقدى");
-  assert.ok(parsed.invoices.every(x => x.branch === "الادارة فرع شكري" && x.supplier));
+  assert.ok(parsed.invoices.every(x => x.branch === "دواء شكري" && x.supplier));
 });
