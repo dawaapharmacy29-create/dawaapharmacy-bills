@@ -44,7 +44,8 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f tests/fixtures/bconnect-postgres-schema.sql
           psql -v ON_ERROR_STOP=1 -f docs/sql-staging/bconnect_atomic_foundation_v1.sql
           psql -v ON_ERROR_STOP=1 -f docs/sql-staging/bconnect_atomic_edit_v1.sql
-      - name: Run rollback-only integration assertions
+          psql -v ON_ERROR_STOP=1 -f docs/sql-staging/bconnect_atomic_create_v1.sql
+      - name: Run rollback-only edit integration assertions
         run: |
           set -euo pipefail
           sed -e 's/REPLACE_TEST_INVOICE_ID/fixture-invoice-1/g' \
@@ -53,6 +54,12 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f /tmp/bconnect_fixture_test.sql
           result="$(psql -At -v ON_ERROR_STOP=1 -c "SELECT notes FROM public.purchase_invoices WHERE id='fixture-invoice-1'")"
           test "$result" = 'original'
+      - name: Run rollback-only create integration assertions
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f docs/sql-staging/bconnect_atomic_create_fixture_test_v1.sql
+          result="$(psql -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.purchase_invoices WHERE system_invoice_number='20001'")"
+          test "$result" = '0'
       - name: Verify concurrent edits use optimistic revision gate
         run: |
           set -euo pipefail
