@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 
-export const BCONNECT_PARSER_VERSION = "v2";
+export const BCONNECT_PARSER_VERSION = "v3";
 
 const HEADER_ALIASES = {
   user: ["المستخدم"],
@@ -22,7 +22,7 @@ function text(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
-function normalizeWarehouseName(value) {
+function normalizeLocationName(value) {
   return text(value)
     .replace(/[أإآ]/g, "ا")
     .replace(/[ة]/g, "ه")
@@ -32,12 +32,26 @@ function normalizeWarehouseName(value) {
     .trim();
 }
 
-export function inferBranchFromBConnectSupplier(value) {
-  const normalized = normalizeWarehouseName(value);
-  if (!normalized.includes("مخزن")) return null;
+export function inferBranchFromBConnectLocation(value) {
+  const normalized = normalizeLocationName(value);
+  if (!normalized) return null;
+
+  // Internal warehouse names used by the two pharmacy branches.
   if (/مخزن\s+(?:د|دكتور)?\s*وائل(?:\s|$)/u.test(normalized)) return "دواء شكري";
   if (/مخزن\s+(?:د|دكتور)?\s*معاذ(?:\s|$)/u.test(normalized)) return "دواء الشامي";
+
+  // Real B-Connect exports also use these branch/warehouse captions.
+  if (/(?:الاداره\s+)?فرع\s*شكري(?:\s|$)/u.test(normalized)) return "دواء شكري";
+  if (/(?:الفرعيه\s+الشامي|فرع\s*الشامي)(?:\s|$)/u.test(normalized)) return "دواء الشامي";
+
   return null;
+}
+
+// Kept for compatibility with callers/tests from parser v2. A supplier name by
+// itself is not branch evidence; this only succeeds when the supplied text is
+// actually one of our explicit warehouse/location labels.
+export function inferBranchFromBConnectSupplier(value) {
+  return inferBranchFromBConnectLocation(value);
 }
 
 function headerKey(value) {
@@ -152,39 +166,39 @@ export function parseBConnectRows(rows) {
 
     // Supplier/branch/payment labels occur outside invoice tables in the B-Connect report.
     if (!header || !looksLikeInvoice(row, header)) {
+      // Branch evidence can appear in the report caption itself ("المخزن ...")
+      // or in the warehouse/payment row immediately before the table. Normalize
+      // all known real export labels to the application's canonical branch names.
+      const inferredLocationBranch = nonEmpty
+        .map((value) => inferBranchFromBConnectLocation(value))
+        .find(Boolean);
+      if (inferredLocationBranch) branch = inferredLocationBranch;
+
       // Supplier groups are structural rows: <supplier name> | موردين.
-      // Resolve and stop on this row BEFORE branch detection: a supplier may itself
-      // contain a branch-looking phrase such as "دواء الشامي".
+      // Resolve and stop on this row BEFORE any legacy single-cell supplier logic:
+      // a supplier may itself contain a branch-looking phrase such as "دواء الشامي".
       const supplierTypeIndex = nonEmpty.findIndex((v) => v === "موردين");
       if (supplierTypeIndex > 0) {
         supplier = nonEmpty[supplierTypeIndex - 1];
-        const inferredBranch = inferBranchFromBConnectSupplier(supplier);
-        if (inferredBranch) branch = inferredBranch;
         continue;
       }
 
       const payment = nonEmpty.find(isPaymentLabel);
       if (payment) payment_type = normalizePayment(payment);
 
-      // Only explicit branch/report labels are accepted as branch evidence.
-      const branchCandidate = nonEmpty.find((v) => /فرع\s*شكري|فرع\s*الشامي/.test(v));
-      if (branchCandidate) branch = branchCandidate;
-
       // Retain the legacy one-cell supplier form only when it cannot be confused
-      // with payment, totals, report captions, or an explicit branch row.
+      // with payment, totals, report captions, or an explicit warehouse/location row.
       if (
         nonEmpty.length === 1 &&
         !isPaymentLabel(nonEmpty[0]) &&
-        !branchCandidate &&
+        !inferredLocationBranch &&
         !/تم الإسترجاع|تم الاسترجاع|الإجمالي|الاجمالي|إجمـــالى/.test(nonEmpty[0])
       ) {
         supplier = nonEmpty[0];
-        const inferredBranch = inferBranchFromBConnectSupplier(supplier);
-        if (inferredBranch) branch = inferredBranch;
       }
       // A populated row inside an invoice table that is neither a known
       // structural label nor a valid invoice must not disappear silently.
-      if (header && !payment && !branchCandidate && nonEmpty.length > 1) {
+      if (header && !payment && !inferredLocationBranch && nonEmpty.length > 1) {
         unrecognizedRows.push(i + 1);
       }
       continue;
@@ -193,7 +207,7 @@ export function parseBConnectRows(rows) {
     invoices.push({
       row_number: i + 1,
       supplier,
-      branch: inferBranchFromBConnectSupplier(supplier) || branch,
+      branch,
       payment_type,
       user: text(row[header.user]) || null,
       net: number(row[header.net]),
