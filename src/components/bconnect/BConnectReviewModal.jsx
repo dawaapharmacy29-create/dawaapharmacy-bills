@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, ShieldCheck, X, XCircle } from 'lucide-rea
 import { base44, performanceApi } from '@/api/base44Client';
 import { bconnectAtomicCreate } from '@/api/bconnectAtomicCreateClient';
 import { Button } from '@/components/ui/button';
+import BConnectSupplierSuggestions from '@/components/bconnect/BConnectSupplierSuggestions';
 import { prepareBconnectWriteCommand } from '@/lib/bconnectAtomicInvoiceCommand';
 import { buildBConnectFormHandoff } from '@/lib/bconnectInvoiceFormHandoff';
 import { classifyBConnectReviewRow } from '@/lib/bconnectReviewDecisionPolicy';
@@ -296,6 +297,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
               <div className="sm:col-span-2 rounded-xl border bg-white p-3">
                 <div className="text-xs font-bold text-slate-600">المورد المسجل</div>
                 {blocked || readOnly ? <div className="mt-1 font-bold">{app.supplier_name || source.supplier || 'غير محدد'}</div> : <select value={draft.supplier_id || ''} onChange={(event) => chooseSupplier(event.target.value)} disabled={saveState.saving} className="mt-2 h-10 w-full rounded-xl border bg-white px-3 text-sm"><option value="">اختر المورد المسجل</option>{supplierChoices.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select>}
+                {!blocked && !readOnly && <BConnectSupplierSuggestions sourceName={source.supplier} suppliers={supplierChoices} selectedId={draft.supplier_id} onSelect={chooseSupplier} disabled={saveState.saving} />}
                 <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">اسم المورد في B-Connect: <strong>{source.supplier || 'غير متاح'}</strong></div>
                 {supplierError && !blocked && !readOnly && <div className="mt-2 text-xs text-rose-600">تعذر تحميل قائمة الموردين: {supplierError}</div>}
               </div>
