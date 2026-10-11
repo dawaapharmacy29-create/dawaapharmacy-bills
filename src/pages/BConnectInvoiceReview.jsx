@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, ChevronLeft, FileSearch, Filter, Search, Upload, XCircle } from 'lucide-react';
 import { performanceApi } from '@/api/base44Client';
+import { bconnectAcceptanceFingerprint, loadBconnectAcceptances, saveBconnectAcceptance } from '@/api/bconnectReviewAcceptanceClient';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import BConnectReviewModal from '@/components/bconnect/BConnectReviewModal';
@@ -113,11 +114,17 @@ export default function BConnectInvoiceReview() {
     setReviewRow(null);
   };
 
-  const acceptAsIs = (row) => {
+  const acceptAsIs = async (row) => {
     if (!row) return;
-    const key = rowKey(row);
-    setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'تم اعتماد اختلاف المورد/التاريخ كما هو مع تطابق رقم الفاتورة والفرع والقيمة', source_id: row.app?.id || null } }));
-    setReviewRow(null);
+    try {
+      await saveBconnectAcceptance(row);
+      const key = rowKey(row);
+      setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'اعتماد دائم: تم قبول اختلاف المورد/التاريخ كما هو', source_id: row.app?.id || null } }));
+      setReviewRow(null);
+      setState((old) => ({ ...old, error: '' }));
+    } catch (error) {
+      setState((old) => ({ ...old, error: `تعذر حفظ الاعتماد الدائم: ${error?.message || 'خطأ غير معروف'}` }));
+    }
   };
 
   const verifiedSave = (updatedRow) => {
@@ -172,7 +179,17 @@ export default function BConnectInvoiceReview() {
         if (!app?.id || normalizeInvoiceNumber(app.system_invoice_number) !== number || normalizeBranch(app.branch) !== branch || !Number.isSafeInteger(Number(app.bconnect_revision_v1))) return problem('unverified', 'تفاصيل الفاتورة المرجعية أو رقم نسختها غير مكتملة؛ ممنوع الاعتماد.');
         return { number, bconnect: source, app, ...reconcilePurchaseInvoice(app, source) };
       });
-      setState({ loading: false, error: '', fileName: file.name, rows, meta: { ...parsed.meta, global_lookup: true, branch_scoped_identity: true, atomic_edit_enabled: true } });
+
+      const acceptedFingerprints = await loadBconnectAcceptances(rows);
+      const restoredDecisions = {};
+      rows.forEach((row) => {
+        const fingerprint = bconnectAcceptanceFingerprint(row);
+        if (fingerprint && acceptedFingerprints.has(fingerprint)) {
+          restoredDecisions[rowKey(row)] = { action: 'accepted', note: 'اعتماد محفوظ سابقًا', source_id: row.app?.id || null, persistent: true };
+        }
+      });
+      setDecisions(restoredDecisions);
+      setState({ loading: false, error: '', fileName: file.name, rows, meta: { ...parsed.meta, global_lookup: true, branch_scoped_identity: true, atomic_edit_enabled: true, atomic_create_enabled: true, persistent_acceptance_enabled: true } });
     } catch (error) {
       setState({ loading: false, error: error?.message || 'تعذر مراجعة الملف.', fileName: file.name, rows: [], meta: null });
     }
@@ -181,7 +198,7 @@ export default function BConnectInvoiceReview() {
   const tabs = [['all', 'الكل'], ['review', 'تحتاج مراجعة'], ['accepted', 'معتمدة كما هي'], ['problem', 'كل المشاكل'], ['missing', 'ناقصة للتسجيل'], ['duplicate', 'تكرارات'], ['clean', 'سليم']];
 
   return <div dir="rtl" className="space-y-4 p-3 md:p-5 lg:p-6">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2"><h1 className="text-2xl font-black text-slate-900">مركز مراجعة B-Connect</h1><span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-700">مطابقة ذكية</span></div><p className="mt-1 text-sm text-slate-500">راجع الاختلافات واتخذ القرار من نفس الصفحة. الحفظ الذري مفعّل للفواتير الموجودة فقط.</p></div><Button asChild variant="outline"><Link to="/invoices">العودة للفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2"><h1 className="text-2xl font-black text-slate-900">مركز مراجعة B-Connect</h1><span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-700">مطابقة ذكية</span></div><p className="mt-1 text-sm text-slate-500">راجع الاختلافات واتخذ القرار من نفس الصفحة. الاعتمادات المقبولة تُحفظ، والفواتير الناقصة يمكن تسجيلها بأمان.</p></div><Button asChild variant="outline"><Link to="/invoices">العودة للفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button></div>
     <Card className="overflow-hidden border-slate-200"><label className="flex cursor-pointer items-center gap-4 p-4 transition hover:bg-slate-50 md:p-5"><div className="rounded-2xl bg-teal-50 p-3 text-teal-600"><Upload className="h-6 w-6" /></div><div className="min-w-0 flex-1"><div className="font-black">{state.loading ? 'جاري تحليل الملف ومطابقته...' : state.fileName ? 'تم رفع ملف B-Connect بنجاح' : 'اختر ملف B-Connect'}</div><div className="mt-1 text-xs text-slate-500">{state.fileName ? `الملف جاهز للمراجعة — ${state.rows.length || 'جاري التحليل'} فاتورة` : 'رفع Excel فقط — نفس رقم الفاتورة مسموح بين الفرعين، والتكرار يُحجب داخل نفس الفرع.'}</div></div><span className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-600">اختيار ملف</span><input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label>{state.error && <div className="border-t border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{state.error}</div>}</Card>
     {!!state.rows.length && <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="إجمالي الفواتير" value={state.rows.length} /><Metric label="سليم" value={counts.clean} tone="green" /><Metric label="تحتاج مراجعة" value={pendingReviewCount} tone="amber" /><Metric label="كل المشاكل" value={counts.problem} tone="red" /></div>
@@ -191,7 +208,7 @@ export default function BConnectInvoiceReview() {
         <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead className="bg-white text-xs text-slate-500"><tr><th className="px-4 py-3 text-right">رقم الفاتورة</th><th className="px-4 py-3 text-right">الفرع</th><th className="px-4 py-3 text-right">المورد</th><th className="px-4 py-3 text-right">التاريخ</th><th className="px-4 py-3 text-right">الإجمالي</th><th className="px-4 py-3 text-right">الحالة</th><th className="px-4 py-3 text-right">سبب المراجعة</th><th className="px-4 py-3 text-right">الإجراء</th></tr></thead><tbody>{visible.map((row, index) => {
           const key = rowKey(row); const decision = classifyBConnectReviewRow(row); const supplierMismatch = row.checks?.supplier === 'mismatch'; const dateMismatch = row.checks?.invoice_date === 'mismatch';
           const actionLabel = row.identity === 'missing' ? 'مراجعة للإضافة' : decision.code === 'duplicate' ? 'تحقيق يدوي' : decision.code === 'blocked' || row.status === 'problem' ? 'عرض المشكلة' : row.status === 'clean' ? 'عرض التفاصيل' : 'مراجعة وتعديل';
-          return <tr key={`${key}-${index}`} className="border-t align-middle transition hover:bg-slate-50/70"><td className="px-4 py-3 font-mono font-black">{row.number}</td><td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td><td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{supplierMismatch && row.app?.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td><td className="whitespace-nowrap px-4 py-3"><div>{formatArabicDate(row.bconnect?.date)}</div>{dateMismatch && row.app?.invoice_date && <div className="mt-1 text-[11px] text-amber-600">المسجل: {formatArabicDate(row.app.invoice_date)}</div>}</td><td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="px-4 py-3"><StatusBadge row={row} /></td><td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2">{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}{decisions[key]?.action === 'accepted' && <div className="mt-1 font-bold text-teal-700">✓ تم اعتماد الاختلاف كما هو</div>}{decisions[key]?.action === 'saved' && <div className="mt-1 font-bold text-emerald-600">✓ تم الحفظ والتحقق</div>}</td><td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' || decision.code === 'blocked' || decision.code === 'duplicate' ? 'outline' : 'default'} onClick={() => setReviewRow(row)}>{actionLabel}</Button></td></tr>;
+          return <tr key={`${key}-${index}`} className="border-t align-middle transition hover:bg-slate-50/70"><td className="px-4 py-3 font-mono font-black">{row.number}</td><td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td><td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{supplierMismatch && row.app?.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td><td className="whitespace-nowrap px-4 py-3"><div>{formatArabicDate(row.bconnect?.date)}</div>{dateMismatch && row.app?.invoice_date && <div className="mt-1 text-[11px] text-amber-600">المسجل: {formatArabicDate(row.app.invoice_date)}</div>}</td><td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="px-4 py-3"><StatusBadge row={row} /></td><td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2">{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}{decisions[key]?.action === 'accepted' && <div className="mt-1 font-bold text-teal-700">✓ تم اعتماد الاختلاف كما هو{decisions[key]?.persistent ? ' — محفوظ' : ''}</div>}{decisions[key]?.action === 'saved' && <div className="mt-1 font-bold text-emerald-600">✓ تم الحفظ والتحقق</div>}</td><td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' || decision.code === 'blocked' || decision.code === 'duplicate' ? 'outline' : 'default'} onClick={() => setReviewRow(row)}>{actionLabel}</Button></td></tr>;
         })}{!visible.length && <tr><td colSpan={8} className="px-4 py-14 text-center text-slate-400"><FileSearch className="mx-auto mb-2 h-7 w-7" />لا توجد نتائج ضمن الفلاتر الحالية.</td></tr>}</tbody></table></div>
       </Card>
       <div className="grid gap-3 md:grid-cols-4"><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">تكرارات تحتاج تحقيقًا</span><strong className="float-left text-lg">{decisionCounts.duplicate || 0}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">ناقصة للتسجيل</span><strong className="float-left text-lg">{decisionCounts.missing || 0}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">معتمدة كما هي</span><strong className="float-left text-lg">{acceptedCount}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">محجوبة لنقص الأدلة</span><strong className="float-left text-lg">{decisionCounts.blocked || 0}</strong></div></div>
