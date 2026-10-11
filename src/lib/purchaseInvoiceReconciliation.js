@@ -3,7 +3,7 @@ import {
   invoiceIdentityEvidence,
 } from "./purchaseInvoiceTruth.js";
 
-export const RECONCILIATION_ENGINE_VERSION = "v6";
+export const RECONCILIATION_ENGINE_VERSION = "v7";
 
 function known(value) { return value !== null && value !== undefined && value !== ""; }
 function same(a,b) { return known(a) && known(b) && a === b; }
@@ -15,10 +15,14 @@ function moneyDelta(a,b) {
   const delta=left-right;
   return Number.isFinite(delta) ? Number(delta.toPrecision(10)) : null;
 }
+function reviewNote(value) {
+  return String(value ?? "").replace(/\s+/g," ").trim();
+}
 
 export function reconcilePurchaseInvoice(appInput,bconnectInput) {
   const app=canonicalPurchaseInvoice(appInput,"app");
   const bconnect=canonicalPurchaseInvoice(bconnectInput,"bconnect");
+  const appNote=reviewNote(appInput?.notes);
   const checks={
     system_invoice_number:compare(app.system_invoice_number,bconnect.system_invoice_number),
     branch:compare(app.branch,bconnect.branch),
@@ -50,10 +54,11 @@ export function reconcilePurchaseInvoice(appInput,bconnectInput) {
     if(checks.supplier==="unknown") reasons.push("لم يتم التحقق من اسم المورد في المصدرين.");
     if(checks.invoice_date==="unknown") reasons.push("لم يتم التحقق من التاريخ في المصدرين.");
   }
+  if(appNote) reasons.push(`ملاحظة التطبيق: ${appNote}`);
   return {engine_version:RECONCILIATION_ENGINE_VERSION,status,identity,
     evidence_sufficiency:{sufficient_for_clean:identitySufficient&&financialComparable,identity_sufficient:identitySufficient},
     checks,financial:{comparable:financialComparable,match:financialMatch,difference:totalDifference,explained_difference:0,unexplained_difference:totalDifference},
-    reasons,evidence:{app:invoiceIdentityEvidence(app),bconnect:invoiceIdentityEvidence(bconnect)}};
+    reasons,app_note:appNote||null,evidence:{app:invoiceIdentityEvidence(app),bconnect:invoiceIdentityEvidence(bconnect)}};
 }
 
 export function findDuplicateProgramNumbers(invoices=[]) {
