@@ -19,44 +19,29 @@ const NAV_STORAGE_KEY = "dawaa_sidebar_open_group";
 
 const navGroups = [
   {
-    key: "home", label: "الرئيسية والمتابعة", icon: LayoutDashboard,
+    key: "home", label: "الرئيسية", icon: LayoutDashboard,
     sections: [
-      { label: "نظرة عامة", items: [
+      { label: "المتابعة اليومية", items: [
         { path: "/", label: "الرئيسية", icon: LayoutDashboard },
         { path: "/daily-tasks", label: "مهام اليوم", icon: ListChecks },
-        { path: "/branch-performance", label: "مقارنة وكفاءة الفروع", icon: Building2 },
-        { path: "/sales-purchases-report", label: "المبيعات مقابل المشتريات", icon: Scale },
-      ]},
-      { label: "التقارير", items: [
+        { path: "/branch-performance", label: "أداء الفروع", icon: Building2 },
+        { path: "/sales-purchases-report", label: "المبيعات والمشتريات", icon: Scale },
         { path: "/reports-center", label: "مركز التقارير", icon: BarChart3 },
-        { path: "/reports", label: "التقارير الإجمالية", icon: BarChart2 },
-        { path: "/reports-branch", label: "تقارير الفروع", icon: BarChart3 },
       ]},
     ],
   },
   {
-    key: "purchases", label: "المشتريات والفواتير", icon: Zap,
+    key: "purchases", label: "الفواتير والمشتريات", icon: Zap,
     sections: [
-      { label: "الفواتير", items: [
-        { path: "/invoice-center", label: "مركز الفواتير الموحد", icon: Layers3 },
-        { path: "/invoices/new", label: "إدخال فاتورة سريع", icon: FilePlus2 },
-        { path: "/invoices", label: "فواتير الشراء — عرض سريع", icon: FileText },
-        { path: "/invoices/manage", label: "فواتير الشراء — تفصيلي وفلاتر", icon: FileSearch },
-        { path: "/pending-invoices", label: "انتظار المراجعة", icon: ClipboardList, badgeKey: "invoices" },
-        { path: "/invoices/quality", label: "مراجعة وأخطاء الفواتير", icon: ListChecks },
+      { label: "الفواتير اليومية", items: [
+        { path: "/invoice-center", label: "مركز الفواتير", icon: Layers3 },
+        { path: "/invoices/new", label: "فاتورة جديدة", icon: FilePlus2 },
+        { path: "/invoices/bconnect-review", label: "مراجعة بي كونكت", icon: FileSearch },
+        { path: "/pending-invoices", label: "فواتير تنتظر المراجعة", icon: ClipboardList, badgeKey: "invoices" },
       ]},
-      { label: "الأداة الموحدة (ابدأ من هنا)", items: [
-        { path: "/purchase-center", label: "مركز الطلبية السريع", icon: Zap },
-      ]},
-      { label: "خطوات الطلبية بالتفصيل", items: [
-        { path: "/smart-purchase-orders", label: "1. رفع وتحليل ملف الطلبية", icon: BrainCircuit },
-        { path: "/smart-purchase-orders/manage", label: "2. مراجعة العروض واعتماد الطلبية", icon: FileSearch },
-        { path: "/smart-purchase-receiving", label: "3. الاستلام والمطابقة", icon: PackageCheck },
-        { path: "/smart-purchase-insights", label: "4. تقييم الأداء بعد التنفيذ", icon: BarChart3 },
-      ]},
-      { label: "مراقبة ومراجعة الطلبيات", items: [
-        { path: "/purchase-workflow", label: "متابعة الاختناقات والنواقص", icon: GitBranch },
-        { path: "/purchase-operations-review", label: "مراجعة شاملة وSLA", icon: ListChecks, adminOnly: true },
+      { label: "الطلبية والاستلام", items: [
+        { path: "/purchase-center", label: "مركز الطلبية", icon: Zap },
+        { path: "/smart-purchase-receiving", label: "الاستلام والمطابقة", icon: PackageCheck },
       ]},
       { label: "الطلبات", items: [
         { path: "/replenishment", label: "الأصناف المطلوبة", icon: PackageSearch },
@@ -66,55 +51,80 @@ const navGroups = [
     ],
   },
   {
-    key: "finance", label: "الحسابات والتشغيل", icon: Landmark,
+    key: "finance", label: "التشغيل والحسابات", icon: Landmark,
     sections: [
-      { label: "دورة الشيفت والخزنة", items: [
+      { label: "الشيفت والخزنة", items: [
         { path: "/operations-center", label: "مركز التشغيل والخزنة", icon: Landmark },
-        { path: "/shift-delivery", label: "تسجيل وتسليم الشيفت", icon: Clock },
-        { path: "/treasury/shift-review", label: "مراجعة واعتماد الشيفتات", icon: BadgeCheck, managerOnly: true, badgeKey: "shifts" },
-        { path: "/treasury", label: "الخزنة — العمليات اليومية", icon: Landmark },
-        { path: "/treasury-operations", label: "الخزنة — الرقابة والإقفال (أدمن)", icon: ShieldCheck, adminOnly: true },
+        { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock },
+        { path: "/treasury/shift-review", label: "مراجعة الشيفتات", icon: BadgeCheck, managerOnly: true, badgeKey: "shifts" },
       ]},
       { label: "الحركات المالية", items: [
         { path: "/expenses", label: "المصروفات", icon: Receipt },
         { path: "/returns", label: "المرتجعات", icon: RotateCcw },
         { path: "/supplier-balances", label: "أرصدة الموردين", icon: HandCoins },
-        { path: "/branch-settlements", label: "تسويات الفروع", icon: ArrowLeftRight, adminOnly: true },
       ]},
       { label: "المخزون والموردون", items: [
         { path: "/inventory-center", label: "مركز المخزون والموردين", icon: Layers3 },
         { path: "/suppliers", label: "الموردون", icon: Users },
         { path: "/inventory", label: "الراكد والأكسبير", icon: PackageX },
-        { path: "/inventory-count", label: "الجرد الدوري", icon: PackageSearch },
-        { path: "/medicine-list", label: "أدوية اللستة", icon: FlaskConical },
       ]},
     ],
   },
   {
     key: "quality", label: "المراجعة والجودة", icon: ClipboardList,
     sections: [
-      { label: "متابعة الجودة", items: [
+      { label: "الجودة والمراجعة", items: [
         { path: "/quality-center", label: "مركز المراجعة والجودة", icon: ClipboardList },
         { path: "/review-needed-invoices", label: "فواتير تحتاج مراجعة", icon: AlertTriangle },
-        { path: "/data-review", label: "مركز مراجعة البيانات", icon: Database, adminOnly: true },
-        { path: "/base44-sync-review", label: "مراجعة مزامنة Base44", icon: DatabaseZap, adminOnly: true, badgeKey: "base44Sync" },
         { path: "/activity-log", label: "سجل العمليات", icon: ClipboardList },
-        { path: "/security-audit", label: "سجل الأمان", icon: ShieldCheck, adminOnly: true },
       ]},
     ],
   },
   {
-    key: "admin", label: "الإدارة والإعدادات", icon: ShieldCheck,
+    key: "admin", label: "الإدارة", icon: ShieldCheck,
     sections: [
-      { label: "المستخدمون", items: [
-        { path: "/admin-center", label: "مركز الإدارة والإعدادات", icon: ShieldCheck, adminOnly: true },
+      { label: "الإدارة والمستخدمون", items: [
+        { path: "/admin-center", label: "مركز الإدارة", icon: ShieldCheck, adminOnly: true },
         { path: "/team-members", label: "فريق العمل", icon: UserCheck },
         { path: "/user-management", label: "المستخدمون والصلاحيات", icon: Users, adminOnly: true },
+        { path: "/system-status", label: "حالة النظام", icon: Activity, adminOnly: true },
+      ]},
+    ],
+  },
+  {
+    key: "advanced", label: "أدوات متقدمة", icon: Layers3,
+    sections: [
+      { label: "الفواتير", items: [
+        { path: "/invoices", label: "عرض سريع للفواتير", icon: FileText },
+        { path: "/invoices/manage", label: "الفواتير — تفصيلي وفلاتر", icon: FileSearch },
+        { path: "/invoices/quality", label: "أخطاء وجودة الفواتير", icon: ListChecks },
+      ]},
+      { label: "المشتريات المتقدمة", items: [
+        { path: "/smart-purchase-orders", label: "رفع وتحليل ملف الطلبية", icon: BrainCircuit },
+        { path: "/smart-purchase-orders/manage", label: "مراجعة العروض واعتماد الطلبية", icon: FileSearch },
+        { path: "/smart-purchase-insights", label: "تقييم أداء الطلبية", icon: BarChart3 },
+        { path: "/purchase-workflow", label: "متابعة الاختناقات والنواقص", icon: GitBranch },
+        { path: "/purchase-operations-review", label: "مراجعة عمليات الشراء", icon: ListChecks, adminOnly: true },
+      ]},
+      { label: "الحسابات والمخزون", items: [
+        { path: "/treasury", label: "عمليات الخزنة اليومية", icon: Landmark },
+        { path: "/treasury-operations", label: "رقابة وإقفال الخزنة", icon: ShieldCheck, adminOnly: true },
+        { path: "/branch-settlements", label: "تسويات الفروع", icon: ArrowLeftRight, adminOnly: true },
+        { path: "/inventory-count", label: "الجرد الدوري", icon: PackageSearch },
+        { path: "/medicine-list", label: "أدوية اللستة", icon: FlaskConical },
+        { path: "/supplier-balances-branch", label: "أرصدة الموردين حسب الفرع", icon: HandCoins },
+      ]},
+      { label: "التقارير", items: [
+        { path: "/dashboard/advanced", label: "لوحة التحكم المتقدمة", icon: LayoutDashboard },
+        { path: "/reports", label: "التقارير الإجمالية", icon: BarChart2 },
+        { path: "/reports-branch", label: "تقارير الفروع", icon: BarChart3 },
+      ]},
+      { label: "النظام والإدارة", items: [
+        { path: "/data-review", label: "مراجعة البيانات", icon: Database, adminOnly: true },
+        { path: "/base44-sync-review", label: "مراجعة مزامنة Base44", icon: DatabaseZap, adminOnly: true, badgeKey: "base44Sync" },
+        { path: "/security-audit", label: "سجل الأمان", icon: ShieldCheck, adminOnly: true },
         { path: "/doctor-account-coverage", label: "تغطية حسابات الدكاترة", icon: UserRoundCheck, adminOnly: true },
         { path: "/team-merge", label: "دمج الموظفين", icon: ArrowLeftRight, adminOnly: true },
-      ]},
-      { label: "النظام والصيانة", items: [
-        { path: "/system-status", label: "حالة النظام", icon: Activity, adminOnly: true },
         { path: "/supplier-rules-backfill", label: "تطبيق قواعد الموردين", icon: FileSearch, adminOnly: true },
       ]},
     ],
@@ -123,10 +133,10 @@ const navGroups = [
 
 const quickLinks = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
-  { path: "/daily-tasks", label: "مهام اليوم", icon: ListChecks },
   { path: "/invoice-center", label: "مركز الفواتير", icon: Layers3 },
+  { path: "/invoices/bconnect-review", label: "مراجعة بي كونكت", icon: FileSearch },
   { path: "/invoices/new", label: "فاتورة جديدة", icon: FilePlus2 },
-  { path: "/pending-invoices", label: "مراجعة الفواتير", icon: ClipboardList, badgeKey: "invoices" },
+  { path: "/purchase-center", label: "مركز الطلبية", icon: Zap },
   { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock },
 ];
 
