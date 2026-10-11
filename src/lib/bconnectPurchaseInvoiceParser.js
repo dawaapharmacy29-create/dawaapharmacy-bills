@@ -22,6 +22,24 @@ function text(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function normalizeWarehouseName(value) {
+  return text(value)
+    .replace(/[أإآ]/g, "ا")
+    .replace(/[ة]/g, "ه")
+    .replace(/[ـ]/g, "")
+    .replace(/[.،,:;\\/\\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function inferBranchFromBConnectSupplier(value) {
+  const normalized = normalizeWarehouseName(value);
+  if (!normalized.includes("مخزن")) return null;
+  if (/مخزن\s+(?:د|دكتور)?\s*وائل(?:\s|$)/u.test(normalized)) return "دواء شكري";
+  if (/مخزن\s+(?:د|دكتور)?\s*معاذ(?:\s|$)/u.test(normalized)) return "دواء الشامي";
+  return null;
+}
+
 function headerKey(value) {
   const v = text(value);
   for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
@@ -140,6 +158,8 @@ export function parseBConnectRows(rows) {
       const supplierTypeIndex = nonEmpty.findIndex((v) => v === "موردين");
       if (supplierTypeIndex > 0) {
         supplier = nonEmpty[supplierTypeIndex - 1];
+        const inferredBranch = inferBranchFromBConnectSupplier(supplier);
+        if (inferredBranch) branch = inferredBranch;
         continue;
       }
 
@@ -159,6 +179,8 @@ export function parseBConnectRows(rows) {
         !/تم الإسترجاع|تم الاسترجاع|الإجمالي|الاجمالي|إجمـــالى/.test(nonEmpty[0])
       ) {
         supplier = nonEmpty[0];
+        const inferredBranch = inferBranchFromBConnectSupplier(supplier);
+        if (inferredBranch) branch = inferredBranch;
       }
       // A populated row inside an invoice table that is neither a known
       // structural label nor a valid invoice must not disappear silently.
@@ -171,7 +193,7 @@ export function parseBConnectRows(rows) {
     invoices.push({
       row_number: i + 1,
       supplier,
-      branch,
+      branch: inferBranchFromBConnectSupplier(supplier) || branch,
       payment_type,
       user: text(row[header.user]) || null,
       net: number(row[header.net]),
