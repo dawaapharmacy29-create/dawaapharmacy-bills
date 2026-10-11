@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Eye, RefreshCw, RotateCcw, AlertTriangle } from "lucide-react";
+import { Plus, Search, Eye, RefreshCw, RotateCcw, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useUserRole } from "@/lib/useUserRole";
 import ReturnFormDialog from "@/components/returns/ReturnFormDialog";
 import ReturnDetailDialog from "@/components/returns/ReturnDetailDialog";
@@ -13,6 +13,7 @@ import { useTableSorting } from "@/hooks/useTableSorting";
 import { SortableHeader } from "@/components/table/SortableHeader";
 import { SortControls } from "@/components/table/SortControls";
 import { RETURN_STATUS_ORDER } from "@/lib/sortUtils";
+import { buildReturnFollowupCandidates, summarizeReturnItems } from "@/lib/returnFollowup";
 
 const RETURN_SORT_COLUMNS = [
   { field: "return_number", label: "رقم المرتجع", type: "number" },
@@ -36,6 +37,20 @@ const STATUS_CONFIG = {
 
 const PAGE_SIZE = 20;
 
+const formatMoney = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number.toLocaleString("ar-EG", { maximumFractionDigits: 2 }) : "—";
+};
+
+const generateFollowupReturnNumber = () => {
+  const now = new Date();
+  const y = now.getFullYear().toString().slice(-2);
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const rand = String(Math.floor(Math.random() * 9000) + 1000);
+  return `RTN-FU-${y}${m}${d}-${rand}`;
+};
+
 export default function Returns() {
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -45,7 +60,7 @@ export default function Returns() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
-  const { isManager, user } = useUserRole();
+  const { user } = useUserRole();
   const { sortField, sortDirection, toggleSort, setSort, resetSort, sortData } = useTableSorting({
     columns: RETURN_SORT_COLUMNS,
     defaultSort: { field: "created_date", direction: "desc" },
@@ -57,12 +72,64 @@ export default function Returns() {
       queryClient.invalidateQueries({ queryKey: ["returns"] });
     });
     return unsub;
-  }, []);
+  }, [queryClient]);
 
   const { data: allReturns = [], isLoading } = useQuery({
     queryKey: ["returns"],
     queryFn: () => base44.entities.Return.list("-created_date", 500),
     staleTime: 20000,
+  });
+
+  const { data: purchaseInvoices = [], isLoading: invoicesLoading } = useQuery({
+    queryKey: ["purchase-invoices-return-followup"],
+    queryFn: () => base44.entities.PurchaseInvoice.list("-invoice_date", 5000, 0),
+    staleTime: 30000,
+  });
+
+  const returnFollowupCandidates = useMemo(
+    () => buildReturnFollowupCandidates(purchaseInvoices, allReturns),
+    [purchaseInvoices, allReturns]
+  );
+
+  const markFollowupDoneMutation = useMutation({
+    mutationFn: async (candidate) => {
+      const invoice = candidate.invoice || {};
+      const now = new Date().toISOString();
+      const actor = user?.full_name || user?.name || user?.email || "مستخدم النظام";
+      const historyEntry = {
+        status: "Returned",
+        changed_by: actor,
+        changed_at: now,
+        note: "تم تأكيد تنفيذ المرتجع من قائمة متابعة مرتجعات الفواتير",
+      };
+
+      if (candidate.activeReturn?.id) {
+        const existingHistory = Array.isArray(candidate.activeReturn.status_history) ? candidate.activeReturn.status_history : [];
+        return base44.entities.Return.update(candidate.activeReturn.id, {
+          status: "Returned",
+          status_history: [...existingHistory, historyEntry],
+        });
+      }
+
+      return base44.entities.Return.create({
+        return_number: generateFollowupReturnNumber(),
+        invoice_number: String(invoice.system_invoice_number || ""),
+        supplier_name: invoice.supplier_name || "غير محدد",
+        branch_name: invoice.branch || "",
+        employee_name: actor,
+        return_reason: "متابعة مرتجع فاتورة",
+        notes: invoice.notes || "تم تأكيد تنفيذ المرتجع من قائمة المتابعة.",
+        items: [],
+        invoice_images: [],
+        status: "Returned",
+        created_date: now,
+        status_history: [historyEntry],
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["returns"] });
+      queryClient.invalidateQueries({ queryKey: ["purchase-invoices-return-followup"] });
+    },
   });
 
   const filteredRaw = allReturns.filter((r) => {
@@ -101,7 +168,6 @@ export default function Returns() {
 
   return (
     <div dir="rtl" className="p-4 md:p-6 space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -115,7 +181,86 @@ export default function Returns() {
         </Button>
       </div>
 
-      {/* Stale Pending Alert */}
+      <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-black text-amber-950 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              مرتجعات فواتير تحتاج متابعة
+            </h2>
+            <p className="mt-1 text-xs text-amber-800">
+              تظهر هنا الفواتير التي بها قيمة مرتجع، أو ملاحظة تشير لإشعار/مرتجع/صنف خطأ أو مشكلة صلاحية. تختفي من القائمة بعد تأكيد «تم».
+            </p>
+          </div>
+          <Badge className="bg-amber-100 text-amber-900 border border-amber-300">
+            {returnFollowupCandidates.length} تحتاج متابعة
+          </Badge>
+        </div>
+
+        {invoicesLoading ? (
+          <div className="flex items-center gap-2 text-sm text-amber-800"><RefreshCw className="w-4 h-4 animate-spin" /> جاري فحص الفواتير...</div>
+        ) : returnFollowupCandidates.length === 0 ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" /> لا توجد مرتجعات فواتير معلقة مكتشفة حاليًا.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {returnFollowupCandidates.map((candidate) => {
+              const invoice = candidate.invoice || {};
+              const linked = candidate.activeReturn;
+              const itemSummary = linked ? summarizeReturnItems(linked) : "";
+              return (
+                <div key={invoice.id || `${invoice.branch}-${invoice.system_invoice_number}`} className="rounded-xl border border-amber-200 bg-white p-3 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-black text-gray-900">فاتورة {invoice.system_invoice_number || "—"}</span>
+                        <Badge variant="outline">{invoice.branch || "فرع غير محدد"}</Badge>
+                        <Badge variant="outline">{invoice.supplier_name || "مورد غير محدد"}</Badge>
+                        {candidate.returned > 0 && <Badge className="bg-rose-50 text-rose-700 border border-rose-200">مرتجع {formatMoney(candidate.returned)} ج</Badge>}
+                        {linked && <Badge className="bg-blue-50 text-blue-700 border border-blue-200">مرتجع مسجل: {STATUS_CONFIG[linked.status]?.label || linked.status}</Badge>}
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                        <div className="rounded-lg bg-gray-50 p-2"><span className="text-gray-500">الإجمالي</span><div className="font-bold mt-0.5">{formatMoney(candidate.total)} ج</div></div>
+                        <div className="rounded-lg bg-rose-50 p-2"><span className="text-rose-600">المرتجع</span><div className="font-bold mt-0.5 text-rose-700">{formatMoney(candidate.returned)} ج</div></div>
+                        <div className="rounded-lg bg-emerald-50 p-2"><span className="text-emerald-600">الصافي</span><div className="font-bold mt-0.5 text-emerald-700">{candidate.net === null ? "—" : `${formatMoney(candidate.net)} ج`}</div></div>
+                        <div className="rounded-lg bg-gray-50 p-2"><span className="text-gray-500">التاريخ</span><div className="font-bold mt-0.5">{invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString("ar-EG") : "—"}</div></div>
+                      </div>
+
+                      {invoice.notes && (
+                        <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-6 text-sky-900">
+                          <strong>ملاحظة الفاتورة:</strong> {invoice.notes}
+                        </div>
+                      )}
+                      {linked?.return_reason && (
+                        <div className="mt-2 text-xs text-gray-700"><strong>سبب المرتجع المسجل:</strong> {linked.return_reason}</div>
+                      )}
+                      {itemSummary && (
+                        <div className="mt-1 text-xs text-gray-700"><strong>تفاصيل الأصناف:</strong> {itemSummary}</div>
+                      )}
+                      {linked?.notes && linked.notes !== invoice.notes && (
+                        <div className="mt-1 text-xs text-gray-700"><strong>ملاحظة المرتجع:</strong> {linked.notes}</div>
+                      )}
+                    </div>
+
+                    <Button
+                      size="sm"
+                      onClick={() => markFollowupDoneMutation.mutate(candidate)}
+                      disabled={markFollowupDoneMutation.isPending}
+                      className="bg-teal-600 hover:bg-teal-700 text-white gap-1.5 shrink-0"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      {markFollowupDoneMutation.isPending ? "جاري الحفظ..." : "تم"}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {stalePendingReturns.length > 0 && (
         <div className="bg-orange-50 border border-orange-300 rounded-xl p-3 flex gap-3 items-start">
           <AlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 shrink-0" />
@@ -135,7 +280,6 @@ export default function Returns() {
         </div>
       )}
 
-      {/* Status Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
           <button
@@ -149,7 +293,6 @@ export default function Returns() {
         ))}
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl border p-3 space-y-3">
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-48">
@@ -196,7 +339,6 @@ export default function Returns() {
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-white rounded-xl border overflow-hidden shadow-sm">
         {isLoading ? (
           <div className="flex items-center justify-center h-40">
@@ -253,7 +395,6 @@ export default function Returns() {
           </div>
         )}
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
             <span className="text-sm text-gray-500">صفحة {page} من {totalPages}</span>
