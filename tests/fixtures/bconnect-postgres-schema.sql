@@ -47,8 +47,14 @@ CREATE TABLE public.purchase_invoices (
   exclusion_note text,
   source_branch text,
   destination_branch text,
+  status text,
   workflow_status text,
   entered_by_account_id uuid,
+  entered_by_name text,
+  entered_by text,
+  created_by_id text,
+  created_by text,
+  created_at timestamptz,
   base44_sync_state text,
   updated_at timestamptz
 );
@@ -56,7 +62,7 @@ CREATE OR REPLACE FUNCTION public.validate_staff_session(p_session_token text)
 RETURNS jsonb LANGUAGE sql AS $$
  SELECT coalesce((
    SELECT jsonb_build_object('ok',true,'account',jsonb_build_object(
-     'id',a.id,'role',a.role,'branch_ids',a.branch_ids))
+     'id',a.id,'display_name',a.display_name,'role',a.role,'branch_ids',a.branch_ids))
    FROM public.staff_sessions s JOIN public.staff_accounts a ON a.id=s.account_id
    WHERE s.token_hash=encode(digest(p_session_token,'sha256'),'hex')
      AND s.revoked_at IS NULL AND s.expires_at>now() AND a.status='active'
