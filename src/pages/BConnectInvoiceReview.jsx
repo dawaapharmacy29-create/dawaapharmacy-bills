@@ -43,10 +43,11 @@ function issueKinds(row) {
   return [...kinds];
 }
 
-function tabMatches(row, tab) {
+function tabMatches(row, tab, action) {
+  if (tab === 'accepted') return action === 'accepted';
   if (tab === 'all') return true;
   if (tab === 'clean') return row.status === 'clean';
-  if (tab === 'review') return row.status === 'review';
+  if (tab === 'review') return row.status === 'review' && action !== 'accepted';
   if (tab === 'problem') return row.status === 'problem';
   if (tab === 'missing') return classifyBConnectReviewRow(row).code === 'missing';
   if (tab === 'duplicate') return classifyBConnectReviewRow(row).code === 'duplicate';
@@ -90,22 +91,32 @@ export default function BConnectInvoiceReview() {
     acc[code] = (acc[code] || 0) + 1;
     return acc;
   }, {}), [state.rows]);
+  const acceptedCount = useMemo(() => Object.values(decisions).filter((decision) => decision?.action === 'accepted').length, [decisions]);
   const counts = useMemo(() => state.rows.reduce((acc, row) => ({ ...acc, [row.status]: (acc[row.status] || 0) + 1 }), { clean: 0, review: 0, problem: 0 }), [state.rows]);
+  const pendingReviewCount = Math.max(0, counts.review - acceptedCount);
   const branches = useMemo(() => [...new Set(state.rows.map((row) => normalizeBranch(row.bconnect?.branch || row.app?.branch)).filter(Boolean))], [state.rows]);
-  const tabCounts = useMemo(() => ({ all: state.rows.length, clean: counts.clean, review: counts.review, problem: counts.problem, missing: decisionCounts.missing || 0, duplicate: decisionCounts.duplicate || 0 }), [state.rows.length, counts, decisionCounts]);
+  const tabCounts = useMemo(() => ({ all: state.rows.length, clean: counts.clean, review: pendingReviewCount, accepted: acceptedCount, problem: counts.problem, missing: decisionCounts.missing || 0, duplicate: decisionCounts.duplicate || 0 }), [state.rows.length, counts, pendingReviewCount, acceptedCount, decisionCounts]);
   const visible = useMemo(() => state.rows.filter((row) => {
-    if (!tabMatches(row, activeTab)) return false;
+    const action = decisions[rowKey(row)]?.action;
+    if (!tabMatches(row, activeTab, action)) return false;
     const branch = normalizeBranch(row.bconnect?.branch || row.app?.branch);
     if (branchFilter !== 'all' && branch !== branchFilter) return false;
     if (issueFilter !== 'all' && !issueKinds(row).includes(issueFilter)) return false;
     const query = search.trim().toLowerCase();
     return !query || [row.number, row.bconnect?.branch, row.bconnect?.supplier, row.app?.supplier_name, row.bconnect?.user, row.app?.entered_by_name, row.app?.entered_by].some((value) => String(value ?? '').toLowerCase().includes(query));
-  }), [state.rows, activeTab, branchFilter, issueFilter, search]);
+  }), [state.rows, activeTab, branchFilter, issueFilter, search, decisions]);
 
   const markReviewed = (row) => {
     if (!row) return;
     const key = rowKey(row);
     setDecisions((old) => ({ ...old, [key]: { action: 'reviewed', note: 'تمت المراجعة داخل نافذة B-Connect', source_id: row.app?.id || null } }));
+    setReviewRow(null);
+  };
+
+  const acceptAsIs = (row) => {
+    if (!row) return;
+    const key = rowKey(row);
+    setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'تم اعتماد اختلاف المورد/التاريخ كما هو مع تطابق رقم الفاتورة والفرع والقيمة', source_id: row.app?.id || null } }));
     setReviewRow(null);
   };
 
@@ -167,24 +178,24 @@ export default function BConnectInvoiceReview() {
     }
   };
 
-  const tabs = [['all', 'الكل'], ['review', 'تحتاج مراجعة'], ['problem', 'كل المشاكل'], ['missing', 'ناقصة للتسجيل'], ['duplicate', 'تكرارات'], ['clean', 'سليم']];
+  const tabs = [['all', 'الكل'], ['review', 'تحتاج مراجعة'], ['accepted', 'معتمدة كما هي'], ['problem', 'كل المشاكل'], ['missing', 'ناقصة للتسجيل'], ['duplicate', 'تكرارات'], ['clean', 'سليم']];
 
   return <div dir="rtl" className="space-y-4 p-3 md:p-5 lg:p-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2"><h1 className="text-2xl font-black text-slate-900">مركز مراجعة B-Connect</h1><span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-700">مطابقة ذكية</span></div><p className="mt-1 text-sm text-slate-500">راجع الاختلافات واتخذ القرار من نفس الصفحة. الحفظ الذري مفعّل للفواتير الموجودة فقط.</p></div><Button asChild variant="outline"><Link to="/invoices">العودة للفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button></div>
     <Card className="overflow-hidden border-slate-200"><label className="flex cursor-pointer items-center gap-4 p-4 transition hover:bg-slate-50 md:p-5"><div className="rounded-2xl bg-teal-50 p-3 text-teal-600"><Upload className="h-6 w-6" /></div><div className="min-w-0 flex-1"><div className="font-black">{state.loading ? 'جاري تحليل الملف ومطابقته...' : state.fileName ? 'تم رفع ملف B-Connect بنجاح' : 'اختر ملف B-Connect'}</div><div className="mt-1 text-xs text-slate-500">{state.fileName ? `الملف جاهز للمراجعة — ${state.rows.length || 'جاري التحليل'} فاتورة` : 'رفع Excel فقط — نفس رقم الفاتورة مسموح بين الفرعين، والتكرار يُحجب داخل نفس الفرع.'}</div></div><span className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-600">اختيار ملف</span><input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label>{state.error && <div className="border-t border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{state.error}</div>}</Card>
     {!!state.rows.length && <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="إجمالي الفواتير" value={state.rows.length} /><Metric label="سليم" value={counts.clean} tone="green" /><Metric label="تحتاج مراجعة" value={counts.review} tone="amber" /><Metric label="كل المشاكل" value={counts.problem} tone="red" /></div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Metric label="إجمالي الفواتير" value={state.rows.length} /><Metric label="سليم" value={counts.clean} tone="green" /><Metric label="تحتاج مراجعة" value={pendingReviewCount} tone="amber" /><Metric label="كل المشاكل" value={counts.problem} tone="red" /></div>
       <Card className="overflow-hidden border-slate-200">
         <div className="overflow-x-auto border-b bg-white px-3 pt-3"><div className="flex min-w-max gap-1.5">{tabs.map(([key, label]) => <button key={key} type="button" onClick={() => setActiveTab(key)} className={`rounded-t-xl border-b-2 px-4 py-3 text-sm font-bold transition ${activeTab === key ? 'border-teal-600 bg-teal-50 text-teal-700' : 'border-transparent text-slate-500 hover:bg-slate-50'}`}>{label}<span className="mr-2 rounded-full bg-white/80 px-2 py-0.5 text-[11px]">{tabCounts[key]}</span></button>)}</div></div>
         <div className="grid gap-3 border-b bg-slate-50/70 p-3 md:grid-cols-[1fr_180px_190px_auto] md:p-4"><label className="relative block"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="رقم الفاتورة، المورد، الموظف..." className="h-10 w-full rounded-xl border bg-white pr-10 pl-3 text-sm" /></label><select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select><select value={issueFilter} onChange={(event) => setIssueFilter(event.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm"><option value="all">كل أنواع الاختلاف</option><option value="supplier">المورد</option><option value="date">التاريخ</option><option value="amount">القيمة المالية</option><option value="missing">ناقصة للتسجيل</option><option value="duplicate">تكرار</option><option value="blocked">محجوبة</option><option value="other">أخرى</option></select><div className="flex h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-bold text-slate-500"><Filter className="h-4 w-4" />{visible.length} نتيجة</div></div>
         <div className="overflow-x-auto"><table className="w-full min-w-[1050px] text-sm"><thead className="bg-white text-xs text-slate-500"><tr><th className="px-4 py-3 text-right">رقم الفاتورة</th><th className="px-4 py-3 text-right">الفرع</th><th className="px-4 py-3 text-right">المورد</th><th className="px-4 py-3 text-right">التاريخ</th><th className="px-4 py-3 text-right">الإجمالي</th><th className="px-4 py-3 text-right">الحالة</th><th className="px-4 py-3 text-right">سبب المراجعة</th><th className="px-4 py-3 text-right">الإجراء</th></tr></thead><tbody>{visible.map((row, index) => {
           const key = rowKey(row); const decision = classifyBConnectReviewRow(row); const supplierMismatch = row.checks?.supplier === 'mismatch'; const dateMismatch = row.checks?.invoice_date === 'mismatch';
           const actionLabel = row.identity === 'missing' ? 'مراجعة للإضافة' : decision.code === 'duplicate' ? 'تحقيق يدوي' : decision.code === 'blocked' || row.status === 'problem' ? 'عرض المشكلة' : row.status === 'clean' ? 'عرض التفاصيل' : 'مراجعة وتعديل';
-          return <tr key={`${key}-${index}`} className="border-t align-middle transition hover:bg-slate-50/70"><td className="px-4 py-3 font-mono font-black">{row.number}</td><td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td><td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{supplierMismatch && row.app?.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td><td className="whitespace-nowrap px-4 py-3"><div>{formatArabicDate(row.bconnect?.date)}</div>{dateMismatch && row.app?.invoice_date && <div className="mt-1 text-[11px] text-amber-600">المسجل: {formatArabicDate(row.app.invoice_date)}</div>}</td><td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="px-4 py-3"><StatusBadge row={row} /></td><td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2">{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}{decisions[key]?.action === 'saved' && <div className="mt-1 font-bold text-emerald-600">✓ تم الحفظ والتحقق</div>}</td><td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' || decision.code === 'blocked' || decision.code === 'duplicate' ? 'outline' : 'default'} onClick={() => setReviewRow(row)}>{actionLabel}</Button></td></tr>;
+          return <tr key={`${key}-${index}`} className="border-t align-middle transition hover:bg-slate-50/70"><td className="px-4 py-3 font-mono font-black">{row.number}</td><td className="px-4 py-3">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || '—'}</td><td className="max-w-[230px] px-4 py-3"><div className="truncate font-medium">{row.bconnect?.supplier || row.app?.supplier_name || '—'}</div>{supplierMismatch && row.app?.supplier_name && <div className="mt-1 truncate text-[11px] text-amber-600">المسجل: {row.app.supplier_name}</div>}</td><td className="whitespace-nowrap px-4 py-3"><div>{formatArabicDate(row.bconnect?.date)}</div>{dateMismatch && row.app?.invoice_date && <div className="mt-1 text-[11px] text-amber-600">المسجل: {formatArabicDate(row.app.invoice_date)}</div>}</td><td className="whitespace-nowrap px-4 py-3 font-bold">{money(row.bconnect?.invoice_value)}{money(row.bconnect?.invoice_value) === '—' ? '' : ' ج'}</td><td className="px-4 py-3"><StatusBadge row={row} /></td><td className="max-w-[360px] px-4 py-3 text-xs leading-6 text-slate-600"><div className="line-clamp-2">{(row.reasons || []).join(' — ') || decision.label}</div>{decisions[key]?.action === 'reviewed' && <div className="mt-1 font-bold text-teal-600">✓ تمت المراجعة</div>}{decisions[key]?.action === 'accepted' && <div className="mt-1 font-bold text-teal-700">✓ تم اعتماد الاختلاف كما هو</div>}{decisions[key]?.action === 'saved' && <div className="mt-1 font-bold text-emerald-600">✓ تم الحفظ والتحقق</div>}</td><td className="px-4 py-3"><Button type="button" size="sm" variant={row.status === 'clean' || decision.code === 'blocked' || decision.code === 'duplicate' ? 'outline' : 'default'} onClick={() => setReviewRow(row)}>{actionLabel}</Button></td></tr>;
         })}{!visible.length && <tr><td colSpan={8} className="px-4 py-14 text-center text-slate-400"><FileSearch className="mx-auto mb-2 h-7 w-7" />لا توجد نتائج ضمن الفلاتر الحالية.</td></tr>}</tbody></table></div>
       </Card>
-      <div className="grid gap-3 md:grid-cols-4"><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">تكرارات تحتاج تحقيقًا</span><strong className="float-left text-lg">{decisionCounts.duplicate || 0}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">ناقصة للتسجيل</span><strong className="float-left text-lg">{decisionCounts.missing || 0}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">قابلة للمراجعة</span><strong className="float-left text-lg">{decisionCounts.proposed || 0}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">محجوبة لنقص الأدلة</span><strong className="float-left text-lg">{decisionCounts.blocked || 0}</strong></div></div>
+      <div className="grid gap-3 md:grid-cols-4"><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">تكرارات تحتاج تحقيقًا</span><strong className="float-left text-lg">{decisionCounts.duplicate || 0}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">ناقصة للتسجيل</span><strong className="float-left text-lg">{decisionCounts.missing || 0}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">معتمدة كما هي</span><strong className="float-left text-lg">{acceptedCount}</strong></div><div className="rounded-xl border bg-white p-3 text-sm"><span className="text-slate-500">محجوبة لنقص الأدلة</span><strong className="float-left text-lg">{decisionCounts.blocked || 0}</strong></div></div>
     </>}
-    <BConnectReviewModal row={reviewRow} onClose={() => setReviewRow(null)} onMarkReviewed={markReviewed} onVerifiedSave={verifiedSave} />
+    <BConnectReviewModal row={reviewRow} onClose={() => setReviewRow(null)} onMarkReviewed={markReviewed} onAcceptAsIs={acceptAsIs} onVerifiedSave={verifiedSave} />
   </div>;
 }

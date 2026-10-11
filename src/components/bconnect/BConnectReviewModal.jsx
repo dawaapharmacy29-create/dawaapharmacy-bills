@@ -113,7 +113,7 @@ function buildChangedPatch(app, draft) {
   return patch;
 }
 
-export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVerifiedSave }) {
+export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAcceptAsIs, onVerifiedSave }) {
   const [draft, setDraft] = useState({ supplier_id: '', supplier_name: '', invoice_date: '', total_value: '', returned_value: '', cash_amount: '', payment_type: '', notes: '' });
   const [suppliers, setSuppliers] = useState([]);
   const [supplierError, setSupplierError] = useState('');
@@ -168,6 +168,14 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
   const changedPatch = buildChangedPatch(app, draft);
   const hasChanges = Object.keys(changedPatch).length > 0;
   const canSave = !fieldsDisabled && !!app.id && hasRevision && hasChanges && !!draft.supplier_id && !!draft.supplier_name;
+  const canAcceptAsIs = !blocked
+    && !readOnly
+    && !isCreate
+    && !!app.id
+    && row.status === 'review'
+    && row.checks?.branch === 'match'
+    && row.financial?.comparable === true
+    && row.financial?.match === true;
   const modeLabel = readOnly ? 'عرض التفاصيل فقط' : isCreate ? 'مراجعة بيانات التسجيل المقترحة' : blocked ? 'عرض وتحقيق فقط' : 'مراجعة وتعديل وحفظ آمن';
 
   const chooseSupplier = (supplierId) => {
@@ -234,6 +242,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
             <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : 'mismatch') : 'unknown'} />
             <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-950"><div className="font-black">سبب المراجعة</div><div>{(row.reasons || []).join(' — ') || 'لا توجد اختلافات مسجلة.'}</div></div>
+            {canAcceptAsIs && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs leading-6 text-teal-900">رقم الفاتورة والفرع والقيمة المالية متطابقون. يمكنك اعتماد اختلاف التاريخ أو المورد كما هو بدون تعديل بيانات التطبيق.</div>}
           </section>
           <section className="rounded-2xl border bg-slate-50/70 p-4 md:p-5">
             <div className="mb-4 flex items-center justify-between gap-2"><div><h3 className="font-black">{isCreate ? 'بيانات التسجيل المقترحة' : 'البيانات المسجلة'}</h3><p className="mt-1 text-xs text-slate-500">{isCreate ? 'الإضافة الفعلية ما زالت محجوبة.' : readOnly ? 'هذه الفاتورة سليمة؛ البيانات للعرض فقط.' : 'رقم الفاتورة والفرع ثابتان، ولا يُحفظ إلا الحقل الذي عدّلته.'}</p></div><ShieldCheck className="h-5 w-5 text-teal-600" /></div>
@@ -266,7 +275,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onVe
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-white px-5 py-4 md:px-7">
         <div className="text-xs text-slate-500">{isCreate ? 'لا يوجد رقم سجل بعد.' : <>رقم السجل: <span className="font-mono">{app.id || 'غير موجود'}</span>{hasRevision && <span className="mr-2">نسخة: {revision}</span>}</>}</div>
-        <div className="flex flex-wrap items-center gap-2"><Button type="button" variant="outline" disabled={saveState.saving} onClick={onClose}>إلغاء</Button><Button type="button" variant="outline" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>تمت المراجعة</Button>{isCreate || blocked || readOnly ? <Button type="button" disabled>{isCreate ? 'الإضافة غير مفعّلة' : 'لا يوجد حفظ مطلوب'}</Button> : <Button type="button" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ والتحقق...' : 'حفظ التعديل'}</Button>}</div>
+        <div className="flex flex-wrap items-center gap-2"><Button type="button" variant="outline" disabled={saveState.saving} onClick={onClose}>إلغاء</Button>{canAcceptAsIs ? <Button type="button" variant="outline" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الاختلاف كما هو</Button> : <Button type="button" variant="outline" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>تمت المراجعة</Button>}{isCreate || blocked || readOnly ? <Button type="button" disabled>{isCreate ? 'الإضافة غير مفعّلة' : 'لا يوجد حفظ مطلوب'}</Button> : <Button type="button" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ والتحقق...' : 'حفظ التعديل'}</Button>}</div>
       </div>
     </div>
   </div>;
