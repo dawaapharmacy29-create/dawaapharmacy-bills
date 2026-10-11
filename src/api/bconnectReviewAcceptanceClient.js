@@ -1,3 +1,5 @@
+import { normalizeBranch } from '@/lib/purchaseInvoiceTruth';
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 const ENV_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -30,7 +32,7 @@ export function bconnectAcceptanceFingerprint(row) {
   if (!row?.app?.id || !row?.number) return '';
   const source = row.bconnect || {};
   const app = row.app || {};
-  const branch = String(source.branch || app.branch || '').trim();
+  const branch = normalizeBranch(source.branch || app.branch) || '';
   return [
     'v1', branch, String(row.number), String(app.id),
     normalizeText(source.supplier), dateOnly(source.date),
@@ -78,7 +80,7 @@ export async function saveBconnectAcceptance(row) {
   return rpc('bconnect_review_accept_v1', {
     p_fingerprint: fingerprint,
     p_invoice_id: String(app.id),
-    p_branch: String(source.branch || app.branch || ''),
+    p_branch: normalizeBranch(source.branch || app.branch) || '',
     p_invoice_number: String(row.number || ''),
     p_bconnect_supplier: source.supplier == null ? null : String(source.supplier),
     p_bconnect_date: dateOnly(source.date) || null,
