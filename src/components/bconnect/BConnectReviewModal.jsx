@@ -187,10 +187,13 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
   const changedPatch = buildChangedPatch(app, draft);
   const hasChanges = Object.keys(changedPatch).length > 0;
   const canSave = !isCreate && !fieldsDisabled && !!app.id && hasRevision && hasChanges && !!draft.supplier_id && !!draft.supplier_name;
-  const canCreate = isCreate && !blocked && !saveState.saving
-    && !!draft.supplier_id && !!draft.supplier_name
-    && !!draft.invoice_date && draft.total_value !== ''
-    && ['كاش', 'آجل'].includes(draft.payment_type);
+  const createMissingRequirements = isCreate ? [
+    !draft.supplier_id || !draft.supplier_name ? 'اختر المورد المسجل' : null,
+    !draft.invoice_date ? 'حدد تاريخ الفاتورة' : null,
+    draft.total_value === '' ? 'راجع إجمالي الفاتورة' : null,
+    !['كاش', 'آجل'].includes(draft.payment_type) ? 'اختر طريقة الدفع: آجل أو كاش' : null,
+  ].filter(Boolean) : [];
+  const canCreate = isCreate && !blocked && !saveState.saving && createMissingRequirements.length === 0;
   const canAcceptAsIs = !blocked
     && !readOnly
     && !isCreate
@@ -309,7 +312,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
             {!blocked && !readOnly && !isCreate && !hasRevision && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">رقم النسخة غير متاح. أعد رفع ملف B-Connect.</div>}
             {!blocked && !readOnly && !isCreate && hasRevision && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">الحفظ الفعلي مفعّل للفواتير الموجودة فقط. أي حقل لم تغيّره لا يُرسل للحفظ ولا يتغير في قاعدة البيانات.</div>}
             {!blocked && !readOnly && !isCreate && hasRevision && !hasChanges && <div className="mt-3 text-xs text-slate-500">عدّل حقلًا واحدًا على الأقل لتفعيل زر الحفظ.</div>}
-            {isCreate && !blocked && !canCreate && <div className="mt-3 text-xs text-slate-500">اختر المورد وطريقة الدفع، وتأكد من التاريخ والإجمالي لتفعيل التسجيل.</div>}
+            {isCreate && !blocked && !canCreate && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-800">لتفعيل زر «اعتماد وتسجيل الفاتورة»: {createMissingRequirements.join(' — ')}</div>}
+            {isCreate && !blocked && canCreate && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">البيانات الأساسية مكتملة. يمكنك الآن اعتماد وتسجيل الفاتورة.</div>}
             {saveState.error && <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{saveState.error}</div>}
             {saveState.success && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">{saveState.success}</div>}
           </section>
@@ -320,7 +324,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" disabled={saveState.saving} onClick={onClose}>إلغاء</Button>
           {!isCreate && (canAcceptAsIs ? <Button type="button" variant="outline" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الاختلاف كما هو</Button> : <Button type="button" variant="outline" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>تمت المراجعة</Button>)}
-          {isCreate && !blocked ? <Button type="button" disabled={!canCreate} onClick={createMissing}>{saveState.saving ? 'جاري التسجيل والتحقق...' : 'تسجيل الفاتورة'}</Button> : blocked || readOnly ? <Button type="button" disabled>لا يوجد حفظ مطلوب</Button> : <Button type="button" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ والتحقق...' : 'حفظ التعديل'}</Button>}
+          {isCreate && !blocked ? <Button type="button" disabled={!canCreate} onClick={createMissing} title={!canCreate ? createMissingRequirements.join(' — ') : 'اعتماد وتسجيل الفاتورة'}>{saveState.saving ? 'جاري التسجيل والتحقق...' : 'اعتماد وتسجيل الفاتورة'}</Button> : blocked || readOnly ? <Button type="button" disabled>لا يوجد حفظ مطلوب</Button> : <Button type="button" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ والتحقق...' : 'حفظ التعديل'}</Button>}
         </div>
       </div>
     </div>
