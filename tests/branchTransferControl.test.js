@@ -8,6 +8,7 @@ const sale = (overrides = {}) => ({
   product_name: 'Alphintern 30 tab',
   code: '100',
   qty: 2,
+  unit: 'علبة',
   invoice: 'S-1',
   user: 'د/ أحمد',
   date: '2026-10-12 10:00',
@@ -26,8 +27,10 @@ const purchase = (overrides = {}) => ({
   ...overrides,
 });
 
-test('resolves the two real B-Connect branch aliases', () => {
+test('resolves the real B-Connect branch aliases and noisy Abu El Azm customer label', () => {
   assert.equal(resolveTransferBranch('دواء فرع ابو العزم'), 'shokry');
+  assert.equal(resolveTransferBranch('دواء ابو العزم'), 'shokry');
+  assert.equal(resolveTransferBranch('فرع ابو اااااااالعزم'), 'shokry');
   assert.equal(resolveTransferBranch('دواء فرع الشامي'), 'shamy');
 });
 
@@ -45,6 +48,19 @@ test('detects quantity mismatch without losing direction', () => {
   assert.equal(cases[0].from, 'shamy');
   assert.equal(cases[0].to, 'shokry');
   assert.match(cases[0].next_action, /شراء شكري/);
+});
+
+test('treats strip versus fractional-box pattern as unit conversion review, not confirmed error', () => {
+  const cases = reconcileBranchTransfers(
+    [sale({ product_name: 'ADWISTADINE 5 MG 30 F.C. TABS', code: '78156', qty: 1, unit: 'شريط' })],
+    [purchase({ product_name: 'ADWISTADINE 5 MG 30 F.C. TABS', code: '78156', qty: 0.33 })],
+  );
+  assert.equal(cases[0].type, 'unit_conversion_review');
+  const summary = summarizeTransferCases(cases);
+  assert.equal(summary.unit_review, 1);
+  assert.equal(summary.needs_action, 0);
+  assert.equal(transferErrorRate(cases, 'shamy'), 0);
+  assert.equal(transferErrorRate(cases, 'shokry'), 0);
 });
 
 test('detects code mismatch when product identity by name is otherwise equal', () => {
@@ -69,7 +85,7 @@ test('aggregates split invoices for the same product and day', () => {
   assert.deepEqual(cases[0].sale_invoices, ['S-1', 'S-2']);
 });
 
-test('summary and branch error rate reflect only current evidence', () => {
+test('summary and branch error rate reflect only confirmed current evidence', () => {
   const cases = reconcileBranchTransfers(
     [sale(), sale({ product_name: 'Panadol', code: '200', invoice: 'S-2', qty: 1 })],
     [purchase()],
