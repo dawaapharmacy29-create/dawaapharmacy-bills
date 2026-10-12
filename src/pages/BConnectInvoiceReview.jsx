@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, ChevronLeft, CircleDollarSign, Layers3, Search, Upload } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, Layers3, Search, Upload } from 'lucide-react';
 import { performanceApi } from '@/api/base44Client';
 import { bconnectAcceptanceFingerprint, loadBconnectAcceptances, saveBconnectAcceptance } from '@/api/bconnectReviewAcceptanceClient';
 import { Button } from '@/components/ui/button';
@@ -29,41 +29,48 @@ function formatArabicDate(value) {
 }
 
 const laneMeta = {
-  approve: { label: 'اعتماد', tone: 'emerald' },
-  correct: { label: 'تصحيح', tone: 'amber' },
-  explain: { label: 'فرق مالي', tone: 'rose' },
-  register: { label: 'تسجيل', tone: 'sky' },
-  investigate: { label: 'تحقيق', tone: 'rose' },
-  clean: { label: 'سليم', tone: 'slate' },
-};
-
-const toneClasses = {
-  emerald: 'border-emerald-100 bg-emerald-50/60 text-emerald-800',
-  amber: 'border-amber-100 bg-amber-50/60 text-amber-800',
-  rose: 'border-rose-100 bg-rose-50/60 text-rose-800',
-  sky: 'border-sky-100 bg-sky-50/60 text-sky-800',
-  slate: 'border-slate-200 bg-slate-50 text-slate-600',
+  approve: { label: 'اعتماد', dot: 'bg-teal-500', text: 'text-teal-800', bg: 'bg-teal-50' },
+  correct: { label: 'تصحيح', dot: 'bg-amber-500', text: 'text-amber-800', bg: 'bg-amber-50' },
+  explain: { label: 'فرق مالي', dot: 'bg-rose-500', text: 'text-rose-800', bg: 'bg-rose-50' },
+  register: { label: 'تسجيل', dot: 'bg-sky-500', text: 'text-sky-800', bg: 'bg-sky-50' },
+  investigate: { label: 'تحقيق', dot: 'bg-rose-600', text: 'text-rose-800', bg: 'bg-rose-50' },
+  clean: { label: 'سليم', dot: 'bg-slate-400', text: 'text-slate-600', bg: 'bg-slate-50' },
 };
 
 function DecisionBadge({ view, large = false }) {
   const meta = laneMeta[view.lane] || laneMeta.clean;
-  return <span className={`inline-flex items-center gap-2 rounded-full border font-black ${toneClasses[meta.tone]} ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-xs'}`}>
-    {meta.label}<span className="opacity-60">{view.confidence?.score ?? 0}%</span>
+  return <span className={`inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white font-black text-slate-700 ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-[11px]'}`}>
+    <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+    {meta.label}
+    <span className="font-bold text-slate-400">{view.confidence?.score ?? 0}%</span>
   </span>;
 }
 
 function DecisionFacts({ view, large = false }) {
   const facts = [];
-  if (view.financialDifference !== null && view.financialDifference !== 0) facts.push({ text: `فرق مالي ${money(Math.abs(view.financialDifference))} ج`, tone: 'text-rose-700' });
-  if (view.evidence?.label && facts.length < 3) facts.push({ text: view.evidence.label, tone: view.evidenceConfidence === 'high' ? 'text-emerald-700' : 'text-amber-700' });
-  if (view.supplierMismatch && facts.length < 3) facts.push({ text: 'مورد مختلف', tone: 'text-amber-700' });
-  if (view.dateMismatch && facts.length < 3) facts.push({ text: view.dateDifferenceDays === null ? 'تاريخ مختلف' : `التاريخ ${Math.abs(view.dateDifferenceDays)} يوم`, tone: 'text-amber-700' });
-  if (view.hasReturn && facts.length < 3) facts.push({ text: `مرتجع ${money(view.returnedValue ?? view.sourceReturnValue)} ج`, tone: 'text-sky-700' });
-  if (view.hasNote && facts.length < 3) facts.push({ text: 'يوجد ملاحظة', tone: 'text-violet-700' });
-  return <div className={`flex flex-wrap gap-2 font-black ${large ? 'text-sm' : 'text-[11px]'}`}>
-    {facts.map((fact) => <span key={fact.text} className={`rounded-full border border-slate-100 bg-slate-50 px-2.5 py-1 ${fact.tone}`}>{fact.text}</span>)}
-    {!facts.length && <span className="rounded-full border border-slate-100 bg-slate-50 px-2.5 py-1 text-slate-400">لا فرق مؤثر</span>}
+  if (view.financialDifference !== null && view.financialDifference !== 0) facts.push({ text: `فرق ${money(Math.abs(view.financialDifference))} ج`, className: 'border-rose-100 bg-rose-50 text-rose-700' });
+  if (view.evidence?.label && facts.length < 3) facts.push({ text: view.evidence.label, className: 'border-slate-200 bg-slate-50 text-slate-600' });
+  if (view.supplierMismatch && facts.length < 3) facts.push({ text: 'المورد مختلف', className: 'border-amber-100 bg-amber-50 text-amber-700' });
+  if (view.dateMismatch && facts.length < 3) facts.push({ text: view.dateDifferenceDays === null ? 'التاريخ مختلف' : `التاريخ ±${Math.abs(view.dateDifferenceDays)} يوم`, className: 'border-amber-100 bg-amber-50 text-amber-700' });
+  if (view.hasReturn && facts.length < 3) facts.push({ text: `مرتجع ${money(view.returnedValue ?? view.sourceReturnValue)} ج`, className: 'border-sky-100 bg-sky-50 text-sky-700' });
+  if (view.hasNote && facts.length < 3) facts.push({ text: 'ملاحظة مسجلة', className: 'border-slate-200 bg-slate-50 text-slate-600' });
+  return <div className={`flex flex-wrap gap-1.5 font-bold ${large ? 'text-xs' : 'text-[10px]'}`}>
+    {facts.map((fact) => <span key={fact.text} className={`rounded-full border px-2.5 py-1 ${fact.className}`}>{fact.text}</span>)}
+    {!facts.length && <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-400">لا فرق مؤثر</span>}
   </div>;
+}
+
+function StatItem({ label, value, hint, active, onClick, action }) {
+  const body = <div className="flex min-w-0 items-center gap-3 px-3 py-2.5">
+    <div className={`min-w-9 text-center text-xl font-black tabular-nums ${active ? 'text-teal-700' : 'text-slate-900'}`}>{value}</div>
+    <div className="min-w-0 flex-1">
+      <div className="truncate text-[11px] font-black text-slate-600">{label}</div>
+      {hint && <div className="mt-0.5 truncate text-[10px] font-bold text-slate-400">{hint}</div>}
+    </div>
+    {action}
+  </div>;
+  if (!onClick) return <div className="min-w-0">{body}</div>;
+  return <button type="button" onClick={onClick} className={`min-w-0 text-right transition hover:bg-slate-50 ${active ? 'bg-teal-50/60' : ''}`}>{body}</button>;
 }
 
 export default function BConnectInvoiceReview() {
@@ -85,10 +92,7 @@ export default function BConnectInvoiceReview() {
     const rows = [];
     decisionGroups.forEach((group) => group.rows.forEach((row) => {
       const key = rowKey(row);
-      if (!seen.has(key)) {
-        seen.add(key);
-        rows.push(row);
-      }
+      if (!seen.has(key)) { seen.add(key); rows.push(row); }
     }));
     return rows;
   }, [decisionGroups]);
@@ -173,7 +177,6 @@ export default function BConnectInvoiceReview() {
       return view.bulkEligible && decisions[rowKey(row)]?.action !== 'accepted';
     });
     if (!candidates.length) return;
-
     setBulkState({ key: bulkKey, running: true, message: `جاري اعتماد ${candidates.length} فاتورة...` });
     let success = 0;
     const failed = [];
@@ -225,7 +228,6 @@ export default function BConnectInvoiceReview() {
       const pairs = checked.map((entry) => [normalizeInvoiceNumber(entry?.number), entry]);
       const returned = pairs.map(([number]) => number);
       if (returned.length !== numbers.length || new Set(returned).size !== returned.length || returned.some((number) => !number || !numbers.includes(number))) throw new Error('نتيجة البحث الشامل ناقصة أو متعارضة؛ لا يمكن اعتماد المطابقة.');
-
       const globalLookup = new Map(pairs);
       const fileCounts = new Map();
       parsed.invoices.forEach((source) => {
@@ -233,7 +235,6 @@ export default function BConnectInvoiceReview() {
         const branch = normalizeBranch(source.branch);
         if (number && branch) fileCounts.set(invoiceScopeKey(branch, number), (fileCounts.get(invoiceScopeKey(branch, number)) || 0) + 1);
       });
-
       const rows = parsed.invoices.map((source) => {
         const number = normalizeInvoiceNumber(source.serial);
         const branch = normalizeBranch(source.branch);
@@ -255,7 +256,6 @@ export default function BConnectInvoiceReview() {
         if (!app?.id || normalizeInvoiceNumber(app.system_invoice_number) !== number || normalizeBranch(app.branch) !== branch || !Number.isSafeInteger(Number(app.bconnect_revision_v1))) return problem('unverified', 'تفاصيل الفاتورة المرجعية أو رقم نسختها غير مكتملة؛ ممنوع الاعتماد.');
         return { number, bconnect: source, app, ...reconcilePurchaseInvoice(app, source) };
       });
-
       const acceptedFingerprints = await loadBconnectAcceptances(rows);
       const restoredDecisions = {};
       rows.forEach((row) => {
@@ -270,101 +270,106 @@ export default function BConnectInvoiceReview() {
   };
 
   const renderFocus = () => {
-    if (!selectedRow) return <Card className="flex min-h-[360px] items-center justify-center border-slate-200 bg-white"><div className="text-center"><CheckCircle2 className="mx-auto h-9 w-9 text-emerald-500" /><div className="mt-3 text-base font-black text-slate-700">لا توجد حالات في هذا المسار</div><div className="mt-1 text-xs text-slate-400">غيّر الفلتر أو ابدأ بملف جديد.</div></div></Card>;
+    if (!selectedRow) return <Card className="flex min-h-[330px] items-center justify-center border-slate-200 bg-white shadow-none"><div className="text-center"><CheckCircle2 className="mx-auto h-8 w-8 text-teal-500" /><div className="mt-3 text-sm font-black text-slate-700">لا توجد حالات في هذا المسار</div><div className="mt-1 text-xs text-slate-400">غيّر المسار أو ابدأ بملف جديد.</div></div></Card>;
     const view = buildBConnectPurchaseDecision(selectedRow);
+    const meta = laneMeta[view.lane] || laneMeta.clean;
     const branch = normalizeBranch(selectedRow.bconnect?.branch || selectedRow.app?.branch) || 'فرع غير معروف';
     const actionLabel = view.fastAccept ? 'اعتماد وانتقل' : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق' : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'investigate' ? 'فتح التحقيق' : 'فتح التفاصيل';
     const appSupplier = selectedRow.app?.supplier_name || '—';
     const sourceSupplier = selectedRow.bconnect?.supplier || '—';
 
-    return <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-white px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-3"><span className="font-mono text-3xl font-black text-slate-950">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
-            <div className="mt-2 text-xl font-black text-slate-900">{sourceSupplier}</div>
-            <div className="mt-1 text-xs font-bold text-slate-400">{branch}</div>
-          </div>
-          <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-left text-xs font-bold text-slate-500">{formatArabicDate(selectedRow.bconnect?.date)}</div>
+    return <Card className="overflow-hidden border-slate-200 bg-white shadow-none">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5"><span className="font-mono text-2xl font-black text-slate-950">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
+          <div className="mt-1.5 truncate text-lg font-black text-slate-900">{sourceSupplier}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-400"><span>{branch}</span><span>•</span><span>{formatArabicDate(selectedRow.bconnect?.date)}</span></div>
         </div>
+        <div className={`rounded-full px-3 py-1 text-[11px] font-black ${meta.bg} ${meta.text}`}>القرار الآن: {meta.label}</div>
       </div>
 
-      <div className="space-y-4 p-5 md:p-6">
-        <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3"><DecisionFacts view={view} large /></div>
+      <div className="space-y-3 p-4 md:p-5">
+        <DecisionFacts view={view} large />
 
-        {view.financialDifference !== null && view.financialDifference !== 0 && <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[11px] font-bold text-slate-400">B-Connect</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.bconnectTotal)} ج</div></div>
-          <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[11px] font-bold text-slate-400">التطبيق</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.appTotal)} ج</div></div>
-          <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3"><div className="text-[11px] font-bold text-rose-500">الفرق</div><div className="mt-1 text-xl font-black text-rose-700">{money(Math.abs(view.financialDifference))} ج</div></div>
+        {view.financialDifference !== null && view.financialDifference !== 0 && <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
+          <div><span className="text-[10px] font-bold text-slate-400">B-Connect</span><div className="text-base font-black text-slate-900">{money(view.bconnectTotal)} ج</div></div>
+          <div><span className="text-[10px] font-bold text-slate-400">التطبيق</span><div className="text-base font-black text-slate-900">{money(view.appTotal)} ج</div></div>
+          <div className="mr-auto border-r border-slate-200 pr-5"><span className="text-[10px] font-bold text-rose-500">الفرق</span><div className="text-base font-black text-rose-700">{money(Math.abs(view.financialDifference))} ج</div></div>
         </div>}
 
-        {(view.supplierMismatch || view.dateMismatch) && <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
-          {view.supplierMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">المورد</div><div><span className="text-[10px] text-slate-400">B-Connect</span><div className="text-sm font-black text-slate-800">{sourceSupplier}</div></div><div><span className="text-[10px] text-slate-400">التطبيق</span><div className="text-sm font-black text-slate-800">{appSupplier}</div></div></div>}
-          {view.dateMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">التاريخ</div><div className="text-sm font-black text-slate-800">{formatArabicDate(selectedRow.bconnect?.date)}</div><div className="text-sm font-black text-slate-800">{formatArabicDate(selectedRow.app?.invoice_date)}</div></div>}
+        {(view.supplierMismatch || view.dateMismatch) && <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+          {view.supplierMismatch && <div className="grid items-center gap-2 px-4 py-2.5 md:grid-cols-[80px_1fr_1fr]"><div className="text-[11px] font-black text-slate-500">المورد</div><div className="truncate text-xs font-black text-slate-800"><span className="ml-1 font-bold text-slate-400">B:</span>{sourceSupplier}</div><div className="truncate text-xs font-black text-slate-800"><span className="ml-1 font-bold text-slate-400">التطبيق:</span>{appSupplier}</div></div>}
+          {view.dateMismatch && <div className="grid items-center gap-2 px-4 py-2.5 md:grid-cols-[80px_1fr_1fr]"><div className="text-[11px] font-black text-slate-500">التاريخ</div><div className="text-xs font-black text-slate-800">{formatArabicDate(selectedRow.bconnect?.date)}</div><div className="text-xs font-black text-slate-800">{formatArabicDate(selectedRow.app?.invoice_date)}</div></div>}
         </div>}
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-          <Button type="button" size="lg" className="min-w-48 bg-teal-700 text-white hover:bg-teal-800" disabled={bulkState.running} onClick={() => view.fastAccept ? acceptAsIs(selectedRow) : setReviewRow(selectedRow)}>{actionLabel}</Button>
-          <Button type="button" variant="outline" className="border-slate-200 text-slate-600" onClick={() => {
+        <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 bg-white/95 px-4 py-3 backdrop-blur md:-mx-5 md:-mb-5 md:px-5">
+          <Button type="button" className="min-w-44 bg-teal-700 text-white hover:bg-teal-800" disabled={bulkState.running} onClick={() => view.fastAccept ? acceptAsIs(selectedRow) : setReviewRow(selectedRow)}>{actionLabel}</Button>
+          <Button type="button" variant="ghost" className="text-slate-500 hover:bg-slate-50" onClick={() => {
             const index = queueRows.findIndex((row) => rowKey(row) === rowKey(selectedRow));
             const next = queueRows[index + 1] || queueRows[index - 1];
             if (next) setSelectedKey(rowKey(next));
-          }}>تخطي الآن</Button>
+          }}>تخطي</Button>
+          <span className="mr-auto text-[10px] font-bold text-slate-400">{queueRows.length} حالة في المسار</span>
         </div>
       </div>
     </Card>;
   };
 
-  return <div dir="rtl" className="min-h-full space-y-3 bg-slate-50/40 p-3 md:p-5">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h1 className="text-2xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-1 text-xs font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}</div>
-      <div className="flex items-center gap-2"><Button asChild variant="outline" size="sm" className="border-slate-200 bg-white"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-md bg-teal-700 px-3 text-xs font-black text-white hover:bg-teal-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'ملف جديد' : 'اختيار ملف'}<input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label></div>
-    </div>
+  return <div dir="rtl" className="min-h-full bg-slate-50/30 p-3 md:p-4">
+    <div className="mx-auto max-w-[1500px] space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h1 className="text-xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-0.5 text-[11px] font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}</div>
+        <div className="flex items-center gap-2"><Button asChild variant="ghost" size="sm" className="text-slate-600"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-teal-700 px-3 text-xs font-black text-white transition hover:bg-teal-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'تغيير الملف' : 'اختيار ملف'}<input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label></div>
+      </div>
 
-    {state.loading && <Card className="border-slate-200 bg-white p-5 text-center text-sm font-bold text-slate-600">جاري تحليل الملف...</Card>}
-    {state.error && <div className="rounded-xl border border-rose-100 bg-rose-50/60 px-4 py-3 text-sm font-bold text-rose-700">{state.error}</div>}
+      {state.loading && <Card className="border-slate-200 bg-white p-4 text-center text-sm font-bold text-slate-600 shadow-none">جاري تحليل الملف...</Card>}
+      {state.error && <div className="rounded-lg border border-rose-100 bg-rose-50/70 px-4 py-2.5 text-xs font-bold text-rose-700">{state.error}</div>}
 
-    {!!state.rows.length && <>
-      <Card className="overflow-hidden border-slate-200 bg-white shadow-none">
-        <div className="grid divide-y divide-slate-100 md:grid-cols-4 md:divide-x md:divide-x-reverse md:divide-y-0">
-          <div className="p-4">
-            <div className="text-[11px] font-black text-slate-500">اعتماد جماعي آمن</div>
-            <div className="mt-1 flex items-end justify-between gap-3"><div><div className="text-3xl font-black text-emerald-700">{safeBulkRows.length}</div><div className="mt-0.5 text-[10px] font-bold text-slate-400">من {counts.approve} حالة اعتماد</div></div><Button type="button" size="sm" className="bg-teal-700 text-white hover:bg-teal-800" disabled={!safeBulkRows.length || bulkState.running} onClick={acceptAllSafe}>{bulkState.running && bulkState.key === 'all_safe' ? 'جاري...' : safeBulkRows.length ? `اعتماد ${safeBulkRows.length}` : 'لا يوجد'}</Button></div>
+      {!!state.rows.length && <>
+        <Card className="overflow-hidden border-slate-200 bg-white shadow-none">
+          <div className="grid divide-y divide-slate-100 md:grid-cols-4 md:divide-x md:divide-x-reverse md:divide-y-0">
+            <StatItem label="اعتماد جماعي آمن" value={safeBulkRows.length} hint={`من ${counts.approve} حالة اعتماد`} active={safeBulkRows.length > 0} action={<Button type="button" size="sm" className="h-8 bg-teal-700 px-3 text-[11px] text-white hover:bg-teal-800" disabled={!safeBulkRows.length || bulkState.running} onClick={acceptAllSafe}>{bulkState.running && bulkState.key === 'all_safe' ? 'جاري...' : 'اعتماد الكل'}</Button>} />
+            <StatItem label="اعتماد فردي" value={individualApproveCount} active={queueFilter === 'approve'} onClick={() => { setQueueFilter('approve'); setSelectedKey(''); }} />
+            <StatItem label="تحتاج قرار" value={counts.needs} active={queueFilter === 'needs'} onClick={() => { setQueueFilter('needs'); setSelectedKey(''); }} />
+            <StatItem label="تحقيق" value={counts.investigate} hint={`مكتمل ${counts.done}`} active={queueFilter === 'investigate'} onClick={() => { setQueueFilter('investigate'); setSelectedKey(''); }} />
           </div>
-          <button type="button" onClick={() => setQueueFilter('approve')} className="p-4 text-right transition hover:bg-slate-50"><div className="text-[11px] font-black text-slate-500">اعتماد فردي</div><div className="mt-1 text-3xl font-black text-slate-800">{individualApproveCount}</div></button>
-          <button type="button" onClick={() => setQueueFilter('needs')} className="p-4 text-right transition hover:bg-slate-50"><div className="text-[11px] font-black text-slate-500">تحتاج قرار</div><div className="mt-1 text-3xl font-black text-amber-700">{counts.needs}</div></button>
-          <button type="button" onClick={() => setQueueFilter('investigate')} className="p-4 text-right transition hover:bg-slate-50"><div className="text-[11px] font-black text-slate-500">تحقيق</div><div className="mt-1 text-3xl font-black text-rose-700">{counts.investigate}</div><div className="mt-0.5 text-[10px] font-bold text-slate-400">مكتمل {counts.done}</div></button>
-        </div>
-      </Card>
-
-      {bulkState.message && <div className="rounded-lg border border-slate-100 bg-white px-4 py-2 text-xs font-bold text-slate-600">{bulkState.message}</div>}
-
-      {decisionGroups.length > 0 && <div className="flex justify-end"><button type="button" onClick={() => setShowBulkGroups((old) => !old)} className="text-xs font-black text-slate-500 transition hover:text-slate-800"><Layers3 className="ml-1 inline h-4 w-4" />{showBulkGroups ? 'إخفاء تفاصيل الاعتماد الجماعي' : `مراجعة مجموعات الاعتماد (${decisionGroups.length})`}</button></div>}
-
-      {showBulkGroups && <Card className="overflow-hidden border-slate-200 bg-white shadow-none"><div className="divide-y divide-slate-100">{decisionGroups.map((group) => <div key={group.key} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><div className="text-sm font-black text-slate-800">{group.rows.length} فاتورة · {group.description}</div><div className="mt-0.5 text-[11px] text-slate-400">{group.branch}</div></div><Button type="button" size="sm" variant="outline" className="border-slate-200 text-teal-700" disabled={bulkState.running} onClick={() => acceptGroup(group)}>{`اعتماد ${group.rows.length}`}</Button></div>)}</div></Card>}
-
-      <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="overflow-hidden border-slate-200 bg-white shadow-none lg:sticky lg:top-3 lg:self-start">
-          <div className="border-b border-slate-100 bg-white p-3">
-            <div className="flex items-center justify-between"><div><div className="text-sm font-black text-slate-900">طابور القرار</div><div className="text-[11px] font-bold text-slate-400">{queueRows.length} حالة ظاهرة</div></div><CircleDollarSign className="h-5 w-5 text-slate-300" /></div>
-            <div className="mt-3 grid grid-cols-4 gap-1 text-[10px] font-black">
-              {[['actionable','المهم'],['needs','قرار'],['approve','اعتماد'],['investigate','تحقيق']].map(([key,label]) => <button key={key} type="button" onClick={() => { setQueueFilter(key); setSelectedKey(''); }} className={`rounded-lg px-2 py-2 transition ${queueFilter === key ? 'bg-teal-50 text-teal-800 ring-1 ring-teal-200' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{label}</button>)}
-            </div>
-            <div className="mt-2 flex gap-2"><label className="relative flex-1"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="بحث" className="h-9 w-full rounded-lg border border-slate-200 bg-white pr-8 pl-2 text-xs outline-none focus:border-teal-300" /></label><select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-9 max-w-28 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-600"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select></div>
-          </div>
-          <div className="max-h-[620px] divide-y divide-slate-100 overflow-y-auto">{queueRows.map((row) => {
-            const view = buildBConnectPurchaseDecision(row);
-            const active = selectedRow && rowKey(selectedRow) === rowKey(row);
-            return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full border-r-2 px-3 py-3 text-right transition ${active ? 'border-teal-500 bg-teal-50/60' : 'border-transparent bg-white hover:bg-slate-50'}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="font-mono text-sm font-black text-slate-900">{row.number}</div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div></div><DecisionBadge view={view} /></div><div className="mt-2"><DecisionFacts view={view} /></div></button>;
-          })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
         </Card>
 
-        {renderFocus()}
-      </div>
-    </>}
+        <div className="flex min-h-8 items-center justify-between gap-3">
+          <div className="text-[11px] font-bold text-slate-500">{bulkState.message}</div>
+          {decisionGroups.length > 0 && <button type="button" onClick={() => setShowBulkGroups((old) => !old)} className="text-[11px] font-black text-slate-500 transition hover:text-slate-800"><Layers3 className="ml-1 inline h-3.5 w-3.5" />{showBulkGroups ? 'إخفاء المجموعات' : `مجموعات الاعتماد ${decisionGroups.length}`}</button>}
+        </div>
 
-    {!state.rows.length && !state.loading && <Card className="border-slate-200 bg-white p-14 text-center shadow-none"><Upload className="mx-auto h-9 w-9 text-slate-300" /><div className="mt-3 text-lg font-black text-slate-800">ارفع ملف B-Connect</div><div className="mt-1 text-xs text-slate-400">هتظهر أمامك القرارات المهمة مباشرة، بدون جدول مزدحم.</div></Card>}
+        {showBulkGroups && <Card className="overflow-hidden border-slate-200 bg-white shadow-none"><div className="divide-y divide-slate-100">{decisionGroups.map((group) => <div key={group.key} className="flex flex-wrap items-center gap-3 px-4 py-2.5"><div className="min-w-0 flex-1"><div className="text-xs font-black text-slate-800">{group.rows.length} فاتورة · {group.description}</div><div className="mt-0.5 text-[10px] text-slate-400">{group.branch}</div></div><Button type="button" size="sm" variant="ghost" className="h-8 text-[11px] text-teal-700 hover:bg-teal-50" disabled={bulkState.running} onClick={() => acceptGroup(group)}>{`اعتماد ${group.rows.length}`}</Button></div>)}</div></Card>}
 
-    <BConnectReviewModal row={reviewRow} onClose={() => setReviewRow(null)} onMarkReviewed={markReviewed} onAcceptAsIs={acceptAsIs} onVerifiedSave={verifiedSave} />
+        <div className="grid gap-3 lg:grid-cols-[390px_minmax(0,1fr)]">
+          <Card className="overflow-hidden border-slate-200 bg-white shadow-none lg:sticky lg:top-3 lg:self-start">
+            <div className="border-b border-slate-100 p-3">
+              <div className="flex items-center gap-2">
+                <label className="relative min-w-0 flex-1"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث برقم أو مورد" className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/50 pr-8 pl-2 text-xs outline-none transition focus:border-teal-300 focus:bg-white" /></label>
+                <select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-9 max-w-28 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-bold text-slate-600"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select>
+              </div>
+              <div className="mt-2 flex items-center gap-1 overflow-x-auto text-[10px] font-black">
+                {[['actionable','المهم'],['needs','قرار'],['approve','اعتماد'],['investigate','تحقيق'],['done','تم']].map(([key,label]) => <button key={key} type="button" onClick={() => { setQueueFilter(key); setSelectedKey(''); }} className={`whitespace-nowrap rounded-full px-3 py-1.5 transition ${queueFilter === key ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{label}</button>)}
+                <span className="mr-auto whitespace-nowrap text-slate-400">{queueRows.length} حالة</span>
+              </div>
+            </div>
+            <div className="max-h-[610px] divide-y divide-slate-100 overflow-y-auto">{queueRows.map((row) => {
+              const view = buildBConnectPurchaseDecision(row);
+              const active = selectedRow && rowKey(selectedRow) === rowKey(row);
+              return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full border-r-[3px] px-3 py-2.5 text-right transition ${active ? 'border-teal-500 bg-teal-50/45' : 'border-transparent bg-white hover:bg-slate-50'}`}>
+                <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} /></div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div><div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
+              </button>;
+            })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
+          </Card>
+
+          {renderFocus()}
+        </div>
+      </>}
+
+      {!state.rows.length && !state.loading && <Card className="border-slate-200 bg-white p-12 text-center shadow-none"><Upload className="mx-auto h-8 w-8 text-slate-300" /><div className="mt-3 text-base font-black text-slate-800">ارفع ملف B-Connect</div><div className="mt-1 text-xs text-slate-400">سنظهر فقط الحالات التي تحتاج قرارًا.</div></Card>}
+
+      <BConnectReviewModal row={reviewRow} onClose={() => setReviewRow(null)} onMarkReviewed={markReviewed} onAcceptAsIs={acceptAsIs} onVerifiedSave={verifiedSave} />
+    </div>
   </div>;
 }
