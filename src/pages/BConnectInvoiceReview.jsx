@@ -28,71 +28,50 @@ function formatArabicDate(value) {
   return new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(date);
 }
 
-const laneConfig = {
-  approve: { label: 'اعتماد', tone: 'green' },
+const laneMeta = {
+  approve: { label: 'اعتماد', tone: 'emerald' },
   correct: { label: 'تصحيح', tone: 'amber' },
-  explain: { label: 'راجع الفرق', tone: 'red' },
-  register: { label: 'تسجيل', tone: 'blue' },
-  investigate: { label: 'تحقيق', tone: 'red' },
+  explain: { label: 'فرق مالي', tone: 'rose' },
+  register: { label: 'تسجيل', tone: 'sky' },
+  investigate: { label: 'تحقيق', tone: 'rose' },
   clean: { label: 'سليم', tone: 'slate' },
 };
 
-const laneTone = {
-  green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+const toneClasses = {
+  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
   amber: 'border-amber-200 bg-amber-50 text-amber-800',
-  red: 'border-rose-200 bg-rose-50 text-rose-800',
-  blue: 'border-sky-200 bg-sky-50 text-sky-800',
-  slate: 'border-slate-200 bg-white text-slate-700',
+  rose: 'border-rose-200 bg-rose-50 text-rose-800',
+  sky: 'border-sky-200 bg-sky-50 text-sky-800',
+  slate: 'border-slate-200 bg-slate-50 text-slate-700',
 };
 
-const confidenceTone = {
-  very_high: 'text-emerald-700',
-  high: 'text-teal-700',
-  high_explanation: 'text-amber-700',
-  medium: 'text-amber-700',
-  low: 'text-rose-700',
-  blocked: 'text-slate-500',
-};
-
-const needsFilters = [
-  { key: 'all', label: 'الكل' },
-  { key: 'correct', label: 'تصحيح' },
-  { key: 'explain', label: 'فرق مالي' },
-  { key: 'register', label: 'تسجيل' },
-];
-
-const quickPriority = { correct: 0, explain: 1, register: 2, investigate: 3, approve: 4 };
-
-function DecisionMark({ view }) {
-  const tone = laneConfig[view.lane]?.tone || 'slate';
-  return <div className="flex items-center gap-2">
-    <span className={`rounded-lg border px-2.5 py-1 text-xs font-black ${laneTone[tone]}`}>{laneConfig[view.lane]?.label || view.label}</span>
-    <span className={`text-[11px] font-black ${confidenceTone[view.confidence?.code] || confidenceTone.low}`}>{view.confidence?.score ?? 0}%</span>
-  </div>;
+function DecisionBadge({ view, large = false }) {
+  const meta = laneMeta[view.lane] || laneMeta.clean;
+  return <span className={`inline-flex items-center gap-2 rounded-full border font-black ${toneClasses[meta.tone]} ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-xs'}`}>
+    {meta.label}<span className="opacity-70">{view.confidence?.score ?? 0}%</span>
+  </span>;
 }
 
-function CoreFacts({ view, large = false }) {
+function DecisionFacts({ view, large = false }) {
   const facts = [];
-  if (view.financialDifference !== null && view.financialDifference !== 0) facts.push({ text: `فرق ${money(Math.abs(view.financialDifference))} ج`, className: 'text-rose-700' });
-  if (view.evidence?.label && facts.length < 3) facts.push({ text: view.evidence.label, className: view.evidenceConfidence === 'high' ? 'text-emerald-700' : 'text-amber-700' });
-  if (view.supplierMismatch && facts.length < 3) facts.push({ text: 'مورد مختلف', className: 'text-amber-700' });
-  if (view.dateMismatch && facts.length < 3) facts.push({ text: view.dateDifferenceDays === null ? 'تاريخ مختلف' : `فرق تاريخ ${Math.abs(view.dateDifferenceDays)} يوم`, className: 'text-amber-700' });
-  if (view.hasReturn && facts.length < 3) facts.push({ text: `مرتجع ${money(view.returnedValue ?? view.sourceReturnValue)} ج`, className: 'text-sky-700' });
-  if (view.hasNote && facts.length < 3) facts.push({ text: 'ملاحظة', className: 'text-violet-700' });
-  return <div className={`flex flex-wrap gap-x-3 gap-y-1 font-black ${large ? 'text-sm' : 'text-[11px]'}`}>
-    {facts.slice(0, 3).map((fact) => <span key={fact.text} className={fact.className}>{fact.text}</span>)}
-    {!facts.length && <span className="text-slate-400">لا فرق مؤثر</span>}
+  if (view.financialDifference !== null && view.financialDifference !== 0) facts.push({ text: `فرق مالي ${money(Math.abs(view.financialDifference))} ج`, tone: 'text-rose-700' });
+  if (view.evidence?.label && facts.length < 3) facts.push({ text: view.evidence.label, tone: view.evidenceConfidence === 'high' ? 'text-emerald-700' : 'text-amber-700' });
+  if (view.supplierMismatch && facts.length < 3) facts.push({ text: 'مورد مختلف', tone: 'text-amber-700' });
+  if (view.dateMismatch && facts.length < 3) facts.push({ text: view.dateDifferenceDays === null ? 'تاريخ مختلف' : `التاريخ ${Math.abs(view.dateDifferenceDays)} يوم`, tone: 'text-amber-700' });
+  if (view.hasReturn && facts.length < 3) facts.push({ text: `مرتجع ${money(view.returnedValue ?? view.sourceReturnValue)} ج`, tone: 'text-sky-700' });
+  if (view.hasNote && facts.length < 3) facts.push({ text: 'يوجد ملاحظة', tone: 'text-violet-700' });
+  return <div className={`flex flex-wrap gap-2 font-black ${large ? 'text-sm' : 'text-[11px]'}`}>
+    {facts.map((fact) => <span key={fact.text} className={`rounded-full bg-white px-2.5 py-1 ${fact.tone}`}>{fact.text}</span>)}
+    {!facts.length && <span className="rounded-full bg-white px-2.5 py-1 text-slate-400">لا فرق مؤثر</span>}
   </div>;
 }
 
 export default function BConnectInvoiceReview() {
   const [state, setState] = useState({ loading: false, error: '', fileName: '', rows: [], meta: null });
-  const [activeView, setActiveView] = useState('approve');
-  const [displayMode, setDisplayMode] = useState('overview');
-  const [quickKey, setQuickKey] = useState('');
-  const [needsFilter, setNeedsFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [queueFilter, setQueueFilter] = useState('actionable');
+  const [selectedKey, setSelectedKey] = useState('');
   const [decisions, setDecisions] = useState({});
   const [reviewRow, setReviewRow] = useState(null);
   const [bulkState, setBulkState] = useState({ key: '', running: false, message: '' });
@@ -113,81 +92,58 @@ export default function BConnectInvoiceReview() {
     }));
     return rows;
   }, [decisionGroups]);
+  const safeBulkKeys = useMemo(() => new Set(safeBulkRows.map(rowKey)), [safeBulkRows]);
 
-  const operationalCounts = useMemo(() => {
-    const counts = { approve: 0, needs: 0, investigate: 0, done: 0, correct: 0, explain: 0, register: 0 };
+  const counts = useMemo(() => {
+    const result = { approve: 0, needs: 0, investigate: 0, done: 0 };
     state.rows.forEach((row) => {
       const action = decisions[rowKey(row)]?.action;
       const view = buildBConnectPurchaseDecision(row);
-      if (action === 'accepted' || view.lane === 'clean') {
-        counts.done += 1;
-        return;
-      }
-      if (view.lane === 'approve') counts.approve += 1;
-      else if (view.lane === 'investigate') counts.investigate += 1;
-      else if (['correct', 'explain', 'register'].includes(view.lane)) {
-        counts.needs += 1;
-        counts[view.lane] += 1;
-      }
+      if (action === 'accepted' || view.lane === 'clean') result.done += 1;
+      else if (view.lane === 'approve') result.approve += 1;
+      else if (view.lane === 'investigate') result.investigate += 1;
+      else if (['correct', 'explain', 'register'].includes(view.lane)) result.needs += 1;
     });
-    return counts;
+    return result;
   }, [state.rows, decisions]);
 
-  const quickQueue = useMemo(() => unacceptedRows
-    .filter((row) => buildBConnectPurchaseDecision(row).lane !== 'clean')
-    .slice()
-    .sort((a, b) => (quickPriority[buildBConnectPurchaseDecision(a).lane] ?? 99) - (quickPriority[buildBConnectPurchaseDecision(b).lane] ?? 99)), [unacceptedRows]);
+  const individualApproveCount = Math.max(0, counts.approve - safeBulkRows.length);
 
-  const quickRow = useMemo(() => quickQueue.find((row) => rowKey(row) === quickKey) || quickQueue[0] || null, [quickQueue, quickKey]);
-  const quickIndex = quickRow ? quickQueue.findIndex((row) => rowKey(row) === rowKey(quickRow)) : -1;
-
-  const visible = useMemo(() => state.rows.filter((row) => {
-    const key = rowKey(row);
-    const action = decisions[key]?.action;
-    const view = buildBConnectPurchaseDecision(row);
-
-    if (activeView === 'approve') {
-      if (action === 'accepted' || view.lane !== 'approve') return false;
-    } else if (activeView === 'needs') {
-      if (action === 'accepted' || !['correct', 'explain', 'register'].includes(view.lane)) return false;
-      if (needsFilter !== 'all' && view.lane !== needsFilter) return false;
-    } else if (activeView === 'investigate') {
-      if (action === 'accepted' || view.lane !== 'investigate') return false;
-    } else if (activeView === 'done') {
-      if (action !== 'accepted' && view.lane !== 'clean') return false;
-    }
-
-    const branch = normalizeBranch(row.bconnect?.branch || row.app?.branch);
-    if (branchFilter !== 'all' && branch !== branchFilter) return false;
+  const queueRows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return !query || [row.number, row.bconnect?.supplier, row.app?.supplier_name, row.bconnect?.user, row.app?.entered_by_name, row.app?.entered_by, view.note].some((value) => String(value ?? '').toLowerCase().includes(query));
-  }), [state.rows, activeView, needsFilter, branchFilter, search, decisions]);
+    return state.rows.filter((row) => {
+      const key = rowKey(row);
+      const action = decisions[key]?.action;
+      const view = buildBConnectPurchaseDecision(row);
+      const branch = normalizeBranch(row.bconnect?.branch || row.app?.branch);
+      if (branchFilter !== 'all' && branch !== branchFilter) return false;
+      if (query && ![row.number, row.bconnect?.supplier, row.app?.supplier_name, row.bconnect?.user, row.app?.entered_by_name, row.app?.entered_by, view.note].some((value) => String(value ?? '').toLowerCase().includes(query))) return false;
+      if (queueFilter === 'done') return action === 'accepted' || view.lane === 'clean';
+      if (action === 'accepted' || view.lane === 'clean') return false;
+      if (queueFilter === 'needs') return ['correct', 'explain', 'register'].includes(view.lane);
+      if (queueFilter === 'investigate') return view.lane === 'investigate';
+      if (queueFilter === 'approve') return view.lane === 'approve' && !safeBulkKeys.has(key);
+      return ['correct', 'explain', 'register', 'investigate'].includes(view.lane) || (view.lane === 'approve' && !safeBulkKeys.has(key));
+    }).sort((a, b) => {
+      const priority = { explain: 0, correct: 1, register: 2, investigate: 3, approve: 4, clean: 9 };
+      return (priority[buildBConnectPurchaseDecision(a).lane] ?? 8) - (priority[buildBConnectPurchaseDecision(b).lane] ?? 8);
+    });
+  }, [state.rows, decisions, branchFilter, search, queueFilter, safeBulkKeys]);
 
-  const moveQuick = (row, offset = 1) => {
-    if (!quickQueue.length) return;
-    const currentIndex = Math.max(0, quickQueue.findIndex((item) => rowKey(item) === rowKey(row)));
-    const nextIndex = Math.min(Math.max(currentIndex + offset, 0), quickQueue.length - 1);
-    setQuickKey(rowKey(quickQueue[nextIndex]));
-  };
+  const selectedRow = useMemo(() => queueRows.find((row) => rowKey(row) === selectedKey) || queueRows[0] || null, [queueRows, selectedKey]);
 
-  const advanceAfterDecision = (row) => {
-    if (displayMode !== 'quick' || !quickQueue.length) return;
-    const currentIndex = Math.max(0, quickQueue.findIndex((item) => rowKey(item) === rowKey(row)));
-    const next = quickQueue[currentIndex + 1] || quickQueue[currentIndex - 1] || null;
-    setQuickKey(next ? rowKey(next) : '');
-  };
-
-  const startQuickReview = () => {
-    if (!quickQueue.length) return;
-    setQuickKey(rowKey(quickQueue[0]));
-    setDisplayMode('quick');
+  const selectNext = (row) => {
+    if (!row || !queueRows.length) return;
+    const index = Math.max(0, queueRows.findIndex((item) => rowKey(item) === rowKey(row)));
+    const next = queueRows[index + 1] || queueRows[index - 1] || null;
+    setSelectedKey(next ? rowKey(next) : '');
   };
 
   const markReviewed = (row) => {
     if (!row) return;
     const key = rowKey(row);
     setDecisions((old) => ({ ...old, [key]: { action: 'reviewed', note: 'تمت المراجعة داخل نافذة B-Connect', source_id: row.app?.id || null } }));
-    advanceAfterDecision(row);
+    selectNext(row);
     setReviewRow(null);
   };
 
@@ -202,7 +158,7 @@ export default function BConnectInvoiceReview() {
       await saveBconnectAcceptance(row);
       const key = rowKey(row);
       setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'اعتماد دائم: تم قبول اختلاف المورد/التاريخ كما هو', source_id: row.app?.id || null } }));
-      advanceAfterDecision(row);
+      selectNext(row);
       setReviewRow(null);
       setState((old) => ({ ...old, error: '' }));
     } catch (error) {
@@ -221,7 +177,6 @@ export default function BConnectInvoiceReview() {
     setBulkState({ key: bulkKey, running: true, message: `جاري اعتماد ${candidates.length} فاتورة...` });
     let success = 0;
     const failed = [];
-
     for (let i = 0; i < candidates.length; i += 4) {
       const batch = candidates.slice(i, i + 4);
       const results = await Promise.allSettled(batch.map(async (row) => {
@@ -236,35 +191,29 @@ export default function BConnectInvoiceReview() {
           success += 1;
           const key = rowKey(row);
           setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'اعتماد جماعي آمن: نفس بصمة القرار', source_id: row.app?.id || null, persistent: true } }));
-        } else {
-          failed.push(String(row.number || 'غير معروف'));
-        }
+        } else failed.push(String(row.number || 'غير معروف'));
       });
     }
-
-    const message = failed.length
-      ? `تم اعتماد ${success}/${candidates.length}. لم تُعتمد: ${failed.join('، ')}`
-      : `تم اعتماد ${success}/${candidates.length} بنجاح.`;
+    const message = failed.length ? `تم اعتماد ${success}/${candidates.length}. لم تُعتمد: ${failed.join('، ')}` : `تم اعتماد ${success}/${candidates.length} بنجاح.`;
     setBulkState({ key: '', running: false, message });
     setState((old) => ({ ...old, error: failed.length ? message : '' }));
   };
 
-  const acceptGroup = (group) => acceptRows(group?.rows || [], group?.key || 'group');
   const acceptAllSafe = () => acceptRows(safeBulkRows, 'all_safe');
+  const acceptGroup = (group) => acceptRows(group?.rows || [], group?.key || 'group');
 
   const verifiedSave = (updatedRow) => {
     const key = rowKey(updatedRow);
     setState((old) => ({ ...old, rows: old.rows.map((item) => rowKey(item) === key ? updatedRow : item) }));
     setDecisions((old) => ({ ...old, [key]: { action: 'saved', note: 'تم الحفظ الذري والتحقق بإعادة القراءة', source_id: updatedRow.app?.id || null } }));
-    advanceAfterDecision(updatedRow);
-    if (displayMode === 'quick') setReviewRow(null);
-    else setReviewRow(updatedRow);
+    selectNext(updatedRow);
+    setReviewRow(null);
   };
 
   const reviewFile = async (file) => {
     if (!file) return;
     setState({ loading: true, error: '', fileName: file.name, rows: [], meta: null });
-    setDecisions({}); setReviewRow(null); setActiveView('approve'); setDisplayMode('overview'); setQuickKey(''); setNeedsFilter('all'); setSearch(''); setBranchFilter('all'); setBulkState({ key: '', running: false, message: '' }); setShowBulkGroups(false);
+    setDecisions({}); setReviewRow(null); setSelectedKey(''); setQueueFilter('actionable'); setSearch(''); setBranchFilter('all'); setBulkState({ key: '', running: false, message: '' }); setShowBulkGroups(false);
     try {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
@@ -314,113 +263,102 @@ export default function BConnectInvoiceReview() {
         if (fingerprint && acceptedFingerprints.has(fingerprint)) restoredDecisions[rowKey(row)] = { action: 'accepted', note: 'اعتماد محفوظ سابقًا', source_id: row.app?.id || null, persistent: true };
       });
       setDecisions(restoredDecisions);
-
-      const initialCounts = { approve: 0, needs: 0, investigate: 0 };
-      rows.forEach((row) => {
-        const view = buildBConnectPurchaseDecision(row);
-        if (view.lane === 'approve') initialCounts.approve += 1;
-        else if (['correct', 'explain', 'register'].includes(view.lane)) initialCounts.needs += 1;
-        else if (view.lane === 'investigate') initialCounts.investigate += 1;
-      });
-      setActiveView(initialCounts.approve ? 'approve' : initialCounts.needs ? 'needs' : initialCounts.investigate ? 'investigate' : 'done');
       setState({ loading: false, error: '', fileName: file.name, rows, meta: { ...parsed.meta, global_lookup: true, branch_scoped_identity: true, atomic_edit_enabled: true, atomic_create_enabled: true, persistent_acceptance_enabled: true } });
     } catch (error) {
       setState({ loading: false, error: error?.message || 'تعذر مراجعة الملف.', fileName: file.name, rows: [], meta: null });
     }
   };
 
-  const renderQuickReview = () => {
-    if (!quickRow) return <Card className="mx-auto max-w-4xl p-10 text-center"><div className="font-black text-slate-700">لا توجد قرارات معلقة.</div><Button className="mt-4" variant="outline" onClick={() => setDisplayMode('overview')}>العودة للنظرة العامة</Button></Card>;
-    const view = buildBConnectPurchaseDecision(quickRow);
-    const branch = normalizeBranch(quickRow.bconnect?.branch || quickRow.app?.branch) || 'فرع غير معروف';
-    const actionLabel = view.fastAccept ? 'اعتماد وانتقل' : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق' : 'فتح التحقيق';
+  const renderFocus = () => {
+    if (!selectedRow) return <Card className="flex min-h-[420px] items-center justify-center border-dashed"><div className="text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><div className="mt-3 text-lg font-black text-slate-700">لا توجد حالات في هذا المسار</div><div className="mt-1 text-xs text-slate-400">غيّر الفلتر أو ابدأ بملف جديد.</div></div></Card>;
+    const view = buildBConnectPurchaseDecision(selectedRow);
+    const branch = normalizeBranch(selectedRow.bconnect?.branch || selectedRow.app?.branch) || 'فرع غير معروف';
+    const actionLabel = view.fastAccept ? 'اعتماد وانتقل' : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق' : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'investigate' ? 'فتح التحقيق' : 'فتح التفاصيل';
+    const appSupplier = selectedRow.app?.supplier_name || '—';
+    const sourceSupplier = selectedRow.bconnect?.supplier || '—';
 
-    return <Card className="mx-auto max-w-4xl overflow-hidden border-slate-200 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-slate-50 px-4 py-3">
-        <div className="text-xs font-black text-slate-500">مراجعة سريعة · {quickIndex + 1} من {quickQueue.length}</div>
-        <button type="button" onClick={() => setDisplayMode('overview')} className="text-xs font-black text-slate-600 hover:text-slate-950">النظرة العامة</button>
-      </div>
-      <div className="p-5 md:p-7">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-3"><span className="font-mono text-2xl font-black text-slate-950">{quickRow.number}</span><DecisionMark view={view} /></div>
-            <div className="mt-2 truncate text-lg font-black text-slate-800">{quickRow.bconnect?.supplier || quickRow.app?.supplier_name || 'مورد غير معروف'}</div>
+    return <Card className="overflow-hidden border-slate-200 shadow-sm">
+      <div className="border-b bg-slate-950 px-5 py-4 text-white">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-3"><span className="font-mono text-3xl font-black">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
+            <div className="mt-2 text-xl font-black">{sourceSupplier}</div>
             <div className="mt-1 text-xs font-bold text-slate-400">{branch}</div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button type="button" size="sm" variant="outline" disabled={quickIndex <= 0} onClick={() => moveQuick(quickRow, -1)}><ChevronLeft className="h-4 w-4 rotate-180" />السابق</Button>
-            <Button type="button" size="sm" variant="outline" disabled={quickIndex >= quickQueue.length - 1} onClick={() => moveQuick(quickRow, 1)}>التالي<ChevronLeft className="mr-1 h-4 w-4" /></Button>
-          </div>
+          <div className="text-left text-xs text-slate-400">{formatArabicDate(selectedRow.bconnect?.date)}</div>
         </div>
+      </div>
 
-        <div className="mt-6 rounded-2xl border bg-slate-50 px-4 py-4">
-          <CoreFacts view={view} large />
-          {view.financialDifference !== null && view.financialDifference !== 0 && <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs"><div><div className="text-slate-400">B-Connect</div><strong>{money(view.bconnectTotal)} ج</strong></div><div><div className="text-slate-400">التطبيق</div><strong>{money(view.appTotal)} ج</strong></div><div><div className="text-slate-400">الفرق</div><strong className="text-rose-700">{money(Math.abs(view.financialDifference))} ج</strong></div></div>}
-          {view.supplierMismatch && <div className="mt-3 text-xs text-slate-600">المورد: <strong>{quickRow.bconnect?.supplier || '—'}</strong> ↔ <strong>{quickRow.app?.supplier_name || '—'}</strong></div>}
-          {view.dateMismatch && <div className="mt-1 text-xs text-slate-600">التاريخ: <strong>{formatArabicDate(quickRow.bconnect?.date)}</strong> ↔ <strong>{formatArabicDate(quickRow.app?.invoice_date)}</strong></div>}
-        </div>
+      <div className="space-y-5 p-5 md:p-6">
+        <div className="rounded-2xl border bg-slate-50 p-4"><DecisionFacts view={view} large /></div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          <Button type="button" className="min-w-40" disabled={bulkState.running} onClick={() => view.fastAccept ? acceptAsIs(quickRow) : setReviewRow(quickRow)}>{actionLabel}</Button>
-          {!view.fastAccept && <Button type="button" variant="outline" onClick={() => moveQuick(quickRow, 1)} disabled={quickIndex >= quickQueue.length - 1}>تخطي الآن</Button>}
+        {view.financialDifference !== null && view.financialDifference !== 0 && <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border p-3"><div className="text-[11px] font-bold text-slate-400">B-Connect</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.bconnectTotal)} ج</div></div>
+          <div className="rounded-xl border p-3"><div className="text-[11px] font-bold text-slate-400">التطبيق</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.appTotal)} ج</div></div>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3"><div className="text-[11px] font-bold text-rose-500">الفرق</div><div className="mt-1 text-xl font-black text-rose-700">{money(Math.abs(view.financialDifference))} ج</div></div>
+        </div>}
+
+        {(view.supplierMismatch || view.dateMismatch) && <div className="divide-y rounded-2xl border bg-white">
+          {view.supplierMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">المورد</div><div><span className="text-[10px] text-slate-400">B-Connect</span><div className="text-sm font-black">{sourceSupplier}</div></div><div><span className="text-[10px] text-slate-400">التطبيق</span><div className="text-sm font-black">{appSupplier}</div></div></div>}
+          {view.dateMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">التاريخ</div><div className="text-sm font-black">{formatArabicDate(selectedRow.bconnect?.date)}</div><div className="text-sm font-black">{formatArabicDate(selectedRow.app?.invoice_date)}</div></div>}
+        </div>}
+
+        <div className="flex flex-wrap items-center gap-2 border-t pt-4">
+          <Button type="button" size="lg" className="min-w-48" disabled={bulkState.running} onClick={() => view.fastAccept ? acceptAsIs(selectedRow) : setReviewRow(selectedRow)}>{actionLabel}</Button>
+          <Button type="button" variant="outline" onClick={() => {
+            const index = queueRows.findIndex((row) => rowKey(row) === rowKey(selectedRow));
+            const next = queueRows[index + 1] || queueRows[index - 1];
+            if (next) setSelectedKey(rowKey(next));
+          }}>تخطي الآن</Button>
         </div>
       </div>
     </Card>;
   };
 
-  return <div dir="rtl" className="space-y-3 p-3 md:p-5">
-    <div className="flex items-center justify-between gap-3">
-      <div><h1 className="text-xl font-black text-slate-900">قرارات مشتريات B-Connect</h1>{state.fileName && <div className="mt-0.5 text-xs text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}</div>
-      <div className="flex items-center gap-2"><Button asChild variant="outline" size="sm"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-md bg-slate-900 px-3 text-xs font-black text-white hover:bg-slate-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'ملف جديد' : 'اختيار ملف'}<input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label></div>
+  return <div dir="rtl" className="space-y-4 p-3 md:p-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div><h1 className="text-2xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-1 text-xs font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}</div>
+      <div className="flex items-center gap-2"><Button asChild variant="outline" size="sm"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-md bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'ملف جديد' : 'اختيار ملف'}<input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label></div>
     </div>
 
-    {state.loading && <Card className="p-4 text-center text-sm font-bold text-slate-600">جاري تحليل الملف...</Card>}
-    {state.error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">{state.error}</div>}
+    {state.loading && <Card className="p-5 text-center text-sm font-bold text-slate-600">جاري تحليل الملف...</Card>}
+    {state.error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{state.error}</div>}
 
-    {!!state.rows.length && displayMode === 'quick' && renderQuickReview()}
-
-    {!!state.rows.length && displayMode === 'overview' && <>
-      <Card className="overflow-hidden border-slate-200">
-        <div className="grid grid-cols-2 divide-x divide-x-reverse md:grid-cols-4">
-          <div className={`p-3 ${activeView === 'approve' ? 'bg-emerald-50' : 'bg-white'}`} onClick={() => setActiveView('approve')} role="button" tabIndex={0}>
-            <div className="text-2xl font-black text-emerald-700">{operationalCounts.approve}</div><div className="text-xs font-black text-slate-700">جاهزة للاعتماد</div>
-            {!!safeBulkRows.length && <Button type="button" size="sm" className="mt-2 h-8" disabled={bulkState.running} onClick={(event) => { event.stopPropagation(); acceptAllSafe(); }}>{bulkState.running && bulkState.key === 'all_safe' ? 'جاري...' : `اعتماد الـ${safeBulkRows.length}`}</Button>}
-          </div>
-          <div className={`p-3 ${activeView === 'needs' ? 'bg-amber-50' : 'bg-white'}`} onClick={() => setActiveView('needs')} role="button" tabIndex={0}>
-            <div className="text-2xl font-black text-amber-700">{operationalCounts.needs}</div><div className="text-xs font-black text-slate-700">تحتاج قرار</div>
-            {!!quickQueue.length && <button type="button" className="mt-2 text-xs font-black text-slate-900 underline underline-offset-2" onClick={(event) => { event.stopPropagation(); startQuickReview(); }}>ابدأ المراجعة السريعة</button>}
-          </div>
-          <div className={`p-3 ${activeView === 'investigate' ? 'bg-rose-50' : 'bg-white'}`} onClick={() => setActiveView('investigate')} role="button" tabIndex={0}><div className="text-2xl font-black text-rose-700">{operationalCounts.investigate}</div><div className="text-xs font-black text-slate-700">تحقيق</div></div>
-          <div className={`p-3 ${activeView === 'done' ? 'bg-slate-50' : 'bg-white'}`} onClick={() => setActiveView('done')} role="button" tabIndex={0}><div className="text-2xl font-black text-slate-600">{operationalCounts.done}</div><div className="text-xs font-black text-slate-700">مكتمل</div></div>
-        </div>
-      </Card>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {activeView === 'approve' && decisionGroups.length > 0 && <button type="button" onClick={() => setShowBulkGroups((old) => !old)} className="text-xs font-black text-emerald-800 underline-offset-2 hover:underline"><Layers3 className="ml-1 inline h-3.5 w-3.5" />{showBulkGroups ? 'إخفاء مجموعات الاعتماد' : `مجموعات الاعتماد (${decisionGroups.length})`}</button>}
-        {activeView === 'needs' && needsFilters.map((item) => <button key={item.key} type="button" onClick={() => setNeedsFilter(item.key)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-black ${needsFilter === item.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>{item.label}{item.key !== 'all' && <span className="mr-1 opacity-70">{operationalCounts[item.key]}</span>}</button>)}
-        <div className="mr-auto flex items-center gap-2"><label className="relative hidden sm:block"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="بحث..." className="h-8 w-40 rounded-lg border bg-white pr-8 pl-2 text-xs" /></label><select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-8 rounded-lg border bg-white px-2 text-xs font-bold"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select></div>
+    {!!state.rows.length && <>
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card className="border-emerald-200 bg-emerald-50 p-4"><div className="text-xs font-black text-emerald-700">اعتماد جماعي آمن</div><div className="mt-1 text-3xl font-black text-emerald-950">{safeBulkRows.length}</div><div className="mt-1 text-[11px] font-bold text-emerald-700">من أصل {counts.approve} حالة اعتماد</div><Button type="button" className="mt-3 w-full" disabled={!safeBulkRows.length || bulkState.running} onClick={acceptAllSafe}>{bulkState.running && bulkState.key === 'all_safe' ? 'جاري الاعتماد...' : safeBulkRows.length ? `اعتماد الـ${safeBulkRows.length}` : 'لا يوجد'}</Button></Card>
+        <Card className="p-4"><div className="text-xs font-black text-slate-500">اعتماد فردي</div><div className="mt-1 text-3xl font-black text-slate-950">{individualApproveCount}</div><button type="button" className="mt-3 text-xs font-black text-slate-700 underline underline-offset-4" onClick={() => setQueueFilter('approve')}>فتح المسار</button></Card>
+        <Card className="border-amber-200 bg-amber-50 p-4"><div className="text-xs font-black text-amber-700">تحتاج قرار</div><div className="mt-1 text-3xl font-black text-amber-950">{counts.needs}</div><button type="button" className="mt-3 text-xs font-black text-amber-800 underline underline-offset-4" onClick={() => setQueueFilter('needs')}>ابدأ المراجعة</button></Card>
+        <Card className="border-rose-200 bg-rose-50 p-4"><div className="text-xs font-black text-rose-700">تحقيق</div><div className="mt-1 text-3xl font-black text-rose-950">{counts.investigate}</div><div className="mt-3 text-[11px] font-bold text-rose-600">مكتمل: {counts.done}</div></Card>
       </div>
 
-      {bulkState.message && <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">{bulkState.message}</div>}
+      {bulkState.message && <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700">{bulkState.message}</div>}
 
-      {activeView === 'approve' && showBulkGroups && <Card className="overflow-hidden border-emerald-200"><div className="divide-y">{decisionGroups.map((group) => <div key={group.key} className="flex flex-wrap items-center gap-2 px-3 py-2"><div className="min-w-0 flex-1 text-xs"><strong className="text-slate-900">{group.rows.length} فاتورة</strong><span className="mr-2 text-slate-500">{group.description}</span><span className="mr-2 text-slate-400">{group.branch}</span></div><Button type="button" size="sm" variant="outline" disabled={bulkState.running} onClick={() => acceptGroup(group)}>{bulkState.running && bulkState.key === group.key ? 'جاري...' : `اعتماد ${group.rows.length}`}</Button></div>)}</div></Card>}
+      {decisionGroups.length > 0 && <div className="flex justify-end"><button type="button" onClick={() => setShowBulkGroups((old) => !old)} className="text-xs font-black text-slate-600 hover:text-slate-950"><Layers3 className="ml-1 inline h-4 w-4" />{showBulkGroups ? 'إخفاء تفاصيل الاعتماد الجماعي' : `مراجعة مجموعات الاعتماد (${decisionGroups.length})`}</button></div>}
 
-      <Card className="overflow-hidden border-slate-200">
-        <div className="divide-y">{visible.map((row, index) => {
-          const key = rowKey(row);
-          const view = buildBConnectPurchaseDecision(row);
-          const accepted = decisions[key]?.action === 'accepted';
-          const actionLabel = view.fastAccept && !accepted ? 'اعتماد' : view.lane === 'register' ? 'تسجيل' : view.lane === 'correct' ? 'تصحيح' : view.lane === 'explain' ? 'راجع الفرق' : view.lane === 'investigate' ? 'تحقيق' : 'تفاصيل';
-          return <div key={`${key}-${index}`} role="button" tabIndex={0} onClick={() => setReviewRow(row)} onKeyDown={(event) => { if (event.key === 'Enter') setReviewRow(row); }} className="grid cursor-pointer gap-2 bg-white px-3 py-2.5 transition hover:bg-slate-50 md:grid-cols-[minmax(260px,1fr)_minmax(180px,.8fr)_180px] md:items-center">
-            <div className="min-w-0"><div className="flex items-center gap-2"><span className="font-mono text-base font-black text-slate-950">{row.number}</span><span className="truncate text-sm font-black text-slate-800">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</span></div><div className="mt-0.5 text-[10px] font-bold text-slate-400">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || 'فرع غير معروف'}{accepted ? ' · محفوظ' : ''}</div></div>
-            <CoreFacts view={view} />
-            <div className="flex items-center justify-end gap-2"><DecisionMark view={view} /><Button type="button" size="sm" className="h-8" variant={view.fastAccept && !accepted ? 'default' : 'outline'} onClick={(event) => { event.stopPropagation(); if (view.fastAccept && !accepted) acceptAsIs(row); else setReviewRow(row); }}>{actionLabel}</Button></div>
-          </div>;
-        })}{!visible.length && <div className="px-4 py-12 text-center text-sm font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
-      </Card>
+      {showBulkGroups && <Card className="overflow-hidden"><div className="divide-y">{decisionGroups.map((group) => <div key={group.key} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><div className="text-sm font-black">{group.rows.length} فاتورة · {group.description}</div><div className="mt-0.5 text-[11px] text-slate-400">{group.branch}</div></div><Button type="button" size="sm" variant="outline" disabled={bulkState.running} onClick={() => acceptGroup(group)}>{`اعتماد ${group.rows.length}`}</Button></div>)}</div></Card>}
+
+      <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <Card className="overflow-hidden border-slate-200 lg:sticky lg:top-3 lg:self-start">
+          <div className="border-b bg-white p-3">
+            <div className="flex items-center justify-between"><div><div className="text-sm font-black text-slate-900">طابور القرار</div><div className="text-[11px] font-bold text-slate-400">{queueRows.length} حالة ظاهرة</div></div><CircleDollarSign className="h-5 w-5 text-slate-400" /></div>
+            <div className="mt-3 grid grid-cols-4 gap-1 text-[10px] font-black">
+              {[['actionable','المهم'],['needs','قرار'],['approve','اعتماد'],['investigate','تحقيق']].map(([key,label]) => <button key={key} type="button" onClick={() => { setQueueFilter(key); setSelectedKey(''); }} className={`rounded-lg px-2 py-2 ${queueFilter === key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600'}`}>{label}</button>)}
+            </div>
+            <div className="mt-2 flex gap-2"><label className="relative flex-1"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="بحث" className="h-9 w-full rounded-lg border pr-8 pl-2 text-xs" /></label><select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-9 max-w-28 rounded-lg border bg-white px-2 text-xs font-bold"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select></div>
+          </div>
+          <div className="max-h-[620px] overflow-y-auto divide-y">{queueRows.map((row) => {
+            const view = buildBConnectPurchaseDecision(row);
+            const active = selectedRow && rowKey(selectedRow) === rowKey(row);
+            return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full px-3 py-3 text-right transition ${active ? 'bg-slate-950 text-white' : 'bg-white hover:bg-slate-50'}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="font-mono text-sm font-black">{row.number}</div><div className={`mt-1 truncate text-xs font-black ${active ? 'text-white' : 'text-slate-800'}`}>{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div></div><DecisionBadge view={view} /></div><div className={`mt-2 ${active ? '[&_span]:bg-white/10' : ''}`}><DecisionFacts view={view} /></div></button>;
+          })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
+        </Card>
+
+        {renderFocus()}
+      </div>
     </>}
 
-    {!state.rows.length && !state.loading && <Card className="border-dashed p-10 text-center"><Upload className="mx-auto h-7 w-7 text-slate-300" /><div className="mt-2 font-black text-slate-700">ارفع ملف B-Connect</div><div className="mt-1 text-xs text-slate-400">ستظهر القرارات مباشرة بدون خطوات إضافية.</div></Card>}
+    {!state.rows.length && !state.loading && <Card className="border-dashed p-14 text-center"><Upload className="mx-auto h-9 w-9 text-slate-300" /><div className="mt-3 text-lg font-black text-slate-800">ارفع ملف B-Connect</div><div className="mt-1 text-xs text-slate-400">هتظهر أمامك القرارات المهمة مباشرة، بدون جدول مزدحم.</div></Card>}
 
     <BConnectReviewModal row={reviewRow} onClose={() => setReviewRow(null)} onMarkReviewed={markReviewed} onAcceptAsIs={acceptAsIs} onVerifiedSave={verifiedSave} />
   </div>;
