@@ -292,6 +292,8 @@ export default function BConnectInvoiceReview() {
     const actionLabel = view.fastAccept ? 'اعتماد وانتقل' : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق' : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'investigate' ? 'فتح التحقيق' : 'فتح التفاصيل';
     const appSupplier = selectedRow.app?.supplier_name || '—';
     const sourceSupplier = selectedRow.bconnect?.supplier || '—';
+    const sourceEnteredBy = selectedRow.bconnect?.user || 'غير مسجل';
+    const appEnteredBy = selectedRow.app ? (selectedRow.app?.entered_by_name || selectedRow.app?.entered_by || 'غير مسجل') : 'الفاتورة غير موجودة بالتطبيق';
 
     return <Card className="overflow-hidden border-slate-200 bg-white shadow-none">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -312,10 +314,15 @@ export default function BConnectInvoiceReview() {
           <div className="mr-auto border-r border-slate-200 pr-5"><span className="text-[10px] font-bold text-rose-500">الفرق</span><div className="text-base font-black text-rose-700">{money(Math.abs(view.financialDifference))} ج</div></div>
         </div>}
 
-        {(view.supplierMismatch || view.dateMismatch) && <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
           {view.supplierMismatch && <div className="grid items-center gap-2 px-4 py-2.5 md:grid-cols-[80px_1fr_1fr]"><div className="text-[11px] font-black text-slate-500">المورد</div><div className="truncate text-xs font-black text-slate-800"><span className="ml-1 font-bold text-slate-400">B:</span>{sourceSupplier}</div><div className="truncate text-xs font-black text-slate-800"><span className="ml-1 font-bold text-slate-400">التطبيق:</span>{appSupplier}</div></div>}
           {view.dateMismatch && <div className="grid items-center gap-2 px-4 py-2.5 md:grid-cols-[80px_1fr_1fr]"><div className="text-[11px] font-black text-slate-500">التاريخ</div><div className="text-xs font-black text-slate-800">{formatArabicDate(selectedRow.bconnect?.date)}</div><div className="text-xs font-black text-slate-800">{formatArabicDate(selectedRow.app?.invoice_date)}</div></div>}
-        </div>}
+          <div className="grid items-center gap-2 px-4 py-2.5 md:grid-cols-[80px_1fr_1fr]">
+            <div className="text-[11px] font-black text-slate-500">مدخل الفاتورة</div>
+            <div className="truncate text-xs font-black text-slate-800"><span className="ml-1 font-bold text-slate-400">B-Connect:</span>{sourceEnteredBy}</div>
+            <div className="truncate text-xs font-black text-slate-800"><span className="ml-1 font-bold text-slate-400">التطبيق:</span>{appEnteredBy}</div>
+          </div>
+        </div>
 
         <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 bg-white/95 px-4 py-3 backdrop-blur md:-mx-5 md:-mb-5 md:px-5">
           <Button type="button" className="min-w-44 bg-teal-700 text-white hover:bg-teal-800" disabled={bulkState.running} onClick={() => view.fastAccept ? acceptAsIs(selectedRow) : setReviewRow(selectedRow)}>{actionLabel}</Button>
