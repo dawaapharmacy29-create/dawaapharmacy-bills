@@ -83,6 +83,7 @@ export default function BConnectInvoiceReview() {
   const [reviewRow, setReviewRow] = useState(null);
   const [bulkState, setBulkState] = useState({ key: '', running: false, message: '' });
   const [showBulkGroups, setShowBulkGroups] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   const branches = useMemo(() => [...new Set(state.rows.map((row) => normalizeBranch(row.bconnect?.branch || row.app?.branch)).filter(Boolean))], [state.rows]);
   const unacceptedRows = useMemo(() => state.rows.filter((row) => decisions[rowKey(row)]?.action !== 'accepted'), [state.rows, decisions]);
@@ -215,6 +216,11 @@ export default function BConnectInvoiceReview() {
 
   const reviewFile = async (file) => {
     if (!file) return;
+    const fileName = String(file.name || '').toLowerCase();
+    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
+      setState((old) => ({ ...old, error: 'الملف لازم يكون Excel بصيغة xlsx أو xls.' }));
+      return;
+    }
     setState({ loading: true, error: '', fileName: file.name, rows: [], meta: null });
     setDecisions({}); setReviewRow(null); setSelectedKey(''); setQueueFilter('actionable'); setSearch(''); setBranchFilter('all'); setBulkState({ key: '', running: false, message: '' }); setShowBulkGroups(false);
     try {
@@ -267,6 +273,15 @@ export default function BConnectInvoiceReview() {
     } catch (error) {
       setState({ loading: false, error: error?.message || 'تعذر مراجعة الملف.', fileName: file.name, rows: [], meta: null });
     }
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(false);
+    if (state.loading) return;
+    const file = event.dataTransfer?.files?.[0];
+    if (file) reviewFile(file);
   };
 
   const renderFocus = () => {
@@ -367,7 +382,21 @@ export default function BConnectInvoiceReview() {
         </div>
       </>}
 
-      {!state.rows.length && !state.loading && <Card className="border-slate-200 bg-white p-12 text-center shadow-none"><Upload className="mx-auto h-8 w-8 text-slate-300" /><div className="mt-3 text-base font-black text-slate-800">ارفع ملف B-Connect</div><div className="mt-1 text-xs text-slate-400">سنظهر فقط الحالات التي تحتاج قرارًا.</div></Card>}
+      {!state.rows.length && !state.loading && <label
+        className="block cursor-pointer"
+        onDragEnter={(event) => { event.preventDefault(); event.stopPropagation(); setDragActive(true); }}
+        onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); setDragActive(true); }}
+        onDragLeave={(event) => { event.preventDefault(); event.stopPropagation(); setDragActive(false); }}
+        onDrop={handleDrop}
+      >
+        <Card className={`border-2 border-dashed p-12 text-center shadow-none transition-all ${dragActive ? 'border-teal-500 bg-teal-50/70 ring-4 ring-teal-100' : 'border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50/20'}`}>
+          <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full transition ${dragActive ? 'bg-teal-100 text-teal-700' : 'bg-slate-50 text-slate-300'}`}><Upload className="h-6 w-6" /></div>
+          <div className="mt-4 text-base font-black text-slate-800">{dragActive ? 'سيب الملف هنا' : 'ارفع ملف B-Connect'}</div>
+          <div className="mt-1 text-xs font-bold text-slate-500">اسحب ملف Excel وارميه هنا، أو اضغط في أي مكان داخل المربع لاختيار الملف</div>
+          <div className="mt-2 text-[10px] font-bold text-slate-400">xlsx أو xls · سنظهر فقط الحالات التي تحتاج قرارًا</div>
+          <input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} />
+        </Card>
+      </label>}
 
       <BConnectReviewModal row={reviewRow} onClose={() => setReviewRow(null)} onMarkReviewed={markReviewed} onAcceptAsIs={acceptAsIs} onVerifiedSave={verifiedSave} />
     </div>
