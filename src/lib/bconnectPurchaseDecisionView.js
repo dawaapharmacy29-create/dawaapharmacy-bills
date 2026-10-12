@@ -63,7 +63,7 @@ function noteSignal(note) {
 }
 
 function confidenceFor({ policy, identityConfirmed, financialMatch, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, absDifference, evidence }) {
-  if (policy.code === 'duplicate' || policy.code === 'blocked' || !identityConfirmed && policy.code !== 'missing') {
+  if (policy.code === 'duplicate' || policy.code === 'blocked' || (!identityConfirmed && policy.code !== 'missing')) {
     return { code: 'blocked', label: 'محظور', score: 0 };
   }
   if (fastAccept) {
@@ -93,6 +93,7 @@ export function buildBConnectPurchaseDecision(row = {}) {
   const dateMismatch = row?.checks?.invoice_date === 'mismatch';
   const dayDifference = dateMismatch ? dateDeltaDays(row?.bconnect?.date, row?.app?.invoice_date) : 0;
   const note = noteText(row);
+  const hasNote = !!note;
   const returned = numeric(row?.app?.returned_value);
   const sourceReturn = numeric(row?.bconnect?.return_value);
   const hasReturn = (returned !== null && returned > 0) || (sourceReturn !== null && sourceReturn > 0);
@@ -113,7 +114,6 @@ export function buildBConnectPurchaseDecision(row = {}) {
   const evidence = exactReturnExplanation || noteEvidence;
   const confidence = confidenceFor({ policy, identityConfirmed, financialMatch, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, absDifference, evidence });
 
-  // Bulk approval is deliberately stricter than individual approval.
   const bulkEligible = fastAccept
     && confidence.code === 'very_high'
     && !hasNote
@@ -187,7 +187,7 @@ export function buildBConnectPurchaseDecision(row = {}) {
     dateMismatch,
     dateDifferenceDays: dayDifference,
     note,
-    hasNote: !!note,
+    hasNote,
     returnedValue: returned,
     sourceReturnValue: sourceReturn,
     hasReturn,
