@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 const HEADER_ALIASES = {
   product_name: ['الصنف', 'صنف', 'اسم الصنف', 'اسم المنتج', 'المنتج', 'الإسم', 'الاسم', 'item', 'item name', 'product', 'product name'],
   code: ['الكود', 'كود', 'كود الصنف', 'كود المنتج', 'ك.صنف', 'باركود', 'barcode', 'code', 'item code', 'product code'],
+  counterparty_code: ['كود العميل', 'كود المورد', 'ك.العميل', 'ك.المورد', 'customer code', 'supplier code', 'counterparty code'],
   qty: ['الكمية', 'كميه', 'العدد', 'عدد', 'qty', 'quantity', 'count'],
   unit: ['الوحدة', 'وحدة', 'unit'],
   invoice: ['رقم الفاتورة', 'رقم الفاتوره', 'الفاتورة', 'الفاتوره', 'فاتورة', 'مسلسل', 'serial', 'invoice', 'invoice number'],
@@ -45,6 +46,24 @@ function detectHeader(row) {
       return false;
     });
   });
+
+  // Daily B-Connect sales exports use a bare "كود" for the customer code
+  // and a later "ك.صنف" for the product code. Keep both identities separate.
+  if (Number.isInteger(map.counterparty)) {
+    const bareCodeIndex = row.findIndex((value) => normalizeHeader(value) === normalizeHeader('كود'));
+    const productCodeIndex = row.findIndex((value) => {
+      const normalized = normalizeHeader(value);
+      return [
+        'ك.صنف', 'كود الصنف', 'كود المنتج', 'باركود',
+        'item code', 'product code', 'barcode',
+      ].map(normalizeHeader).includes(normalized);
+    });
+    if (bareCodeIndex >= 0 && productCodeIndex >= 0 && bareCodeIndex !== productCodeIndex) {
+      map.counterparty_code = bareCodeIndex;
+      map.code = productCodeIndex;
+    }
+  }
+
   if (!Number.isInteger(map.product_name) || !Number.isInteger(map.qty)) return null;
   return map;
 }
@@ -88,6 +107,7 @@ function parseBConnectPurchaseRows(rows, defaults = {}) {
       current = {
         user: text(row[13]),
         supplier: text(row[20]),
+        supplier_code: text(row[21]),
         date: row[22] || defaults.date || '',
         invoice: text(row[23]),
       };
@@ -117,6 +137,7 @@ function parseBConnectPurchaseRows(rows, defaults = {}) {
       user: current.user,
       branch: defaults.branch || '',
       counterparty: defaults.counterparty || current.supplier || '',
+      counterparty_code: text(defaults.counterparty_code) || current.supplier_code || '',
       purchase_total: number(row[17]),
       retail_total: number(row[18]),
       expiration_raw: row[13] || null,
@@ -171,6 +192,7 @@ function parseFlatRows(rows, defaults = {}) {
       user: text(cell(row, header, 'user')),
       branch: defaults.branch || text(cell(row, header, 'branch')) || '',
       counterparty: defaults.counterparty || text(cell(row, header, 'counterparty')) || '',
+      counterparty_code: text(defaults.counterparty_code) || text(cell(row, header, 'counterparty_code')) || '',
       source_format: 'flat_transfer_rows',
     });
   }
