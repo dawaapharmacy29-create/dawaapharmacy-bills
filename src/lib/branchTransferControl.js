@@ -1,3 +1,5 @@
+import { diagnoseTransferProductIdentity, extractTransferProductSignature } from './branchTransferProductIdentity.js';
+
 const ARABIC_DIACRITICS = /[\u064B-\u065F\u0670]/g;
 
 function text(value) {
@@ -89,6 +91,7 @@ export function normalizeTransferLine(raw, side) {
   const counterparty = resolveTransferBranch(raw.counterparty || raw.supplier || raw.customer || raw.other_branch);
   const from = side === 'sale' ? branch : counterparty;
   const to = side === 'sale' ? counterparty : branch;
+  const productName = text(raw.product_name || raw.item_name || raw.product || raw.item);
   return {
     id: text(raw.id || `${side}-${raw.invoice || raw.serial || ''}-${raw.row_number || raw.row || ''}`),
     side,
@@ -96,8 +99,9 @@ export function normalizeTransferLine(raw, side) {
     counterparty,
     from,
     to,
-    product_name: text(raw.product_name || raw.item_name || raw.product || raw.item),
-    product_name_key: productNameKey(raw.product_name || raw.item_name || raw.product || raw.item),
+    product_name: productName,
+    product_name_key: productNameKey(productName),
+    product_core_key: extractTransferProductSignature(productName).core_name,
     code: normalizeCode(raw.code || raw.product_code || raw.item_code || raw.barcode),
     qty: Math.abs(quantity(raw.qty ?? raw.quantity ?? raw.count)),
     unit: normalizeTransferText(raw.unit || raw.sale_unit || raw.purchase_unit),
@@ -114,6 +118,7 @@ function candidateScore(sale, purchase) {
   if (sale.day_key !== purchase.day_key) return -1;
   if (sale.code && purchase.code && sale.code === purchase.code) return 100;
   if (sale.product_name_key && purchase.product_name_key && sale.product_name_key === purchase.product_name_key) return 80;
+  if (sale.product_core_key && purchase.product_core_key && sale.product_core_key === purchase.product_core_key) return 50;
   return -1;
 }
 
@@ -134,12 +139,13 @@ function aggregate(lines, side) {
   };
 }
 
-function severity(caseType) {
+function severity(caseType, identityDiagnosis) {
+  if (caseType === 'code_mismatch' && identityDiagnosis?.risk === 'high') return 92;
   return {
     purchase_without_sale: 100,
     sale_without_purchase: 95,
     quantity_mismatch: 85,
-    code_mismatch: 55,
+    code_mismatch: 65,
     unit_conversion_review: 45,
     matched: 0,
   }[caseType] ?? 40;
@@ -157,7 +163,15 @@ function nextAction(caseType, result) {
       : `راجع شراء ${target}: الكمية أعلى من البيع بـ ${diff}، أو راجع بيع ${source}.`;
   }
   if (caseType === 'unit_conversion_review') return 'الكمية مختلفة لكن النمط يشبه تحويل وحدة (مثل شريط مقابل جزء من علبة). أكّد معامل التحويل مرة واحدة قبل احتسابها كخطأ.';
-  if (caseType === 'code_mismatch') return 'راجع الكودين: إن كانا لنفس العبوة اربطهما كهوية صنف واحدة، وإلا اترك الحالة للمراجعة.';
+  if (caseType === 'code_mismatch') {
+    const diagnosis = result.identity_diagnosis;
+    const quantityNote = result.sale_qty !== result.purchase_qty
+      ? ` ويوجد أيضًا فرق كمية: بيع ${result.sale_qty} مقابل شراء ${result.purchase_qty}.`
+      : '';
+    return diagnosis
+      ? `${diagnosis.diagnosis} ${diagnosis.action}${quantityNote}`
+      : `راجع الكودين وهوية الصنف يدويًا.${quantityNote}`;
+  }
   return 'لا يوجد إجراء مطلوب.';
 }
 
@@ -182,19 +196,28 @@ function looksLikeUnitConversion(sales, purchases) {
   return nonBoxUnit || purchaseFractional || saleFractional;
 }
 
-function caseTypeFrom(sales, purchases) {
+function identityDiagnosisFor(sales, purchases) {
+  if (!sales.length || !purchases.length || hasCommonCode(sales, purchases)) return null;
+  const saleCodes = [...new Set(sales.map((line) => line.code).filter(Boolean))];
+  const purchaseCodes = [...new Set(purchases.map((line) => line.code).filter(Boolean))];
+  if (!saleCodes.length || !purchaseCodes.length) return null;
+  return diagnoseTransferProductIdentity({
+    saleName: sales[0]?.product_name,
+    purchaseName: purchases[0]?.product_name,
+    saleCodes,
+    purchaseCodes,
+  });
+}
+
+function caseTypeFrom(sales, purchases, identityDiagnosis) {
   if (!sales.length) return 'purchase_without_sale';
   if (!purchases.length) return 'sale_without_purchase';
+  if (identityDiagnosis) return 'code_mismatch';
   const saleQty = sales.reduce((sum, line) => sum + line.qty, 0);
   const purchaseQty = purchases.reduce((sum, line) => sum + line.qty, 0);
   if (saleQty !== purchaseQty) {
     if (looksLikeUnitConversion(sales, purchases)) return 'unit_conversion_review';
     return 'quantity_mismatch';
-  }
-  if (!hasCommonCode(sales, purchases)) {
-    const saleCodes = new Set(sales.map((line) => line.code).filter(Boolean));
-    const purchaseCodes = new Set(purchases.map((line) => line.code).filter(Boolean));
-    if (saleCodes.size && purchaseCodes.size) return 'code_mismatch';
   }
   return 'matched';
 }
@@ -203,15 +226,18 @@ function buildCase(sales, purchases) {
   const saleAgg = aggregate(sales, 'sale');
   const purchaseAgg = aggregate(purchases, 'purchase');
   const first = sales[0] || purchases[0];
-  const type = caseTypeFrom(sales, purchases);
+  const identityDiagnosis = identityDiagnosisFor(sales, purchases);
+  const type = caseTypeFrom(sales, purchases, identityDiagnosis);
   const result = {
     id: [first.day_key, first.from || 'unknown', first.to || 'unknown', first.code || first.product_name_key || 'unknown'].join('::'),
     type,
-    severity: severity(type),
+    severity: severity(type, identityDiagnosis),
     from: first.from,
     to: first.to,
     day_key: first.day_key,
     product_name: saleAgg.product_name || purchaseAgg.product_name,
+    sale_product_name: saleAgg.product_name,
+    purchase_product_name: purchaseAgg.product_name,
     sale_qty: saleAgg.qty || 0,
     purchase_qty: purchaseAgg.qty || 0,
     sale_units: saleAgg.units,
@@ -224,6 +250,7 @@ function buildCase(sales, purchases) {
     purchase_invoices: purchaseAgg.invoices,
     sale_lines: sales,
     purchase_lines: purchases,
+    identity_diagnosis: identityDiagnosis,
   };
   return { ...result, next_action: nextAction(type, result) };
 }
