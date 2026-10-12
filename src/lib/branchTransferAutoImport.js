@@ -8,8 +8,26 @@ export const AUTO_SOURCE_CONFIG = {
   shokryPurchase: { label: 'شراء شكري من الشامي', side: 'purchase', branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي' },
 };
 
+const COUNTERPARTY_CODE_BRANCH = {
+  sale: {
+    '10': 'shamy',
+    '170': 'shokry',
+  },
+  purchase: {
+    '300': 'shokry',
+    '475': 'shamy',
+  },
+};
+
 function text(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeCounterpartyCode(value) {
+  const raw = text(value);
+  if (!raw) return '';
+  if (/^\d+(?:\.0+)?$/.test(raw)) return String(Number(raw));
+  return raw;
 }
 
 function majorityBranch(values = []) {
@@ -22,28 +40,89 @@ function majorityBranch(values = []) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 }
 
+function branchFromCounterpartyCodes(items = [], side) {
+  const codeMap = COUNTERPARTY_CODE_BRANCH[side] || {};
+  const counts = new Map();
+  const matchedCodes = new Set();
+  items.forEach((item) => {
+    const code = normalizeCounterpartyCode(item?.counterparty_code);
+    const branch = codeMap[code];
+    if (!branch) return;
+    matchedCodes.add(code);
+    counts.set(branch, (counts.get(branch) || 0) + 1);
+  });
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  return {
+    branch: ranked[0]?.[0] || null,
+    branches: ranked.map(([branch]) => branch),
+    codes: [...matchedCodes],
+  };
+}
+
+function sourceKeyFor(format, counterpartyBranch) {
+  if (format === 'flat_transfer_rows') {
+    if (counterpartyBranch === 'shamy') return 'shokrySale';
+    if (counterpartyBranch === 'shokry') return 'shamySale';
+  }
+  if (format === 'bconnect_purchase_report') {
+    if (counterpartyBranch === 'shokry') return 'shamyPurchase';
+    if (counterpartyBranch === 'shamy') return 'shokryPurchase';
+  }
+  return null;
+}
+
 export function classifyParsedTransferFile(parsed) {
   if (!parsed?.valid || !parsed.items?.length) {
     return { sourceKey: null, confidence: 'none', reason: 'الملف لا يحتوي على أصناف صالحة.' };
   }
 
   const format = parsed.meta?.source_format;
+  const side = format === 'flat_transfer_rows' ? 'sale' : format === 'bconnect_purchase_report' ? 'purchase' : null;
   const counterparties = parsed.items.map((item) => item.counterparty).filter(Boolean);
   const branches = parsed.items.map((item) => item.branch).filter(Boolean);
+  const nameBranch = majorityBranch(counterparties);
+
+  if (side) {
+    const codeEvidence = branchFromCounterpartyCodes(parsed.items, side);
+    if (codeEvidence.branches.length > 1) {
+      return {
+        sourceKey: null,
+        confidence: 'none',
+        reason: `الملف يحتوي على أكواد فروع متعارضة (${codeEvidence.codes.join('، ')}). لن يتم تصنيفه تلقائيًا.`,
+      };
+    }
+    if (codeEvidence.branch) {
+      if (nameBranch && nameBranch !== codeEvidence.branch) {
+        return {
+          sourceKey: null,
+          confidence: 'none',
+          reason: `كود الفرع يشير إلى ${codeEvidence.branch === 'shokry' ? 'شكري/أبو العزم' : 'الشامي'} لكن الاسم يشير إلى فرع آخر. يحتاج مراجعة يدوية.`,
+        };
+      }
+      const sourceKey = sourceKeyFor(format, codeEvidence.branch);
+      if (sourceKey) {
+        return {
+          sourceKey,
+          confidence: 'high',
+          reason: `تم تحديد الاتجاه من كود الفرع الثابت داخل B-Connect (${codeEvidence.codes.join('، ')}).`,
+          evidence: 'counterparty_code',
+        };
+      }
+    }
+  }
 
   if (format === 'bconnect_purchase_report') {
-    const sourceBranch = majorityBranch(counterparties);
-    if (sourceBranch === 'shokry') return { sourceKey: 'shamyPurchase', confidence: 'high', reason: 'تقرير مشتريات ومورده فرع شكري/أبو العزم.' };
-    if (sourceBranch === 'shamy') return { sourceKey: 'shokryPurchase', confidence: 'high', reason: 'تقرير مشتريات ومورده فرع الشامي.' };
+    if (nameBranch === 'shokry') return { sourceKey: 'shamyPurchase', confidence: 'medium', reason: 'تقرير مشتريات ومورده فرع شكري/أبو العزم؛ لم يتوفر كود مورد معروف فتم الاعتماد على الاسم.' };
+    if (nameBranch === 'shamy') return { sourceKey: 'shokryPurchase', confidence: 'medium', reason: 'تقرير مشتريات ومورده فرع الشامي؛ لم يتوفر كود مورد معروف فتم الاعتماد على الاسم.' };
   }
 
   if (format === 'flat_transfer_rows') {
-    const destination = majorityBranch(counterparties);
+    const destination = nameBranch;
     const explicitSource = majorityBranch(branches);
-    if (explicitSource === 'shokry' && destination === 'shamy') return { sourceKey: 'shokrySale', confidence: 'high', reason: 'تقرير بيع من شكري للعميل الشامي.' };
-    if (explicitSource === 'shamy' && destination === 'shokry') return { sourceKey: 'shamySale', confidence: 'high', reason: 'تقرير بيع من الشامي للعميل شكري/أبو العزم.' };
-    if (destination === 'shamy') return { sourceKey: 'shokrySale', confidence: 'high', reason: 'تقرير بيع والعميل هو فرع الشامي؛ المصدر هو الفرع المقابل.' };
-    if (destination === 'shokry') return { sourceKey: 'shamySale', confidence: 'high', reason: 'تقرير بيع والعميل هو فرع شكري/أبو العزم؛ المصدر هو الفرع المقابل.' };
+    if (explicitSource === 'shokry' && destination === 'shamy') return { sourceKey: 'shokrySale', confidence: 'medium', reason: 'تقرير بيع من شكري للعميل الشامي؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
+    if (explicitSource === 'shamy' && destination === 'shokry') return { sourceKey: 'shamySale', confidence: 'medium', reason: 'تقرير بيع من الشامي للعميل شكري/أبو العزم؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
+    if (destination === 'shamy') return { sourceKey: 'shokrySale', confidence: 'medium', reason: 'تقرير بيع والعميل هو فرع الشامي؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
+    if (destination === 'shokry') return { sourceKey: 'shamySale', confidence: 'medium', reason: 'تقرير بيع والعميل هو فرع شكري/أبو العزم؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
   }
 
   return { sourceKey: null, confidence: 'low', reason: 'لم أستطع تحديد اتجاه الملف بأمان من بياناته الداخلية.' };
