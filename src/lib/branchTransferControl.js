@@ -21,7 +21,7 @@ const BRANCHES = {
   shokry: {
     key: 'shokry',
     label: 'شكري',
-    aliases: ['شكري', 'دواء شكري', 'دواء فرع ابو العزم', 'فرع ابو العزم', 'ابو العزم'],
+    aliases: ['شكري', 'دواء شكري', 'دواء فرع ابو العزم', 'دواء ابو العزم', 'فرع ابو العزم', 'ابو العزم'],
   },
   shamy: {
     key: 'shamy',
@@ -35,7 +35,7 @@ const BRANCH_ALIAS_MAP = Object.values(BRANCHES).flatMap((branch) =>
 );
 
 export function resolveTransferBranch(value) {
-  const normalized = normalizeTransferText(value);
+  const normalized = normalizeTransferText(value).replace(/ا{3,}/g, 'ا');
   if (!normalized) return null;
   const exact = BRANCH_ALIAS_MAP.find(([alias]) => normalized === alias);
   if (exact) return exact[1];
@@ -100,6 +100,7 @@ export function normalizeTransferLine(raw, side) {
     product_name_key: productNameKey(raw.product_name || raw.item_name || raw.product || raw.item),
     code: normalizeCode(raw.code || raw.product_code || raw.item_code || raw.barcode),
     qty: Math.abs(quantity(raw.qty ?? raw.quantity ?? raw.count)),
+    unit: normalizeTransferText(raw.unit || raw.sale_unit || raw.purchase_unit),
     invoice: text(raw.invoice || raw.invoice_number || raw.serial),
     user: text(raw.user || raw.doctor || raw.employee || raw.entered_by),
     date: raw.date || raw.datetime || raw.created_at || '',
@@ -123,6 +124,7 @@ function aggregate(lines, side) {
     qty: lines.reduce((sum, line) => sum + line.qty, 0),
     codes: [...new Set(lines.map((line) => line.code).filter(Boolean))],
     users: [...new Set(lines.map((line) => line.user).filter(Boolean))],
+    units: [...new Set(lines.map((line) => line.unit).filter(Boolean))],
     invoices: [...new Set(lines.map((line) => line.invoice).filter(Boolean))],
     product_name: first?.product_name || '',
     day_key: first?.day_key || 'unknown-day',
@@ -138,6 +140,7 @@ function severity(caseType) {
     sale_without_purchase: 95,
     quantity_mismatch: 85,
     code_mismatch: 55,
+    unit_conversion_review: 45,
     matched: 0,
   }[caseType] ?? 40;
 }
@@ -153,8 +156,30 @@ function nextAction(caseType, result) {
       ? `راجع شراء ${target}: الكمية أقل من البيع بـ ${diff}.`
       : `راجع شراء ${target}: الكمية أعلى من البيع بـ ${diff}، أو راجع بيع ${source}.`;
   }
+  if (caseType === 'unit_conversion_review') return 'الكمية مختلفة لكن النمط يشبه تحويل وحدة (مثل شريط مقابل جزء من علبة). أكّد معامل التحويل مرة واحدة قبل احتسابها كخطأ.';
   if (caseType === 'code_mismatch') return 'راجع الكودين: إن كانا لنفس العبوة اربطهما كهوية صنف واحدة، وإلا اترك الحالة للمراجعة.';
   return 'لا يوجد إجراء مطلوب.';
+}
+
+function hasCommonCode(sales, purchases) {
+  const saleCodes = new Set(sales.map((line) => line.code).filter(Boolean));
+  const purchaseCodes = new Set(purchases.map((line) => line.code).filter(Boolean));
+  return [...saleCodes].some((code) => purchaseCodes.has(code));
+}
+
+function looksLikeUnitConversion(sales, purchases) {
+  if (!sales.length || !purchases.length || !hasCommonCode(sales, purchases)) return false;
+  const saleQty = sales.reduce((sum, line) => sum + line.qty, 0);
+  const purchaseQty = purchases.reduce((sum, line) => sum + line.qty, 0);
+  if (saleQty <= 0 || purchaseQty <= 0 || saleQty === purchaseQty) return false;
+  const saleFractional = Math.abs(saleQty - Math.round(saleQty)) > 0.0001;
+  const purchaseFractional = Math.abs(purchaseQty - Math.round(purchaseQty)) > 0.0001;
+  if (saleFractional === purchaseFractional) return false;
+  const ratio = Math.max(saleQty, purchaseQty) / Math.min(saleQty, purchaseQty);
+  if (ratio < 1.5 || ratio > 30) return false;
+  const saleUnits = new Set(sales.map((line) => line.unit).filter(Boolean));
+  const nonBoxUnit = [...saleUnits].some((unit) => unit && !['علبه', 'علبة', 'box'].includes(unit));
+  return nonBoxUnit || purchaseFractional || saleFractional;
 }
 
 function caseTypeFrom(sales, purchases) {
@@ -162,11 +187,15 @@ function caseTypeFrom(sales, purchases) {
   if (!purchases.length) return 'sale_without_purchase';
   const saleQty = sales.reduce((sum, line) => sum + line.qty, 0);
   const purchaseQty = purchases.reduce((sum, line) => sum + line.qty, 0);
-  if (saleQty !== purchaseQty) return 'quantity_mismatch';
-  const saleCodes = new Set(sales.map((line) => line.code).filter(Boolean));
-  const purchaseCodes = new Set(purchases.map((line) => line.code).filter(Boolean));
-  const commonCode = [...saleCodes].some((code) => purchaseCodes.has(code));
-  if (saleCodes.size && purchaseCodes.size && !commonCode) return 'code_mismatch';
+  if (saleQty !== purchaseQty) {
+    if (looksLikeUnitConversion(sales, purchases)) return 'unit_conversion_review';
+    return 'quantity_mismatch';
+  }
+  if (!hasCommonCode(sales, purchases)) {
+    const saleCodes = new Set(sales.map((line) => line.code).filter(Boolean));
+    const purchaseCodes = new Set(purchases.map((line) => line.code).filter(Boolean));
+    if (saleCodes.size && purchaseCodes.size) return 'code_mismatch';
+  }
   return 'matched';
 }
 
@@ -185,6 +214,8 @@ function buildCase(sales, purchases) {
     product_name: saleAgg.product_name || purchaseAgg.product_name,
     sale_qty: saleAgg.qty || 0,
     purchase_qty: purchaseAgg.qty || 0,
+    sale_units: saleAgg.units,
+    purchase_units: purchaseAgg.units,
     sale_codes: saleAgg.codes,
     purchase_codes: purchaseAgg.codes,
     sale_users: saleAgg.users,
@@ -233,16 +264,17 @@ export function summarizeTransferCases(cases = []) {
   return cases.reduce((summary, item) => {
     summary.total += 1;
     if (item.type === 'matched') summary.matched += 1;
+    else if (item.type === 'unit_conversion_review') summary.unit_review += 1;
     else {
       summary.needs_action += 1;
       if (item.severity >= 90) summary.critical += 1;
     }
     return summary;
-  }, { total: 0, matched: 0, needs_action: 0, critical: 0 });
+  }, { total: 0, matched: 0, unit_review: 0, needs_action: 0, critical: 0 });
 }
 
 export function transferErrorRate(cases = [], branchKey) {
-  const relevant = cases.filter((item) => item.from === branchKey || item.to === branchKey);
+  const relevant = cases.filter((item) => (item.from === branchKey || item.to === branchKey) && item.type !== 'unit_conversion_review');
   if (!relevant.length) return 0;
   const errors = relevant.filter((item) => item.type !== 'matched').length;
   return Number(((errors / relevant.length) * 100).toFixed(1));
@@ -250,7 +282,7 @@ export function transferErrorRate(cases = [], branchKey) {
 
 export function employeeTransferStats(cases = []) {
   const map = new Map();
-  cases.filter((item) => item.type !== 'matched').forEach((item) => {
+  cases.filter((item) => item.type !== 'matched' && item.type !== 'unit_conversion_review').forEach((item) => {
     const users = [
       ...item.sale_users.map((name) => ({ name, role: 'sale' })),
       ...item.purchase_users.map((name) => ({ name, role: 'purchase' })),
