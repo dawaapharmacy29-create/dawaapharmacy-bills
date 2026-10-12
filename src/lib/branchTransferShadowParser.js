@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 
 const HEADER_ALIASES = {
-  product_name: ['الصنف', 'اسم الصنف', 'اسم المنتج', 'المنتج', 'الإسم', 'الاسم', 'item', 'item name', 'product', 'product name'],
+  product_name: ['الصنف', 'صنف', 'اسم الصنف', 'اسم المنتج', 'المنتج', 'الإسم', 'الاسم', 'item', 'item name', 'product', 'product name'],
   code: ['الكود', 'كود', 'كود الصنف', 'كود المنتج', 'ك.صنف', 'باركود', 'barcode', 'code', 'item code', 'product code'],
   qty: ['الكمية', 'كميه', 'العدد', 'عدد', 'qty', 'quantity', 'count'],
   unit: ['الوحدة', 'وحدة', 'unit'],
