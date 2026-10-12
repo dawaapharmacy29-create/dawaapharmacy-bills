@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeftRight, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Clock3, FileSpreadsheet, RefreshCw, ShieldAlert, UserRound } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp, Clock3, FileSpreadsheet, RefreshCw, ShieldAlert, UserRound, WandSparkles, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { parseTransferWorkbook } from '@/lib/branchTransferShadowParser';
 import { employeeTransferStats, reconcileBranchTransfers, summarizeTransferCases, transferBranchLabel, transferErrorRate } from '@/lib/branchTransferControl';
+import { applyLearnedUnitRules, learnUnitRule, removeUnitRule, suggestUnitRule, unitRuleLabel } from '@/lib/branchTransferUnitRules';
 
 const STORAGE_KEY = 'dawaa.branch-transfer-control.shadow.v1';
 
@@ -26,9 +27,13 @@ const typeMeta = {
 function loadLedger() {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    return { decisions: value.decisions || {}, events: Array.isArray(value.events) ? value.events : [] };
+    return {
+      decisions: value.decisions || {},
+      events: Array.isArray(value.events) ? value.events : [],
+      unitRules: value.unitRules || {},
+    };
   } catch {
-    return { decisions: {}, events: [] };
+    return { decisions: {}, events: [], unitRules: {} };
   }
 }
 
@@ -77,7 +82,8 @@ export default function BranchTransferControl() {
 
   const sales = useMemo(() => Object.entries(sources).flatMap(([key, source]) => sourceConfig[key]?.side === 'sale' ? (source.items || []) : []), [sources]);
   const purchases = useMemo(() => Object.entries(sources).flatMap(([key, source]) => sourceConfig[key]?.side === 'purchase' ? (source.items || []) : []), [sources]);
-  const cases = useMemo(() => reconcileBranchTransfers(sales, purchases), [sales, purchases]);
+  const rawCases = useMemo(() => reconcileBranchTransfers(sales, purchases), [sales, purchases]);
+  const cases = useMemo(() => applyLearnedUnitRules(rawCases, ledger.unitRules), [rawCases, ledger.unitRules]);
   const summary = useMemo(() => summarizeTransferCases(cases), [cases]);
 
   const decoratedCases = useMemo(() => cases.map((item) => {
@@ -91,6 +97,7 @@ export default function BranchTransferControl() {
   const selected = useMemo(() => actionable.find((item) => item.id === selectedId) || actionable[0] || null, [actionable, selectedId]);
   const employees = useMemo(() => employeeTransferStats(decoratedCases), [decoratedCases]);
   const resolvedCount = Object.values(ledger.decisions).filter((decision) => ['verified', 'dismissed'].includes(decision.status)).length;
+  const learnedRules = useMemo(() => Object.values(ledger.unitRules || {}).filter((rule) => rule?.active), [ledger.unitRules]);
 
   const handleFiles = async (sourceKey, files) => {
     if (!files?.length) return;
@@ -128,12 +135,36 @@ export default function BranchTransferControl() {
     if (!item) return;
     const event = { case_id: item.id, action, status, at: nowIso(), type: item.type, from: item.from, to: item.to, product_name: item.product_name };
     setLedger((old) => ({
+      ...old,
       decisions: { ...old.decisions, [item.id]: { status, action, updated_at: event.at } },
       events: [event, ...old.events].slice(0, 1000),
     }));
     const index = actionable.findIndex((candidate) => candidate.id === item.id);
     const next = actionable[index + 1] || actionable[index - 1];
     setSelectedId(next?.id || '');
+  };
+
+  const approveUnitRule = (item) => {
+    const suggestion = suggestUnitRule(item);
+    if (!suggestion) return;
+    const at = nowIso();
+    const label = unitRuleLabel(suggestion);
+    setLedger((old) => ({
+      ...old,
+      unitRules: learnUnitRule(item, old.unitRules || {}),
+      decisions: { ...old.decisions, [item.id]: { status: 'verified', action: `اعتماد تحويل الوحدة: ${label}`, updated_at: at } },
+      events: [{ case_id: item.id, action: 'unit_rule_learned', status: 'verified', at, type: item.type, from: item.from, to: item.to, product_name: item.product_name, rule: suggestion }, ...old.events].slice(0, 1000),
+    }));
+    setSelectedId('');
+  };
+
+  const revokeUnitRule = (rule) => {
+    const at = nowIso();
+    setLedger((old) => ({
+      ...old,
+      unitRules: removeUnitRule(old.unitRules || {}, rule.key),
+      events: [{ action: 'unit_rule_revoked', at, product_name: rule.product_name, from: rule.from, to: rule.to, rule_key: rule.key }, ...old.events].slice(0, 1000),
+    }));
   };
 
   const resetShadow = () => {
@@ -149,6 +180,7 @@ export default function BranchTransferControl() {
 
   const nextType = actionable[0]?.type;
   const mostRepeatedEmployee = employees[0];
+  const unitSuggestion = selected?.type === 'unit_conversion_review' ? suggestUnitRule(selected) : null;
 
   return <div dir="rtl" className="mx-auto w-full max-w-6xl space-y-4 px-3 py-4 sm:px-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -181,7 +213,7 @@ export default function BranchTransferControl() {
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       <Card className="p-3 shadow-sm"><div className="text-[11px] font-black text-slate-400">حرج</div><div className="mt-1 text-2xl font-black text-rose-700">{summary.critical}</div></Card>
       <Card className="p-3 shadow-sm"><div className="text-[11px] font-black text-slate-400">قرار الآن</div><div className="mt-1 text-2xl font-black text-amber-700">{actionable.length}</div></Card>
-      <Card className="p-3 shadow-sm"><div className="text-[11px] font-black text-slate-400">متابعة</div><div className="mt-1 text-2xl font-black text-sky-700">{followup.length}</div></Card>
+      <Card className="p-3 shadow-sm"><div className="text-[11px] font-black text-slate-400">تعلم وحدة</div><div className="mt-1 text-2xl font-black text-sky-700">{summary.unit_review}</div></Card>
       <Card className="p-3 shadow-sm"><div className="text-[11px] font-black text-slate-400">مطابق</div><div className="mt-1 text-2xl font-black text-emerald-700">{summary.matched}</div></Card>
     </div>
 
@@ -213,7 +245,7 @@ export default function BranchTransferControl() {
           <div className="rounded-2xl border border-teal-100 bg-teal-50 p-3"><div className="text-[11px] font-black text-teal-700">الخطوة التالية</div><div className="mt-1 text-sm font-black leading-6 text-slate-900">{selected.next_action}</div></div>
         </div>
         <div className="flex flex-wrap gap-2 border-t border-slate-100 p-4">
-          <Button onClick={() => recordDecision(selected, 'waiting_verification', 'تم التنفيذ - ينتظر التحقق')} className="font-black">تم التنفيذ</Button>
+          {unitSuggestion ? <Button onClick={() => approveUnitRule(selected)} className="gap-2 font-black"><WandSparkles className="h-4 w-4" /> اعتماد: {unitRuleLabel(unitSuggestion)}</Button> : <Button onClick={() => recordDecision(selected, 'waiting_verification', 'تم التنفيذ - ينتظر التحقق')} className="font-black">تم التنفيذ</Button>}
           <Button variant="outline" onClick={() => recordDecision(selected, 'in_progress', 'بدأت المراجعة')} className="font-black">جاري المراجعة</Button>
           <Button variant="outline" onClick={() => recordDecision(selected, 'dismissed', 'ليست مشكلة بعد المراجعة')} className="font-black">ليست مشكلة</Button>
           <Button variant="ghost" onClick={() => { const index = actionable.findIndex((item) => item.id === selected.id); const next = actionable[index + 1] || actionable[0]; setSelectedId(next?.id || ''); }} className="font-black text-slate-500">تخطي</Button>
@@ -239,8 +271,15 @@ export default function BranchTransferControl() {
           <div className="rounded-2xl bg-slate-50 p-3"><div className="text-xs font-black text-slate-500">الشامي</div><div className="mt-1 text-2xl font-black text-slate-950">{branchHealth.shamy}%</div><div className="text-[11px] font-bold text-slate-400">معدل حالات غير مطابقة</div></div>
         </div>
         <div className="mt-3 rounded-2xl border border-slate-100 p-3 text-sm font-bold text-slate-600">
-          أكثر مشكلة الآن: <span className="font-black text-slate-950">{nextType ? typeMeta[nextType]?.label : 'لا يوجد'}</span> · تحويلات وحدة تحتاج تعلم <span className="font-black text-sky-700">{summary.unit_review}</span> · تم إغلاق/استبعاد <span className="font-black text-slate-950">{resolvedCount}</span> حالة.
+          أكثر مشكلة الآن: <span className="font-black text-slate-950">{nextType ? typeMeta[nextType]?.label : 'لا يوجد'}</span> · قواعد وحدة متعلمة <span className="font-black text-sky-700">{learnedRules.length}</span> · تم إغلاق/استبعاد <span className="font-black text-slate-950">{resolvedCount}</span> حالة.
         </div>
+        {learnedRules.length > 0 && <div className="mt-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-black text-slate-500"><WandSparkles className="h-4 w-4 text-sky-600" /> قواعد تحويل الوحدة المعتمدة</div>
+          {learnedRules.slice(0, 6).map((rule) => <div key={rule.key} className="flex items-center justify-between gap-3 rounded-xl bg-sky-50 px-3 py-2">
+            <div className="min-w-0"><div className="truncate text-sm font-black text-slate-900">{rule.product_name}</div><div className="text-[11px] font-bold text-slate-500">{transferBranchLabel(rule.from)} → {transferBranchLabel(rule.to)} · {unitRuleLabel(rule)}</div></div>
+            <Button size="sm" variant="ghost" onClick={() => revokeUnitRule(rule)} className="shrink-0 gap-1 font-black text-rose-600"><XCircle className="h-4 w-4" /> إلغاء</Button>
+          </div>)}
+        </div>}
       </Card>
       <Card className="p-4 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-black text-slate-900"><UserRound className="h-4 w-4 text-violet-600" /> تكرار الموظفين</div>
@@ -251,6 +290,6 @@ export default function BranchTransferControl() {
       </Card>
     </div>}
 
-    <div className="flex items-center gap-2 px-1 text-[11px] font-bold text-slate-400"><AlertTriangle className="h-3.5 w-3.5" /> سجل القرارات في هذه النسخة محفوظ محليًا داخل المتصفح للاختبار فقط؛ لا توجد كتابة على بيانات الإنتاج.</div>
+    <div className="flex items-center gap-2 px-1 text-[11px] font-bold text-slate-400"><AlertTriangle className="h-3.5 w-3.5" /> قواعد التعلم وسجل القرارات محفوظة محليًا داخل المتصفح في نسخة الاختبار فقط؛ لا توجد كتابة على بيانات الإنتاج.</div>
   </div>;
 }
