@@ -1,10 +1,11 @@
 import * as XLSX from 'xlsx';
 
 const HEADER_ALIASES = {
-  product_name: ['الصنف', 'اسم الصنف', 'اسم المنتج', 'المنتج', 'item', 'item name', 'product', 'product name'],
-  code: ['الكود', 'كود', 'كود الصنف', 'كود المنتج', 'باركود', 'barcode', 'code', 'item code', 'product code'],
+  product_name: ['الصنف', 'اسم الصنف', 'اسم المنتج', 'المنتج', 'الإسم', 'الاسم', 'item', 'item name', 'product', 'product name'],
+  code: ['الكود', 'كود', 'كود الصنف', 'كود المنتج', 'ك.صنف', 'باركود', 'barcode', 'code', 'item code', 'product code'],
   qty: ['الكمية', 'كميه', 'العدد', 'عدد', 'qty', 'quantity', 'count'],
-  invoice: ['رقم الفاتورة', 'رقم الفاتوره', 'الفاتورة', 'الفاتوره', 'مسلسل', 'serial', 'invoice', 'invoice number'],
+  unit: ['الوحدة', 'وحدة', 'unit'],
+  invoice: ['رقم الفاتورة', 'رقم الفاتوره', 'الفاتورة', 'الفاتوره', 'فاتورة', 'مسلسل', 'serial', 'invoice', 'invoice number'],
   date: ['التاريخ', 'تاريخ', 'date', 'datetime'],
   user: ['المستخدم', 'الدكتور', 'الموظف', 'اسم المستخدم', 'user', 'doctor', 'employee'],
   branch: ['الفرع', 'المخزن', 'الموقع', 'branch', 'warehouse', 'location'],
@@ -56,7 +57,84 @@ function rowHasContent(row) {
   return row.some((value) => text(value));
 }
 
-export function parseTransferRows(rows, defaults = {}) {
+function number(value) {
+  const parsed = Number(String(value ?? '').replace(/,/g, '').trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isPurchaseInvoiceHeader(row) {
+  return normalizeHeader(row?.[0]) === normalizeHeader('ملاحظات')
+    && normalizeHeader(row?.[1]) === normalizeHeader('مستخدم')
+    && row?.[23] != null;
+}
+
+function isPurchaseInvoiceTotal(row) {
+  return normalizeHeader(row?.[6]) === normalizeHeader('الإجمالى');
+}
+
+function looksLikePurchaseDetail(row) {
+  return Boolean(text(row?.[14]) && text(row?.[15]) && number(row?.[11]) !== null);
+}
+
+function parseBConnectPurchaseRows(rows, defaults = {}) {
+  const items = [];
+  const warnings = [];
+  let current = null;
+  let invoiceCount = 0;
+
+  rows.forEach((row, index) => {
+    if (!Array.isArray(row) || !rowHasContent(row)) return;
+    if (isPurchaseInvoiceHeader(row)) {
+      current = {
+        user: text(row[13]),
+        supplier: text(row[20]),
+        date: row[22] || defaults.date || '',
+        invoice: text(row[23]),
+      };
+      invoiceCount += 1;
+      return;
+    }
+    if (current && isPurchaseInvoiceTotal(row)) {
+      current = null;
+      return;
+    }
+    if (!current || !looksLikePurchaseDetail(row)) return;
+
+    const qty = number(row[11]);
+    if (!qty || qty <= 0) {
+      warnings.push(`تم تجاهل صف مشتريات ${index + 1}: الكمية غير صالحة.`);
+      return;
+    }
+
+    items.push({
+      row_number: index + 1,
+      product_name: text(row[14]),
+      code: text(row[15]),
+      qty,
+      unit: '',
+      invoice: current.invoice,
+      date: current.date,
+      user: current.user,
+      branch: defaults.branch || '',
+      counterparty: defaults.counterparty || current.supplier || '',
+      purchase_total: number(row[17]),
+      retail_total: number(row[18]),
+      expiration_raw: row[13] || null,
+      source_format: 'bconnect_purchase_report',
+    });
+  });
+
+  if (!invoiceCount) return null;
+  if (!items.length) warnings.push('تم العثور على فواتير مشتريات لكن لم يتم استخراج أصناف صالحة منها.');
+  return {
+    valid: Boolean(items.length),
+    items,
+    warnings,
+    meta: { source_format: 'bconnect_purchase_report', invoice_count: invoiceCount, item_count: items.length },
+  };
+}
+
+function parseFlatRows(rows, defaults = {}) {
   let header = null;
   let headerRow = -1;
   const items = [];
@@ -75,10 +153,9 @@ export function parseTransferRows(rows, defaults = {}) {
     }
 
     const productName = text(cell(row, header, 'product_name'));
-    const qtyRaw = cell(row, header, 'qty');
-    const qty = Number(String(qtyRaw ?? '').replace(/,/g, '').trim());
-    if (!productName && !Number.isFinite(qty)) continue;
-    if (!productName || !Number.isFinite(qty) || qty === 0) {
+    const qty = number(cell(row, header, 'qty'));
+    if (!productName && qty === null) continue;
+    if (!productName || qty === null || qty === 0) {
       warnings.push(`تم تجاهل الصف ${index + 1}: اسم الصنف أو الكمية غير صالح.`);
       continue;
     }
@@ -88,11 +165,13 @@ export function parseTransferRows(rows, defaults = {}) {
       product_name: productName,
       code: text(cell(row, header, 'code')),
       qty,
+      unit: text(cell(row, header, 'unit')),
       invoice: text(cell(row, header, 'invoice')),
       date: cell(row, header, 'date') || defaults.date || '',
       user: text(cell(row, header, 'user')),
-      branch: text(cell(row, header, 'branch')) || defaults.branch || '',
-      counterparty: text(cell(row, header, 'counterparty')) || defaults.counterparty || '',
+      branch: defaults.branch || text(cell(row, header, 'branch')) || '',
+      counterparty: defaults.counterparty || text(cell(row, header, 'counterparty')) || '',
+      source_format: 'flat_transfer_rows',
     });
   }
 
@@ -104,11 +183,18 @@ export function parseTransferRows(rows, defaults = {}) {
     items,
     warnings,
     meta: {
+      source_format: 'flat_transfer_rows',
       header_row: headerRow >= 0 ? headerRow + 1 : null,
       item_count: items.length,
       detected_fields: header ? Object.keys(header) : [],
     },
   };
+}
+
+export function parseTransferRows(rows, defaults = {}) {
+  const purchase = parseBConnectPurchaseRows(rows, defaults);
+  if (purchase) return purchase;
+  return parseFlatRows(rows, defaults);
 }
 
 export function parseTransferWorkbook(arrayBuffer, defaults = {}) {
