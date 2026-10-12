@@ -1,3 +1,5 @@
+import { normalizeSupplierIdentityKey } from './purchaseInvoiceTruth.js';
+
 const GENERIC_PREFIXES = new Set([
   'مخزن', 'مخازن', 'شركة', 'شركه', 'مؤسسة', 'مؤسسه', 'مورد', 'صيدلية', 'صيدليه',
 ]);
@@ -33,6 +35,10 @@ function jaccard(a, b) {
 }
 
 export function supplierMatchScore(sourceName, candidateName) {
+  const sourceIdentity = normalizeSupplierIdentityKey(sourceName);
+  const candidateIdentity = normalizeSupplierIdentityKey(candidateName);
+  if (sourceIdentity && candidateIdentity && sourceIdentity === candidateIdentity) return 1;
+
   const sourceFull = normalizeSupplierName(sourceName);
   const candidateFull = normalizeSupplierName(candidateName);
   if (!sourceFull || !candidateFull) return 0;
