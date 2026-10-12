@@ -19,6 +19,39 @@ function numeric(value) {
   return normalized === null ? null : Number(normalized);
 }
 
+function nearlyEqual(a, b) {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return Math.abs(a - b) < 0.005;
+}
+
+function returnExplanation({ difference, appReturn, sourceReturn }) {
+  if (!Number.isFinite(difference) || difference === 0) return null;
+  const app = Number.isFinite(appReturn) ? appReturn : 0;
+  const source = Number.isFinite(sourceReturn) ? sourceReturn : 0;
+  const returnDelta = Math.abs(app - source);
+  if (returnDelta > 0 && nearlyEqual(Math.abs(difference), returnDelta)) {
+    return {
+      code: 'return_exact',
+      confidence: 'high',
+      label: `الفرق يساوي فرق المرتجع (${returnDelta.toFixed(2)} ج)`,
+      safeToAutoAccept: false,
+    };
+  }
+  return null;
+}
+
+function noteSignal(note) {
+  const text = String(note || '').toLowerCase();
+  if (!text) return null;
+  if (/تجميع|مجمع|ضم|فاتورتين|فاتورتان|اكثر من فاتور|أكثر من فاتور/.test(text)) {
+    return { code: 'consolidation_note', confidence: 'medium', label: 'الملاحظة تشير إلى تجميع فواتير' };
+  }
+  if (/مرتجع|اشعار|إشعار|رد مورد|خصم مورد/.test(text)) {
+    return { code: 'return_note', confidence: 'medium', label: 'الملاحظة تشير إلى مرتجع/إشعار مورد' };
+  }
+  return { code: 'note_present', confidence: 'low', label: 'توجد ملاحظة قد تساعد في تفسير الفرق' };
+}
+
 export function buildBConnectPurchaseDecision(row = {}) {
   const policy = classifyBConnectReviewRow(row);
   const difference = row?.financial?.difference == null ? null : Number(row.financial.difference);
@@ -31,26 +64,70 @@ export function buildBConnectPurchaseDecision(row = {}) {
   const sourceReturn = numeric(row?.bconnect?.return_value);
   const hasReturn = (returned !== null && returned > 0) || (sourceReturn !== null && sourceReturn > 0);
   const financialMatch = row?.financial?.comparable === true && row?.financial?.match === true;
-  const identityConfirmed = row?.identity === 'confirmed' && row?.checks?.branch === 'match' && row?.checks?.system_invoice_number === 'match';
-  const fastAccept = identityConfirmed && row?.status === 'review' && financialMatch && (supplierMismatch || dateMismatch);
+  const identityConfirmed = row?.identity === 'confirmed'
+    && row?.checks?.branch === 'match'
+    && row?.checks?.system_invoice_number === 'match';
+
+  // Fast acceptance must never be broader than the existing execution policy.
+  const fastAccept = policy.code === 'proposed'
+    && policy.selectable === true
+    && identityConfirmed
+    && row?.status === 'review'
+    && financialMatch
+    && (supplierMismatch || dateMismatch);
+
+  const exactReturnExplanation = returnExplanation({ difference, appReturn: returned, sourceReturn });
+  const noteEvidence = noteSignal(note);
+  const evidence = exactReturnExplanation || noteEvidence;
 
   let lane = 'investigate';
-  let label = 'تحقيق يدوي';
+  let label = 'حقق';
   let instruction = 'راجع الأدلة قبل أي قرار';
   let tone = 'red';
+  let nextAction = 'open_details';
 
   if (row?.status === 'clean') {
-    lane = 'clean'; label = 'سليم'; instruction = 'لا يحتاج أي إجراء'; tone = 'green';
+    lane = 'clean';
+    label = 'سليم';
+    instruction = 'لا يحتاج أي إجراء';
+    tone = 'green';
+    nextAction = 'none';
   } else if (policy.code === 'missing') {
-    lane = 'register'; label = 'سجّل'; instruction = 'الفاتورة ناقصة في التطبيق'; tone = 'blue';
+    lane = 'register';
+    label = 'سجّل';
+    instruction = 'الفاتورة ناقصة في التطبيق — افتحها جاهزة للتسجيل';
+    tone = 'blue';
+    nextAction = 'register';
   } else if (policy.code === 'duplicate' || policy.code === 'blocked' || row?.status === 'problem') {
-    lane = 'investigate'; label = 'حقق'; instruction = policy.label || 'حالة تحتاج تحقيق يدوي'; tone = 'red';
+    lane = 'investigate';
+    label = 'حقق';
+    instruction = policy.label || 'حالة تحتاج تحقيق يدوي';
+    tone = 'red';
+    nextAction = 'open_details';
   } else if (absDifference !== null && absDifference > 0) {
-    lane = 'explain'; label = 'فسّر الفرق'; instruction = note || hasReturn ? 'يوجد دليل محتمل يفسّر الفرق المالي' : 'فرق مالي غير مفسر يحتاج نظرة'; tone = 'red';
+    lane = 'explain';
+    label = exactReturnExplanation ? 'راجع المرتجع' : 'فسّر الفرق';
+    instruction = exactReturnExplanation?.label
+      || noteEvidence?.label
+      || 'فرق مالي غير مفسر يحتاج نظرة';
+    tone = exactReturnExplanation ? 'amber' : 'red';
+    nextAction = 'open_details';
   } else if (fastAccept) {
-    lane = 'approve'; label = 'اعتمد'; instruction = supplierMismatch && dateMismatch ? 'القيمة متطابقة؛ اختلاف مورد وتاريخ فقط' : supplierMismatch ? 'القيمة متطابقة؛ اختلاف المورد فقط' : 'القيمة متطابقة؛ اختلاف التاريخ فقط'; tone = 'green';
-  } else if (identityConfirmed && row?.status === 'review') {
-    lane = 'correct'; label = 'صحّح'; instruction = 'الهوية مؤكدة ويوجد اختلاف يحتاج تصحيحًا'; tone = 'amber';
+    lane = 'approve';
+    label = 'اعتمد';
+    instruction = supplierMismatch && dateMismatch
+      ? 'القيمة متطابقة؛ اختلاف مورد وتاريخ فقط'
+      : supplierMismatch
+        ? 'القيمة متطابقة؛ اختلاف المورد فقط'
+        : 'القيمة متطابقة؛ اختلاف التاريخ فقط';
+    tone = 'green';
+    nextAction = 'accept_as_is';
+  } else if (identityConfirmed && row?.status === 'review' && policy.code === 'proposed') {
+    lane = 'correct';
+    label = 'صحّح';
+    instruction = 'الهوية مؤكدة ويوجد اختلاف يحتاج تصحيحًا';
+    tone = 'amber';
+    nextAction = 'open_details';
   }
 
   return {
@@ -58,7 +135,10 @@ export function buildBConnectPurchaseDecision(row = {}) {
     label,
     instruction,
     tone,
+    nextAction,
     fastAccept,
+    policyCode: policy.code,
+    selectable: policy.selectable === true,
     financialDifference: Number.isFinite(difference) ? difference : null,
     absoluteFinancialDifference: absDifference,
     supplierMismatch,
@@ -69,6 +149,9 @@ export function buildBConnectPurchaseDecision(row = {}) {
     returnedValue: returned,
     sourceReturnValue: sourceReturn,
     hasReturn,
+    evidence,
+    evidenceConfidence: evidence?.confidence || null,
+    exactReturnExplanation: exactReturnExplanation?.code === 'return_exact',
     bconnectTotal: numeric(row?.bconnect?.invoice_value),
     appTotal: numeric(row?.app?.total_value),
   };
