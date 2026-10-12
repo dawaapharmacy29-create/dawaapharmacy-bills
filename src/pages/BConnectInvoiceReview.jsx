@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowLeftRight, CheckCircle2, ChevronLeft, CircleDollarSign, FilePlus2, FileSearch, Filter, Search, ShieldAlert, Sparkles, Upload } from 'lucide-react';
+import { ArrowLeftRight, CheckCircle2, ChevronLeft, CircleDollarSign, FilePlus2, FileSearch, Filter, Layers3, Search, ShieldAlert, Sparkles, Upload } from 'lucide-react';
 import { performanceApi } from '@/api/base44Client';
 import { bconnectAcceptanceFingerprint, loadBconnectAcceptances, saveBconnectAcceptance } from '@/api/bconnectReviewAcceptanceClient';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import BConnectReviewModal from '@/components/bconnect/BConnectReviewModal';
 import { parseBConnectWorkbook } from '@/lib/bconnectPurchaseInvoiceParser';
 import { reconcilePurchaseInvoice } from '@/lib/purchaseInvoiceReconciliation';
 import { normalizeBranch, normalizeInvoiceNumber, normalizeMoney } from '@/lib/purchaseInvoiceTruth';
-import { buildBConnectPurchaseDecision, countBConnectDecisionLanes } from '@/lib/bconnectPurchaseDecisionView';
+import { buildBConnectDecisionGroups, buildBConnectPurchaseDecision, countBConnectDecisionLanes } from '@/lib/bconnectPurchaseDecisionView';
 
 const invoiceScopeKey = (branch, number) => `${normalizeBranch(branch) || 'unknown'}::${normalizeInvoiceNumber(number) || 'unknown'}`;
 const rowKey = (row) => invoiceScopeKey(row?.bconnect?.branch || row?.app?.branch, row?.number);
@@ -47,18 +47,28 @@ const laneTone = {
   slate: 'border-slate-200 bg-white text-slate-700',
 };
 
+const confidenceTone = {
+  very_high: 'bg-emerald-100 text-emerald-800',
+  high: 'bg-teal-100 text-teal-800',
+  high_explanation: 'bg-amber-100 text-amber-800',
+  medium: 'bg-amber-100 text-amber-800',
+  low: 'bg-rose-100 text-rose-800',
+  blocked: 'bg-slate-200 text-slate-700',
+};
+
 function DecisionChip({ view }) {
   const tone = laneConfig[view.lane]?.tone || 'slate';
-  return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-black ${laneTone[tone]}`}>{view.label}</span>;
+  return <div className="flex flex-wrap items-center gap-1.5"><span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-black ${laneTone[tone]}`}>{view.label}</span><span className={`rounded-full px-2 py-1 text-[10px] font-black ${confidenceTone[view.confidence?.code] || confidenceTone.low}`}>{view.confidence?.label || 'ثقة منخفضة'}</span></div>;
 }
 
-function DifferenceBadges({ row, view }) {
+function DifferenceBadges({ view }) {
   return <div className="flex flex-wrap gap-1.5 text-[11px] font-bold">
     {view.financialDifference !== null && view.financialDifference !== 0 && <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700">فرق {money(Math.abs(view.financialDifference))} ج</span>}
     {view.supplierMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">مورد مختلف</span>}
     {view.dateMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">{view.dateDifferenceDays === null ? 'تاريخ مختلف' : `فرق تاريخ ${Math.abs(view.dateDifferenceDays)} يوم`}</span>}
     {view.hasNote && <span className="rounded-full bg-violet-100 px-2 py-1 text-violet-700">ملاحظة موجودة</span>}
     {view.hasReturn && <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700">مرتجع {money(view.returnedValue ?? view.sourceReturnValue)} ج</span>}
+    {view.evidence && <span className={`rounded-full px-2 py-1 ${view.evidenceConfidence === 'high' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{view.evidence.label}</span>}
     {!view.supplierMismatch && !view.dateMismatch && !view.hasNote && !view.hasReturn && (!view.financialDifference || view.financialDifference === 0) && <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-500">لا فروق إضافية</span>}
   </div>;
 }
@@ -70,10 +80,13 @@ export default function BConnectInvoiceReview() {
   const [branchFilter, setBranchFilter] = useState('all');
   const [decisions, setDecisions] = useState({});
   const [reviewRow, setReviewRow] = useState(null);
+  const [bulkState, setBulkState] = useState({ key: '', running: false, message: '' });
 
   const laneCounts = useMemo(() => countBConnectDecisionLanes(state.rows), [state.rows]);
   const acceptedCount = useMemo(() => Object.values(decisions).filter((decision) => decision?.action === 'accepted').length, [decisions]);
   const branches = useMemo(() => [...new Set(state.rows.map((row) => normalizeBranch(row.bconnect?.branch || row.app?.branch)).filter(Boolean))], [state.rows]);
+  const unacceptedRows = useMemo(() => state.rows.filter((row) => decisions[rowKey(row)]?.action !== 'accepted'), [state.rows, decisions]);
+  const decisionGroups = useMemo(() => buildBConnectDecisionGroups(unacceptedRows), [unacceptedRows]);
 
   const visible = useMemo(() => state.rows.filter((row) => {
     const key = rowKey(row);
@@ -100,6 +113,11 @@ export default function BConnectInvoiceReview() {
 
   const acceptAsIs = async (row) => {
     if (!row) return;
+    const view = buildBConnectPurchaseDecision(row);
+    if (!view.fastAccept) {
+      setState((old) => ({ ...old, error: 'تم إيقاف الاعتماد لأن الحالة لم تعد مستوفية لشروط الاعتماد الآمن.' }));
+      return;
+    }
     try {
       await saveBconnectAcceptance(row);
       const key = rowKey(row);
@@ -109,6 +127,42 @@ export default function BConnectInvoiceReview() {
     } catch (error) {
       setState((old) => ({ ...old, error: `تعذر حفظ الاعتماد الدائم: ${error?.message || 'خطأ غير معروف'}` }));
     }
+  };
+
+  const acceptGroup = async (group) => {
+    if (!group?.rows?.length || bulkState.running) return;
+    const candidates = group.rows.filter((row) => {
+      const view = buildBConnectPurchaseDecision(row);
+      return view.bulkEligible && decisions[rowKey(row)]?.action !== 'accepted';
+    });
+    if (!candidates.length) return;
+    setBulkState({ key: group.key, running: true, message: `جاري اعتماد ${candidates.length} فاتورة...` });
+    let success = 0;
+    const failed = [];
+    for (let i = 0; i < candidates.length; i += 4) {
+      const batch = candidates.slice(i, i + 4);
+      const results = await Promise.allSettled(batch.map(async (row) => {
+        const freshView = buildBConnectPurchaseDecision(row);
+        if (!freshView.bulkEligible) throw new Error('لم تعد مستوفية لشروط الاعتماد الجماعي');
+        await saveBconnectAcceptance(row);
+        return row;
+      }));
+      results.forEach((result, index) => {
+        const row = batch[index];
+        if (result.status === 'fulfilled') {
+          success += 1;
+          const key = rowKey(row);
+          setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'اعتماد جماعي آمن: نفس بصمة القرار', source_id: row.app?.id || null, persistent: true } }));
+        } else {
+          failed.push(String(row.number || 'غير معروف'));
+        }
+      });
+    }
+    const message = failed.length
+      ? `تم اعتماد ${success}/${candidates.length}. لم تُعتمد: ${failed.join('، ')}`
+      : `تم اعتماد ${success}/${candidates.length} بنجاح.`;
+    setBulkState({ key: '', running: false, message });
+    setState((old) => ({ ...old, error: failed.length ? message : '' }));
   };
 
   const verifiedSave = (updatedRow) => {
@@ -121,7 +175,7 @@ export default function BConnectInvoiceReview() {
   const reviewFile = async (file) => {
     if (!file) return;
     setState({ loading: true, error: '', fileName: file.name, rows: [], meta: null });
-    setDecisions({}); setReviewRow(null); setActiveLane('approve'); setSearch(''); setBranchFilter('all');
+    setDecisions({}); setReviewRow(null); setActiveLane('approve'); setSearch(''); setBranchFilter('all'); setBulkState({ key: '', running: false, message: '' });
     try {
       const parsed = parseBConnectWorkbook(await file.arrayBuffer());
       if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
@@ -185,7 +239,7 @@ export default function BConnectInvoiceReview() {
 
   return <div dir="rtl" className="space-y-4 p-3 md:p-5 lg:p-6">
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><div className="flex items-center gap-2"><h1 className="text-2xl font-black text-slate-900">مركز قرار المشتريات — B-Connect</h1><span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-black text-teal-700"><Sparkles className="ml-1 inline h-3.5 w-3.5" />قرار سريع</span></div><p className="mt-1 text-sm text-slate-500">ابدأ بالحالات السريعة. كل بطاقة تعرض القرار والأثر المالي والدليل المهم قبل فتح التفاصيل.</p></div>
+      <div><div className="flex items-center gap-2"><h1 className="text-2xl font-black text-slate-900">مركز قرار المشتريات — B-Connect</h1><span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-black text-teal-700"><Sparkles className="ml-1 inline h-3.5 w-3.5" />قرار سريع</span></div><p className="mt-1 text-sm text-slate-500">راجع القرار والثقة والدليل في ثوانٍ، واعتمد المجموعات المتطابقة والآمنة بزر واحد.</p></div>
       <Button asChild variant="outline"><Link to="/invoices">العودة للفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button>
     </div>
 
@@ -196,16 +250,21 @@ export default function BConnectInvoiceReview() {
         {['approve', 'correct', 'explain', 'register', 'investigate'].map((lane) => { const item = laneConfig[lane]; const Icon = item.icon; return <button key={lane} type="button" onClick={() => setActiveLane(lane)} className={`rounded-2xl border p-3 text-right transition hover:-translate-y-0.5 hover:shadow-sm ${activeLane === lane ? `${laneTone[item.tone]} ring-2 ring-current/10` : 'border-slate-200 bg-white'}`}><div className="flex items-center justify-between gap-2"><div className="rounded-xl bg-white/70 p-2"><Icon className="h-4 w-4" /></div><strong className="text-2xl">{countFor(lane)}</strong></div><div className="mt-2 font-black">{item.label}</div><div className="mt-0.5 text-[11px] opacity-70">{item.hint}</div></button>; })}
       </div>
 
+      {activeLane === 'approve' && decisionGroups.length > 0 && <Card className="border-emerald-200 bg-emerald-50/40 p-3 md:p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><div className="flex items-center gap-2 font-black text-emerald-950"><Layers3 className="h-5 w-5" />مجموعات جاهزة لاعتماد جماعي آمن</div><div className="mt-1 text-xs text-emerald-800">كل مجموعة لها نفس بصمة القرار، ولا تحتوي فرقًا ماليًا أو مرتجعًا أو ملاحظة خاصة.</div></div>{bulkState.message && <div className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-700">{bulkState.message}</div>}</div>
+        <div className="grid gap-2 lg:grid-cols-2">{decisionGroups.map((group) => <div key={group.key} className="rounded-2xl border border-emerald-200 bg-white p-3"><div className="flex items-start justify-between gap-3"><div><div className="font-black text-slate-900">{group.rows.length} فاتورة — {group.description}</div><div className="mt-1 text-xs text-slate-500">{group.branch} · {group.confidence?.label || 'ثقة عالية جدًا'}</div><div className="mt-2 text-[11px] text-slate-500">عينة: {group.rows.slice(0, 3).map((row) => row.number).join('، ')}{group.rows.length > 3 ? '...' : ''}</div></div><Button type="button" size="sm" disabled={bulkState.running} onClick={() => acceptGroup(group)}>{bulkState.running && bulkState.key === group.key ? 'جاري الاعتماد...' : `اعتماد ${group.rows.length} فاتورة`}</Button></div></div>)}</div>
+      </Card>}
+
       <Card className="overflow-hidden border-slate-200">
         <div className="flex flex-wrap gap-2 border-b bg-white p-3">{lanes.map((lane) => { const item = laneConfig[lane]; return <button key={lane} type="button" onClick={() => setActiveLane(lane)} className={`rounded-full border px-3 py-2 text-xs font-black transition ${activeLane === lane ? laneTone[item.tone] : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>{item.label} <span className="mr-1 opacity-70">{countFor(lane)}</span></button>; })}</div>
         <div className="grid gap-3 border-b bg-slate-50/70 p-3 md:grid-cols-[1fr_190px_auto]"><label className="relative block"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="رقم الفاتورة، المورد، الموظف، الملاحظة..." className="h-10 w-full rounded-xl border bg-white pr-10 pl-3 text-sm" /></label><select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-10 rounded-xl border bg-white px-3 text-sm"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select><div className="flex h-10 items-center gap-2 rounded-xl border bg-white px-3 text-xs font-bold text-slate-500"><Filter className="h-4 w-4" />{visible.length} حالة</div></div>
 
         <div className="divide-y bg-slate-50/30">{visible.map((row, index) => {
           const key = rowKey(row); const view = buildBConnectPurchaseDecision(row); const accepted = decisions[key]?.action === 'accepted';
-          return <div key={`${key}-${index}`} role="button" tabIndex={0} onClick={() => setReviewRow(row)} onKeyDown={(event) => { if (event.key === 'Enter') setReviewRow(row); }} className="group grid cursor-pointer gap-3 bg-white p-3 transition hover:bg-slate-50 md:grid-cols-[160px_minmax(220px,1fr)_minmax(250px,1.2fr)_180px] md:items-center md:p-4">
+          return <div key={`${key}-${index}`} role="button" tabIndex={0} onClick={() => setReviewRow(row)} onKeyDown={(event) => { if (event.key === 'Enter') setReviewRow(row); }} className="group grid cursor-pointer gap-3 bg-white p-3 transition hover:bg-slate-50 md:grid-cols-[180px_minmax(220px,1fr)_minmax(280px,1.3fr)_180px] md:items-center md:p-4">
             <div><div className="font-mono text-lg font-black text-slate-900">{row.number}</div><div className="mt-1 text-xs font-bold text-slate-500">{normalizeBranch(row.bconnect?.branch || row.app?.branch) || 'فرع غير معروف'}</div><div className="mt-2"><DecisionChip view={view} /></div></div>
             <div className="min-w-0"><div className="truncate font-black text-slate-800">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div>{view.supplierMismatch && row.app?.supplier_name && <div className="mt-1 truncate text-xs text-amber-700">المسجل: {row.app.supplier_name}</div>}<div className="mt-2 text-xs text-slate-500">B-Connect: <strong className="text-slate-800">{money(view.bconnectTotal)} ج</strong> {view.appTotal !== null && <>← التطبيق: <strong className="text-slate-800">{money(view.appTotal)} ج</strong></>}</div><div className="mt-1 text-[11px] text-slate-400">{formatArabicDate(row.bconnect?.date)}{view.dateMismatch && row.app?.invoice_date ? ` ← ${formatArabicDate(row.app.invoice_date)}` : ''}</div></div>
-            <div className="min-w-0"><div className="font-black text-slate-900">{view.instruction}</div><div className="mt-2"><DifferenceBadges row={row} view={view} /></div>{view.hasNote && <div className="mt-2 line-clamp-2 rounded-lg border border-violet-100 bg-violet-50 px-2.5 py-2 text-xs leading-5 text-violet-900"><strong>ملاحظة:</strong> {view.note}</div>}{accepted && <div className="mt-2 text-xs font-black text-emerald-700">✓ تم اعتمادها وحفظ القرار</div>}</div>
+            <div className="min-w-0"><div className="font-black text-slate-900">{view.instruction}</div><div className="mt-2"><DifferenceBadges view={view} /></div>{view.hasNote && <div className="mt-2 line-clamp-2 rounded-lg border border-violet-100 bg-violet-50 px-2.5 py-2 text-xs leading-5 text-violet-900"><strong>ملاحظة:</strong> {view.note}</div>}{accepted && <div className="mt-2 text-xs font-black text-emerald-700">✓ تم اعتمادها وحفظ القرار</div>}</div>
             <div className="flex flex-col gap-2 md:items-stretch"><Button type="button" size="sm" variant={view.fastAccept && !accepted ? 'default' : 'outline'} onClick={(event) => { event.stopPropagation(); if (view.fastAccept && !accepted) acceptAsIs(row); else setReviewRow(row); }}>{view.fastAccept && !accepted ? 'اعتماد الآن' : view.lane === 'register' ? 'فتح وتسجيل' : view.lane === 'correct' ? 'فتح وتصحيح' : view.lane === 'explain' ? 'عرض سبب الفرق' : view.lane === 'investigate' ? 'فتح التحقيق' : 'عرض التفاصيل'}</Button><div className="text-center text-[10px] text-slate-400">اضغط على البطاقة للتفاصيل الكاملة</div></div>
           </div>;
         })}{!visible.length && <div className="px-4 py-14 text-center text-slate-400"><FileSearch className="mx-auto mb-2 h-7 w-7" />لا توجد حالات في هذا المسار الآن.</div>}</div>
