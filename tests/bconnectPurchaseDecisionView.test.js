@@ -21,6 +21,18 @@ test('routes value-matched supplier mismatch to fast approve', () => {
   const view = buildBConnectPurchaseDecision(row);
   assert.equal(view.lane, 'approve');
   assert.equal(view.fastAccept, true);
+  assert.equal(view.nextAction, 'accept_as_is');
+});
+
+test('never exposes fast accept when execution policy is blocked by missing evidence', () => {
+  const row = baseRow({
+    checks: { system_invoice_number: 'match', branch: 'match', supplier: 'mismatch', invoice_date: 'match' },
+    evidence: { app: null, bconnect: null },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, 'investigate');
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.selectable, false);
 });
 
 test('routes unexplained money difference to explain lane', () => {
@@ -29,19 +41,34 @@ test('routes unexplained money difference to explain lane', () => {
   assert.equal(view.lane, 'explain');
   assert.equal(view.absoluteFinancialDifference, 246);
   assert.equal(view.hasNote, false);
+  assert.equal(view.evidence, null);
 });
 
-test('surfaces note and return as decision evidence', () => {
+test('marks an exact return delta as high-confidence evidence without auto-accepting it', () => {
   const row = baseRow({
     financial: { comparable: true, match: false, difference: 200 },
-    app: { id: 'a1', total_value: 800, returned_value: 200, invoice_date: '2026-10-11', notes: 'تم تجميع الفواتير حسب الفاتورة الورقية' },
+    app: { id: 'a1', total_value: 800, returned_value: 200, invoice_date: '2026-10-11', notes: '' },
     bconnect: { invoice_value: 1000, return_value: 0, date: '2026-10-11' },
   });
   const view = buildBConnectPurchaseDecision(row);
   assert.equal(view.lane, 'explain');
-  assert.equal(view.hasNote, true);
-  assert.equal(view.hasReturn, true);
-  assert.equal(view.returnedValue, 200);
+  assert.equal(view.exactReturnExplanation, true);
+  assert.equal(view.evidenceConfidence, 'high');
+  assert.match(view.instruction, /المرتجع/);
+  assert.equal(view.fastAccept, false);
+});
+
+test('surfaces consolidation note as evidence but not as proof', () => {
+  const row = baseRow({
+    financial: { comparable: true, match: false, difference: 200 },
+    app: { id: 'a1', total_value: 800, returned_value: 0, invoice_date: '2026-10-11', notes: 'تم تجميع الفواتير حسب الفاتورة الورقية' },
+    bconnect: { invoice_value: 1000, return_value: 0, date: '2026-10-11' },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, 'explain');
+  assert.equal(view.evidence?.code, 'consolidation_note');
+  assert.equal(view.evidenceConfidence, 'medium');
+  assert.equal(view.fastAccept, false);
 });
 
 test('keeps duplicate invoices in investigate lane', () => {
@@ -51,7 +78,9 @@ test('keeps duplicate invoices in investigate lane', () => {
 
 test('routes missing invoice to register lane', () => {
   const row = baseRow({ status: 'problem', identity: 'missing', app: null, checks: {}, financial: { difference: null } });
-  assert.equal(buildBConnectPurchaseDecision(row).lane, 'register');
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, 'register');
+  assert.equal(view.nextAction, 'register');
 });
 
 test('counts decision lanes for manager summary', () => {
