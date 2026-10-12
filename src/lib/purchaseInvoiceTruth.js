@@ -21,6 +21,17 @@ export function normalizeArabicText(value) {
     .toLowerCase();
 }
 
+const SUPPLIER_NAME_ALIASES = new Map([
+  ["دواء شكري", "دواء ابو العزم"],
+  ["دواء ابو العزم", "دواء ابو العزم"],
+]);
+
+export function normalizeSupplierIdentityKey(value) {
+  const normalized = normalizeArabicText(value);
+  if (!normalized) return null;
+  return SUPPLIER_NAME_ALIASES.get(normalized) || normalized;
+}
+
 export function normalizeBranch(value) {
   const raw = cleanInvoiceText(value);
   const normalized = normalizeArabicText(raw);
@@ -64,7 +75,7 @@ export function canonicalPurchaseInvoice(input = {}, source = "unknown") {
     supplier_invoice_number: normalizeInvoiceNumber(input.supplier_invoice_number),
     supplier_id: cleanInvoiceText(input.supplier_id ?? input.base44_supplier_id) || null,
     supplier_name: cleanInvoiceText(input.supplier_name ?? input.supplier) || null,
-    supplier_name_key: normalizeArabicText(input.supplier_name ?? input.supplier) || null,
+    supplier_name_key: normalizeSupplierIdentityKey(input.supplier_name ?? input.supplier),
     branch: normalizeBranch(input.branch),
     // invoice_date is the business date only. Source timestamps remain separate evidence.
     invoice_date: normalizeDate(input.invoice_date ?? input.date),
