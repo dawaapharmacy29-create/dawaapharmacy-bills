@@ -6,33 +6,62 @@ function parsed(format, rows) {
   return { valid: true, items: rows, warnings: [], meta: { source_format: format } };
 }
 
-test('classifies flat sale to Shamy as Shokry sale', () => {
+test('classifies flat sale to Shamy by stable customer code 10', () => {
+  const result = classifyParsedTransferFile(parsed('flat_transfer_rows', [
+    { product_name: 'A', qty: 1, counterparty: 'دواء فرع الشامي', counterparty_code: '10' },
+  ]));
+  assert.equal(result.sourceKey, 'shokrySale');
+  assert.equal(result.confidence, 'high');
+  assert.equal(result.evidence, 'counterparty_code');
+});
+
+test('classifies flat sale to Abu El Azm by stable customer code 170 even with noisy name', () => {
+  const result = classifyParsedTransferFile(parsed('flat_transfer_rows', [
+    { product_name: 'A', qty: 1, counterparty: 'فرع ابو اااااالعزم', counterparty_code: 170 },
+  ]));
+  assert.equal(result.sourceKey, 'shamySale');
+  assert.equal(result.confidence, 'high');
+});
+
+test('classifies purchase from Shokry by stable supplier code 300', () => {
+  const result = classifyParsedTransferFile(parsed('bconnect_purchase_report', [
+    { product_name: 'A', qty: 1, counterparty: 'دواء ابو العزم', counterparty_code: '300' },
+  ]));
+  assert.equal(result.sourceKey, 'shamyPurchase');
+  assert.equal(result.confidence, 'high');
+});
+
+test('classifies purchase from Shamy by stable supplier code 475', () => {
+  const result = classifyParsedTransferFile(parsed('bconnect_purchase_report', [
+    { product_name: 'A', qty: 1, counterparty: 'دواء الشامي', counterparty_code: 475 },
+  ]));
+  assert.equal(result.sourceKey, 'shokryPurchase');
+  assert.equal(result.confidence, 'high');
+});
+
+test('falls back to branch name when a known counterparty code is unavailable', () => {
   const result = classifyParsedTransferFile(parsed('flat_transfer_rows', [
     { product_name: 'A', qty: 1, counterparty: 'دواء فرع الشامي' },
   ]));
   assert.equal(result.sourceKey, 'shokrySale');
-  assert.equal(result.confidence, 'high');
+  assert.equal(result.confidence, 'medium');
 });
 
-test('classifies flat sale to Abu El Azm as Shamy sale', () => {
+test('fails closed when stable code and branch name contradict each other', () => {
   const result = classifyParsedTransferFile(parsed('flat_transfer_rows', [
-    { product_name: 'A', qty: 1, counterparty: 'فرع ابو اااااالعزم' },
+    { product_name: 'A', qty: 1, counterparty: 'دواء الشامي', counterparty_code: '170' },
   ]));
-  assert.equal(result.sourceKey, 'shamySale');
+  assert.equal(result.sourceKey, null);
+  assert.equal(result.confidence, 'none');
 });
 
-test('classifies purchase supplier Shokry/Abu El Azm as Shamy purchase', () => {
-  const result = classifyParsedTransferFile(parsed('bconnect_purchase_report', [
-    { product_name: 'A', qty: 1, counterparty: 'دواء ابو العزم' },
+test('fails closed when one file mixes stable codes for both branches', () => {
+  const result = classifyParsedTransferFile(parsed('flat_transfer_rows', [
+    { product_name: 'A', qty: 1, counterparty_code: '10' },
+    { product_name: 'B', qty: 1, counterparty_code: '170' },
   ]));
-  assert.equal(result.sourceKey, 'shamyPurchase');
-});
-
-test('classifies purchase supplier Shamy as Shokry purchase', () => {
-  const result = classifyParsedTransferFile(parsed('bconnect_purchase_report', [
-    { product_name: 'A', qty: 1, counterparty: 'دواء الشامي' },
-  ]));
-  assert.equal(result.sourceKey, 'shokryPurchase');
+  assert.equal(result.sourceKey, null);
+  assert.match(result.reason, /متعارضة/);
 });
 
 test('groups multiple files for the same direction and rejects exact duplicate files', () => {
