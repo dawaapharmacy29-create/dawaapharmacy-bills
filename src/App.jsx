@@ -63,6 +63,7 @@ const BranchPerformanceCenter = lazy(() => import('./pages/BranchPerformanceCent
 const SalesPurchasesReport = lazy(() => import('./pages/SalesPurchasesReport'));
 const Base44SyncReview = lazy(() => import('./pages/Base44SyncReview'));
 const BConnectInvoiceReview = lazy(() => import('./pages/BConnectInvoiceReview'));
+const BranchTransferControl = lazy(() => import('./pages/BranchTransferControl'));
 
 function PageLoading() {
   return <div dir="rtl" className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
@@ -90,6 +91,7 @@ const AuthenticatedApp = () => {
     <Route path="/invoices/manage" element={<PurchaseInvoices />} />
     <Route path="/invoices" element={<FastPurchaseInvoices />} />
     <Route path="/invoices/bconnect-review" element={<BConnectInvoiceReview />} />
+    <Route path="/invoices/branch-transfer-control" element={<BranchTransferControl />} />
     <Route path="/suppliers" element={<Suppliers />} />
     <Route path="/expenses" element={<Expenses />} />
     <Route path="/reports" element={<Reports />} />
