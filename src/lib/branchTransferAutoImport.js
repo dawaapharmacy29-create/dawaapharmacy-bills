@@ -1,5 +1,5 @@
-import { parseTransferWorkbook } from './branchTransferShadowParser';
-import { resolveTransferBranch } from './branchTransferControl';
+import { parseTransferWorkbook } from './branchTransferShadowParser.js';
+import { resolveTransferBranch } from './branchTransferControl.js';
 
 export const AUTO_SOURCE_CONFIG = {
   shokrySale: { label: 'بيع شكري → الشامي', side: 'sale', branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي' },
