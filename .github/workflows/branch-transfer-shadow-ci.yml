@@ -1,0 +1,22 @@
+name: Branch Transfer Shadow CI
+
+on:
+  push:
+    branches:
+      - feat/branch-transfer-control-shadow-v1-20261012
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Run tests
+        run: npm test
+      - name: Build application
+        run: npm run build
