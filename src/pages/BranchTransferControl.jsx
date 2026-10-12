@@ -18,6 +18,7 @@ const typeMeta = {
   sale_without_purchase: { label: 'بيع بدون شراء', tone: 'border-rose-200 bg-rose-50 text-rose-800' },
   purchase_without_sale: { label: 'شراء بدون بيع', tone: 'border-rose-200 bg-rose-50 text-rose-800' },
   quantity_mismatch: { label: 'فرق كمية', tone: 'border-amber-200 bg-amber-50 text-amber-800' },
+  unit_conversion_review: { label: 'تحويل وحدة', tone: 'border-sky-200 bg-sky-50 text-sky-800' },
   code_mismatch: { label: 'اختلاف كود', tone: 'border-violet-200 bg-violet-50 text-violet-800' },
   matched: { label: 'مطابق', tone: 'border-emerald-200 bg-emerald-50 text-emerald-800' },
 };
@@ -48,16 +49,17 @@ function CaseBadge({ item }) {
   return <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${meta.tone}`}>{meta.label}</span>;
 }
 
-function SourceUpload({ sourceKey, source, onFile }) {
+function SourceUpload({ sourceKey, source, onFiles }) {
   const config = sourceConfig[sourceKey];
+  const fileLabel = source?.fileNames?.length ? source.fileNames.join(' + ') : 'اختر ملفًا أو أكثر';
   return <label className="group flex min-h-20 cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-3 transition hover:border-teal-400 hover:bg-teal-50/40">
     <div className="min-w-0">
       <div className="text-sm font-black text-slate-800">{config.label}</div>
-      <div className="mt-1 truncate text-xs font-bold text-slate-400">{source?.fileName || 'اختر ملف تفاصيل الأصناف'}</div>
-      {source?.items?.length > 0 && <div className="mt-1 text-[11px] font-black text-emerald-700">{source.items.length} سطر جاهز</div>}
+      <div className="mt-1 truncate text-xs font-bold text-slate-400">{fileLabel}</div>
+      {source?.items?.length > 0 && <div className="mt-1 text-[11px] font-black text-emerald-700">{source.items.length} سطر من {source.fileNames.length} ملف</div>}
     </div>
     <FileSpreadsheet className="h-5 w-5 shrink-0 text-slate-400 group-hover:text-teal-600" />
-    <input className="hidden" type="file" accept=".xlsx,.xls,.csv" onChange={(event) => onFile(sourceKey, event.target.files?.[0])} />
+    <input className="hidden" type="file" multiple accept=".xlsx,.xls,.csv" onChange={(event) => onFiles(sourceKey, Array.from(event.target.files || []))} />
   </label>;
 }
 
@@ -90,20 +92,36 @@ export default function BranchTransferControl() {
   const employees = useMemo(() => employeeTransferStats(decoratedCases), [decoratedCases]);
   const resolvedCount = Object.values(ledger.decisions).filter((decision) => ['verified', 'dismissed'].includes(decision.status)).length;
 
-  const handleFile = async (sourceKey, file) => {
-    if (!file) return;
+  const handleFiles = async (sourceKey, files) => {
+    if (!files?.length) return;
     const config = sourceConfig[sourceKey];
-    try {
-      const result = parseTransferWorkbook(await file.arrayBuffer(), {
-        branch: config.branch,
-        counterparty: config.counterparty,
-        date: todayKey(),
-      });
-      setSources((old) => ({ ...old, [sourceKey]: { ...result, fileName: file.name } }));
-      setMessage(result.valid ? '' : result.warnings.join(' '));
-    } catch (error) {
-      setMessage(`تعذر قراءة ${file.name}: ${error?.message || 'خطأ غير معروف'}`);
+    const results = [];
+    const errors = [];
+    for (const file of files) {
+      try {
+        const result = parseTransferWorkbook(await file.arrayBuffer(), {
+          branch: config.branch,
+          counterparty: config.counterparty,
+          date: todayKey(),
+        });
+        if (result.valid) results.push({ ...result, fileName: file.name });
+        else errors.push(`${file.name}: ${result.warnings.join(' ')}`);
+      } catch (error) {
+        errors.push(`${file.name}: ${error?.message || 'خطأ غير معروف'}`);
+      }
     }
+    const items = results.flatMap((result) => result.items || []);
+    setSources((old) => ({
+      ...old,
+      [sourceKey]: {
+        valid: Boolean(items.length),
+        items,
+        fileNames: results.map((result) => result.fileName),
+        warnings: results.flatMap((result) => result.warnings || []),
+        meta: { files: results.map((result) => ({ fileName: result.fileName, ...result.meta })) },
+      },
+    }));
+    setMessage(errors.join(' '));
   };
 
   const recordDecision = (item, status, action) => {
@@ -150,12 +168,12 @@ export default function BranchTransferControl() {
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <div className="text-sm font-black text-slate-900">مصادر المطابقة</div>
-          <div className="text-xs font-bold text-slate-400">نسخة تجريبية: قراءة فقط، ولا تعدّل B-Connect أو الأرصدة.</div>
+          <div className="text-xs font-bold text-slate-400">ارفع ملفًا أو أكثر لكل اتجاه. القراءة فقط ولا يوجد تعديل على B-Connect أو الأرصدة.</div>
         </div>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-600">4 ملفات كحد أقصى</span>
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-600">يجمع ملفات نفس الاتجاه تلقائيًا</span>
       </div>
       <div className="grid gap-2 md:grid-cols-2">
-        {Object.keys(sourceConfig).map((key) => <SourceUpload key={key} sourceKey={key} source={sources[key]} onFile={handleFile} />)}
+        {Object.keys(sourceConfig).map((key) => <SourceUpload key={key} sourceKey={key} source={sources[key]} onFiles={handleFiles} />)}
       </div>
       {message && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">{message}</div>}
     </Card>}
@@ -185,12 +203,12 @@ export default function BranchTransferControl() {
           <div>
             <div className="flex flex-wrap items-center gap-2"><CaseBadge item={selected} /><span className="text-xs font-black text-slate-400">خطورة {selected.severity}/100</span></div>
             <div className="mt-2 text-xl font-black text-slate-950">{selected.product_name}</div>
-            <div className="mt-1 text-sm font-bold text-slate-500">{transferBranchLabel(selected.from)} ← {transferBranchLabel(selected.to)} · {selected.day_key}</div>
+            <div className="mt-1 text-sm font-bold text-slate-500">{transferBranchLabel(selected.from)} → {transferBranchLabel(selected.to)} · {selected.day_key}</div>
           </div>
           <div className="text-left text-xs font-black text-slate-400">{actionable.findIndex((item) => item.id === selected.id) + 1} / {actionable.length}</div>
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-[1fr_1fr_1.3fr]">
-          <div className="rounded-2xl bg-slate-50 p-3"><div className="text-[11px] font-black text-slate-400">بيع المرسل</div><div className="mt-1 text-2xl font-black text-slate-950">{selected.sale_qty}</div><div className="mt-1 text-xs font-bold text-slate-500">{selected.sale_codes.join('، ') || 'بدون كود'}</div></div>
+          <div className="rounded-2xl bg-slate-50 p-3"><div className="text-[11px] font-black text-slate-400">بيع المرسل</div><div className="mt-1 text-2xl font-black text-slate-950">{selected.sale_qty}</div><div className="mt-1 text-xs font-bold text-slate-500">{selected.sale_units.join('، ') || 'الوحدة غير مسجلة'} · {selected.sale_codes.join('، ') || 'بدون كود'}</div></div>
           <div className="rounded-2xl bg-slate-50 p-3"><div className="text-[11px] font-black text-slate-400">شراء المستلم</div><div className="mt-1 text-2xl font-black text-slate-950">{selected.purchase_qty}</div><div className="mt-1 text-xs font-bold text-slate-500">{selected.purchase_codes.join('، ') || 'بدون كود'}</div></div>
           <div className="rounded-2xl border border-teal-100 bg-teal-50 p-3"><div className="text-[11px] font-black text-teal-700">الخطوة التالية</div><div className="mt-1 text-sm font-black leading-6 text-slate-900">{selected.next_action}</div></div>
         </div>
@@ -221,13 +239,13 @@ export default function BranchTransferControl() {
           <div className="rounded-2xl bg-slate-50 p-3"><div className="text-xs font-black text-slate-500">الشامي</div><div className="mt-1 text-2xl font-black text-slate-950">{branchHealth.shamy}%</div><div className="text-[11px] font-bold text-slate-400">معدل حالات غير مطابقة</div></div>
         </div>
         <div className="mt-3 rounded-2xl border border-slate-100 p-3 text-sm font-bold text-slate-600">
-          أكثر مشكلة الآن: <span className="font-black text-slate-950">{nextType ? typeMeta[nextType]?.label : 'لا يوجد'}</span> · تم إغلاق/استبعاد <span className="font-black text-slate-950">{resolvedCount}</span> حالة في سجل التجربة.
+          أكثر مشكلة الآن: <span className="font-black text-slate-950">{nextType ? typeMeta[nextType]?.label : 'لا يوجد'}</span> · تحويلات وحدة تحتاج تعلم <span className="font-black text-sky-700">{summary.unit_review}</span> · تم إغلاق/استبعاد <span className="font-black text-slate-950">{resolvedCount}</span> حالة.
         </div>
       </Card>
       <Card className="p-4 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-black text-slate-900"><UserRound className="h-4 w-4 text-violet-600" /> تكرار الموظفين</div>
-        {!mostRepeatedEmployee ? <div className="mt-4 rounded-xl bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">لا توجد أخطاء مرتبطة بموظفين في الملفات الحالية.</div> : <>
-          <div className="mt-4 rounded-2xl bg-violet-50 p-3"><div className="text-xs font-black text-violet-700">الأكثر تكرارًا في الحالات الحالية</div><div className="mt-1 text-lg font-black text-slate-950">{mostRepeatedEmployee.name}</div><div className="mt-1 text-xs font-bold text-slate-500">{mostRepeatedEmployee.cases} حالة · بيع {mostRepeatedEmployee.sale_cases} · شراء {mostRepeatedEmployee.purchase_cases}</div></div>
+        {!mostRepeatedEmployee ? <div className="mt-4 rounded-xl bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">لا توجد أخطاء مؤكدة مرتبطة بموظفين في الملفات الحالية.</div> : <>
+          <div className="mt-4 rounded-2xl bg-violet-50 p-3"><div className="text-xs font-black text-violet-700">الأكثر تكرارًا في الأخطاء الحالية</div><div className="mt-1 text-lg font-black text-slate-950">{mostRepeatedEmployee.name}</div><div className="mt-1 text-xs font-bold text-slate-500">{mostRepeatedEmployee.cases} حالة · بيع {mostRepeatedEmployee.sale_cases} · شراء {mostRepeatedEmployee.purchase_cases}</div></div>
           <div className="mt-2 space-y-1">{employees.slice(1, 5).map((employee) => <div key={employee.name} className="flex items-center justify-between rounded-xl px-2 py-2 text-sm"><span className="font-bold text-slate-700">{employee.name}</span><span className="font-black text-slate-950">{employee.cases}</span></div>)}</div>
         </>}
       </Card>
