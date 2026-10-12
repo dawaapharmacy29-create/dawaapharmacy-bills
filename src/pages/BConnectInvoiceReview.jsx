@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, ChevronLeft, CircleDollarSign, FilePlus2, Layers3, Search, ShieldAlert, Upload } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, CircleDollarSign, Layers3, Search, Upload } from 'lucide-react';
 import { performanceApi } from '@/api/base44Client';
 import { bconnectAcceptanceFingerprint, loadBconnectAcceptances, saveBconnectAcceptance } from '@/api/bconnectReviewAcceptanceClient';
 import { Button } from '@/components/ui/button';
@@ -38,17 +38,17 @@ const laneMeta = {
 };
 
 const toneClasses = {
-  emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  amber: 'border-amber-200 bg-amber-50 text-amber-800',
-  rose: 'border-rose-200 bg-rose-50 text-rose-800',
-  sky: 'border-sky-200 bg-sky-50 text-sky-800',
-  slate: 'border-slate-200 bg-slate-50 text-slate-700',
+  emerald: 'border-emerald-100 bg-emerald-50/60 text-emerald-800',
+  amber: 'border-amber-100 bg-amber-50/60 text-amber-800',
+  rose: 'border-rose-100 bg-rose-50/60 text-rose-800',
+  sky: 'border-sky-100 bg-sky-50/60 text-sky-800',
+  slate: 'border-slate-200 bg-slate-50 text-slate-600',
 };
 
 function DecisionBadge({ view, large = false }) {
   const meta = laneMeta[view.lane] || laneMeta.clean;
   return <span className={`inline-flex items-center gap-2 rounded-full border font-black ${toneClasses[meta.tone]} ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-xs'}`}>
-    {meta.label}<span className="opacity-70">{view.confidence?.score ?? 0}%</span>
+    {meta.label}<span className="opacity-60">{view.confidence?.score ?? 0}%</span>
   </span>;
 }
 
@@ -61,8 +61,8 @@ function DecisionFacts({ view, large = false }) {
   if (view.hasReturn && facts.length < 3) facts.push({ text: `مرتجع ${money(view.returnedValue ?? view.sourceReturnValue)} ج`, tone: 'text-sky-700' });
   if (view.hasNote && facts.length < 3) facts.push({ text: 'يوجد ملاحظة', tone: 'text-violet-700' });
   return <div className={`flex flex-wrap gap-2 font-black ${large ? 'text-sm' : 'text-[11px]'}`}>
-    {facts.map((fact) => <span key={fact.text} className={`rounded-full bg-white px-2.5 py-1 ${fact.tone}`}>{fact.text}</span>)}
-    {!facts.length && <span className="rounded-full bg-white px-2.5 py-1 text-slate-400">لا فرق مؤثر</span>}
+    {facts.map((fact) => <span key={fact.text} className={`rounded-full border border-slate-100 bg-slate-50 px-2.5 py-1 ${fact.tone}`}>{fact.text}</span>)}
+    {!facts.length && <span className="rounded-full border border-slate-100 bg-slate-50 px-2.5 py-1 text-slate-400">لا فرق مؤثر</span>}
   </div>;
 }
 
@@ -270,42 +270,42 @@ export default function BConnectInvoiceReview() {
   };
 
   const renderFocus = () => {
-    if (!selectedRow) return <Card className="flex min-h-[420px] items-center justify-center border-dashed"><div className="text-center"><CheckCircle2 className="mx-auto h-10 w-10 text-emerald-400" /><div className="mt-3 text-lg font-black text-slate-700">لا توجد حالات في هذا المسار</div><div className="mt-1 text-xs text-slate-400">غيّر الفلتر أو ابدأ بملف جديد.</div></div></Card>;
+    if (!selectedRow) return <Card className="flex min-h-[360px] items-center justify-center border-slate-200 bg-white"><div className="text-center"><CheckCircle2 className="mx-auto h-9 w-9 text-emerald-500" /><div className="mt-3 text-base font-black text-slate-700">لا توجد حالات في هذا المسار</div><div className="mt-1 text-xs text-slate-400">غيّر الفلتر أو ابدأ بملف جديد.</div></div></Card>;
     const view = buildBConnectPurchaseDecision(selectedRow);
     const branch = normalizeBranch(selectedRow.bconnect?.branch || selectedRow.app?.branch) || 'فرع غير معروف';
     const actionLabel = view.fastAccept ? 'اعتماد وانتقل' : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق' : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'investigate' ? 'فتح التحقيق' : 'فتح التفاصيل';
     const appSupplier = selectedRow.app?.supplier_name || '—';
     const sourceSupplier = selectedRow.bconnect?.supplier || '—';
 
-    return <Card className="overflow-hidden border-slate-200 shadow-sm">
-      <div className="border-b bg-slate-950 px-5 py-4 text-white">
+    return <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 bg-white px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-3"><span className="font-mono text-3xl font-black">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
-            <div className="mt-2 text-xl font-black">{sourceSupplier}</div>
+            <div className="flex items-center gap-3"><span className="font-mono text-3xl font-black text-slate-950">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
+            <div className="mt-2 text-xl font-black text-slate-900">{sourceSupplier}</div>
             <div className="mt-1 text-xs font-bold text-slate-400">{branch}</div>
           </div>
-          <div className="text-left text-xs text-slate-400">{formatArabicDate(selectedRow.bconnect?.date)}</div>
+          <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-left text-xs font-bold text-slate-500">{formatArabicDate(selectedRow.bconnect?.date)}</div>
         </div>
       </div>
 
-      <div className="space-y-5 p-5 md:p-6">
-        <div className="rounded-2xl border bg-slate-50 p-4"><DecisionFacts view={view} large /></div>
+      <div className="space-y-4 p-5 md:p-6">
+        <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3"><DecisionFacts view={view} large /></div>
 
         {view.financialDifference !== null && view.financialDifference !== 0 && <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border p-3"><div className="text-[11px] font-bold text-slate-400">B-Connect</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.bconnectTotal)} ج</div></div>
-          <div className="rounded-xl border p-3"><div className="text-[11px] font-bold text-slate-400">التطبيق</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.appTotal)} ج</div></div>
-          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3"><div className="text-[11px] font-bold text-rose-500">الفرق</div><div className="mt-1 text-xl font-black text-rose-700">{money(Math.abs(view.financialDifference))} ج</div></div>
+          <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[11px] font-bold text-slate-400">B-Connect</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.bconnectTotal)} ج</div></div>
+          <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[11px] font-bold text-slate-400">التطبيق</div><div className="mt-1 text-xl font-black text-slate-900">{money(view.appTotal)} ج</div></div>
+          <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3"><div className="text-[11px] font-bold text-rose-500">الفرق</div><div className="mt-1 text-xl font-black text-rose-700">{money(Math.abs(view.financialDifference))} ج</div></div>
         </div>}
 
-        {(view.supplierMismatch || view.dateMismatch) && <div className="divide-y rounded-2xl border bg-white">
-          {view.supplierMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">المورد</div><div><span className="text-[10px] text-slate-400">B-Connect</span><div className="text-sm font-black">{sourceSupplier}</div></div><div><span className="text-[10px] text-slate-400">التطبيق</span><div className="text-sm font-black">{appSupplier}</div></div></div>}
-          {view.dateMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">التاريخ</div><div className="text-sm font-black">{formatArabicDate(selectedRow.bconnect?.date)}</div><div className="text-sm font-black">{formatArabicDate(selectedRow.app?.invoice_date)}</div></div>}
+        {(view.supplierMismatch || view.dateMismatch) && <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+          {view.supplierMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">المورد</div><div><span className="text-[10px] text-slate-400">B-Connect</span><div className="text-sm font-black text-slate-800">{sourceSupplier}</div></div><div><span className="text-[10px] text-slate-400">التطبيق</span><div className="text-sm font-black text-slate-800">{appSupplier}</div></div></div>}
+          {view.dateMismatch && <div className="grid gap-2 px-4 py-3 md:grid-cols-[100px_1fr_1fr]"><div className="text-xs font-black text-slate-500">التاريخ</div><div className="text-sm font-black text-slate-800">{formatArabicDate(selectedRow.bconnect?.date)}</div><div className="text-sm font-black text-slate-800">{formatArabicDate(selectedRow.app?.invoice_date)}</div></div>}
         </div>}
 
-        <div className="flex flex-wrap items-center gap-2 border-t pt-4">
-          <Button type="button" size="lg" className="min-w-48" disabled={bulkState.running} onClick={() => view.fastAccept ? acceptAsIs(selectedRow) : setReviewRow(selectedRow)}>{actionLabel}</Button>
-          <Button type="button" variant="outline" onClick={() => {
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+          <Button type="button" size="lg" className="min-w-48 bg-teal-700 text-white hover:bg-teal-800" disabled={bulkState.running} onClick={() => view.fastAccept ? acceptAsIs(selectedRow) : setReviewRow(selectedRow)}>{actionLabel}</Button>
+          <Button type="button" variant="outline" className="border-slate-200 text-slate-600" onClick={() => {
             const index = queueRows.findIndex((row) => rowKey(row) === rowKey(selectedRow));
             const next = queueRows[index + 1] || queueRows[index - 1];
             if (next) setSelectedKey(rowKey(next));
@@ -315,42 +315,47 @@ export default function BConnectInvoiceReview() {
     </Card>;
   };
 
-  return <div dir="rtl" className="space-y-4 p-3 md:p-5">
+  return <div dir="rtl" className="min-h-full space-y-3 bg-slate-50/40 p-3 md:p-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-2xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-1 text-xs font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}</div>
-      <div className="flex items-center gap-2"><Button asChild variant="outline" size="sm"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-md bg-slate-950 px-3 text-xs font-black text-white hover:bg-slate-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'ملف جديد' : 'اختيار ملف'}<input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label></div>
+      <div className="flex items-center gap-2"><Button asChild variant="outline" size="sm" className="border-slate-200 bg-white"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-md bg-teal-700 px-3 text-xs font-black text-white hover:bg-teal-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'ملف جديد' : 'اختيار ملف'}<input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label></div>
     </div>
 
-    {state.loading && <Card className="p-5 text-center text-sm font-bold text-slate-600">جاري تحليل الملف...</Card>}
-    {state.error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{state.error}</div>}
+    {state.loading && <Card className="border-slate-200 bg-white p-5 text-center text-sm font-bold text-slate-600">جاري تحليل الملف...</Card>}
+    {state.error && <div className="rounded-xl border border-rose-100 bg-rose-50/60 px-4 py-3 text-sm font-bold text-rose-700">{state.error}</div>}
 
     {!!state.rows.length && <>
-      <div className="grid gap-3 md:grid-cols-4">
-        <Card className="border-emerald-200 bg-emerald-50 p-4"><div className="text-xs font-black text-emerald-700">اعتماد جماعي آمن</div><div className="mt-1 text-3xl font-black text-emerald-950">{safeBulkRows.length}</div><div className="mt-1 text-[11px] font-bold text-emerald-700">من أصل {counts.approve} حالة اعتماد</div><Button type="button" className="mt-3 w-full" disabled={!safeBulkRows.length || bulkState.running} onClick={acceptAllSafe}>{bulkState.running && bulkState.key === 'all_safe' ? 'جاري الاعتماد...' : safeBulkRows.length ? `اعتماد الـ${safeBulkRows.length}` : 'لا يوجد'}</Button></Card>
-        <Card className="p-4"><div className="text-xs font-black text-slate-500">اعتماد فردي</div><div className="mt-1 text-3xl font-black text-slate-950">{individualApproveCount}</div><button type="button" className="mt-3 text-xs font-black text-slate-700 underline underline-offset-4" onClick={() => setQueueFilter('approve')}>فتح المسار</button></Card>
-        <Card className="border-amber-200 bg-amber-50 p-4"><div className="text-xs font-black text-amber-700">تحتاج قرار</div><div className="mt-1 text-3xl font-black text-amber-950">{counts.needs}</div><button type="button" className="mt-3 text-xs font-black text-amber-800 underline underline-offset-4" onClick={() => setQueueFilter('needs')}>ابدأ المراجعة</button></Card>
-        <Card className="border-rose-200 bg-rose-50 p-4"><div className="text-xs font-black text-rose-700">تحقيق</div><div className="mt-1 text-3xl font-black text-rose-950">{counts.investigate}</div><div className="mt-3 text-[11px] font-bold text-rose-600">مكتمل: {counts.done}</div></Card>
-      </div>
-
-      {bulkState.message && <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700">{bulkState.message}</div>}
-
-      {decisionGroups.length > 0 && <div className="flex justify-end"><button type="button" onClick={() => setShowBulkGroups((old) => !old)} className="text-xs font-black text-slate-600 hover:text-slate-950"><Layers3 className="ml-1 inline h-4 w-4" />{showBulkGroups ? 'إخفاء تفاصيل الاعتماد الجماعي' : `مراجعة مجموعات الاعتماد (${decisionGroups.length})`}</button></div>}
-
-      {showBulkGroups && <Card className="overflow-hidden"><div className="divide-y">{decisionGroups.map((group) => <div key={group.key} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><div className="text-sm font-black">{group.rows.length} فاتورة · {group.description}</div><div className="mt-0.5 text-[11px] text-slate-400">{group.branch}</div></div><Button type="button" size="sm" variant="outline" disabled={bulkState.running} onClick={() => acceptGroup(group)}>{`اعتماد ${group.rows.length}`}</Button></div>)}</div></Card>}
-
-      <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-        <Card className="overflow-hidden border-slate-200 lg:sticky lg:top-3 lg:self-start">
-          <div className="border-b bg-white p-3">
-            <div className="flex items-center justify-between"><div><div className="text-sm font-black text-slate-900">طابور القرار</div><div className="text-[11px] font-bold text-slate-400">{queueRows.length} حالة ظاهرة</div></div><CircleDollarSign className="h-5 w-5 text-slate-400" /></div>
-            <div className="mt-3 grid grid-cols-4 gap-1 text-[10px] font-black">
-              {[['actionable','المهم'],['needs','قرار'],['approve','اعتماد'],['investigate','تحقيق']].map(([key,label]) => <button key={key} type="button" onClick={() => { setQueueFilter(key); setSelectedKey(''); }} className={`rounded-lg px-2 py-2 ${queueFilter === key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600'}`}>{label}</button>)}
-            </div>
-            <div className="mt-2 flex gap-2"><label className="relative flex-1"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="بحث" className="h-9 w-full rounded-lg border pr-8 pl-2 text-xs" /></label><select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-9 max-w-28 rounded-lg border bg-white px-2 text-xs font-bold"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select></div>
+      <Card className="overflow-hidden border-slate-200 bg-white shadow-none">
+        <div className="grid divide-y divide-slate-100 md:grid-cols-4 md:divide-x md:divide-x-reverse md:divide-y-0">
+          <div className="p-4">
+            <div className="text-[11px] font-black text-slate-500">اعتماد جماعي آمن</div>
+            <div className="mt-1 flex items-end justify-between gap-3"><div><div className="text-3xl font-black text-emerald-700">{safeBulkRows.length}</div><div className="mt-0.5 text-[10px] font-bold text-slate-400">من {counts.approve} حالة اعتماد</div></div><Button type="button" size="sm" className="bg-teal-700 text-white hover:bg-teal-800" disabled={!safeBulkRows.length || bulkState.running} onClick={acceptAllSafe}>{bulkState.running && bulkState.key === 'all_safe' ? 'جاري...' : safeBulkRows.length ? `اعتماد ${safeBulkRows.length}` : 'لا يوجد'}</Button></div>
           </div>
-          <div className="max-h-[620px] overflow-y-auto divide-y">{queueRows.map((row) => {
+          <button type="button" onClick={() => setQueueFilter('approve')} className="p-4 text-right transition hover:bg-slate-50"><div className="text-[11px] font-black text-slate-500">اعتماد فردي</div><div className="mt-1 text-3xl font-black text-slate-800">{individualApproveCount}</div></button>
+          <button type="button" onClick={() => setQueueFilter('needs')} className="p-4 text-right transition hover:bg-slate-50"><div className="text-[11px] font-black text-slate-500">تحتاج قرار</div><div className="mt-1 text-3xl font-black text-amber-700">{counts.needs}</div></button>
+          <button type="button" onClick={() => setQueueFilter('investigate')} className="p-4 text-right transition hover:bg-slate-50"><div className="text-[11px] font-black text-slate-500">تحقيق</div><div className="mt-1 text-3xl font-black text-rose-700">{counts.investigate}</div><div className="mt-0.5 text-[10px] font-bold text-slate-400">مكتمل {counts.done}</div></button>
+        </div>
+      </Card>
+
+      {bulkState.message && <div className="rounded-lg border border-slate-100 bg-white px-4 py-2 text-xs font-bold text-slate-600">{bulkState.message}</div>}
+
+      {decisionGroups.length > 0 && <div className="flex justify-end"><button type="button" onClick={() => setShowBulkGroups((old) => !old)} className="text-xs font-black text-slate-500 transition hover:text-slate-800"><Layers3 className="ml-1 inline h-4 w-4" />{showBulkGroups ? 'إخفاء تفاصيل الاعتماد الجماعي' : `مراجعة مجموعات الاعتماد (${decisionGroups.length})`}</button></div>}
+
+      {showBulkGroups && <Card className="overflow-hidden border-slate-200 bg-white shadow-none"><div className="divide-y divide-slate-100">{decisionGroups.map((group) => <div key={group.key} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="min-w-0 flex-1"><div className="text-sm font-black text-slate-800">{group.rows.length} فاتورة · {group.description}</div><div className="mt-0.5 text-[11px] text-slate-400">{group.branch}</div></div><Button type="button" size="sm" variant="outline" className="border-slate-200 text-teal-700" disabled={bulkState.running} onClick={() => acceptGroup(group)}>{`اعتماد ${group.rows.length}`}</Button></div>)}</div></Card>}
+
+      <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="overflow-hidden border-slate-200 bg-white shadow-none lg:sticky lg:top-3 lg:self-start">
+          <div className="border-b border-slate-100 bg-white p-3">
+            <div className="flex items-center justify-between"><div><div className="text-sm font-black text-slate-900">طابور القرار</div><div className="text-[11px] font-bold text-slate-400">{queueRows.length} حالة ظاهرة</div></div><CircleDollarSign className="h-5 w-5 text-slate-300" /></div>
+            <div className="mt-3 grid grid-cols-4 gap-1 text-[10px] font-black">
+              {[['actionable','المهم'],['needs','قرار'],['approve','اعتماد'],['investigate','تحقيق']].map(([key,label]) => <button key={key} type="button" onClick={() => { setQueueFilter(key); setSelectedKey(''); }} className={`rounded-lg px-2 py-2 transition ${queueFilter === key ? 'bg-teal-50 text-teal-800 ring-1 ring-teal-200' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{label}</button>)}
+            </div>
+            <div className="mt-2 flex gap-2"><label className="relative flex-1"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="بحث" className="h-9 w-full rounded-lg border border-slate-200 bg-white pr-8 pl-2 text-xs outline-none focus:border-teal-300" /></label><select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-9 max-w-28 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-600"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select></div>
+          </div>
+          <div className="max-h-[620px] divide-y divide-slate-100 overflow-y-auto">{queueRows.map((row) => {
             const view = buildBConnectPurchaseDecision(row);
             const active = selectedRow && rowKey(selectedRow) === rowKey(row);
-            return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full px-3 py-3 text-right transition ${active ? 'bg-slate-950 text-white' : 'bg-white hover:bg-slate-50'}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="font-mono text-sm font-black">{row.number}</div><div className={`mt-1 truncate text-xs font-black ${active ? 'text-white' : 'text-slate-800'}`}>{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div></div><DecisionBadge view={view} /></div><div className={`mt-2 ${active ? '[&_span]:bg-white/10' : ''}`}><DecisionFacts view={view} /></div></button>;
+            return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full border-r-2 px-3 py-3 text-right transition ${active ? 'border-teal-500 bg-teal-50/60' : 'border-transparent bg-white hover:bg-slate-50'}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="font-mono text-sm font-black text-slate-900">{row.number}</div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div></div><DecisionBadge view={view} /></div><div className="mt-2"><DecisionFacts view={view} /></div></button>;
           })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
         </Card>
 
@@ -358,7 +363,7 @@ export default function BConnectInvoiceReview() {
       </div>
     </>}
 
-    {!state.rows.length && !state.loading && <Card className="border-dashed p-14 text-center"><Upload className="mx-auto h-9 w-9 text-slate-300" /><div className="mt-3 text-lg font-black text-slate-800">ارفع ملف B-Connect</div><div className="mt-1 text-xs text-slate-400">هتظهر أمامك القرارات المهمة مباشرة، بدون جدول مزدحم.</div></Card>}
+    {!state.rows.length && !state.loading && <Card className="border-slate-200 bg-white p-14 text-center shadow-none"><Upload className="mx-auto h-9 w-9 text-slate-300" /><div className="mt-3 text-lg font-black text-slate-800">ارفع ملف B-Connect</div><div className="mt-1 text-xs text-slate-400">هتظهر أمامك القرارات المهمة مباشرة، بدون جدول مزدحم.</div></Card>}
 
     <BConnectReviewModal row={reviewRow} onClose={() => setReviewRow(null)} onMarkReviewed={markReviewed} onAcceptAsIs={acceptAsIs} onVerifiedSave={verifiedSave} />
   </div>;
