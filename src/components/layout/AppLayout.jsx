@@ -37,6 +37,7 @@ const navGroups = [
         { path: "/invoice-center", label: "مركز الفواتير", icon: Layers3 },
         { path: "/invoices/new", label: "فاتورة جديدة", icon: FilePlus2 },
         { path: "/invoices/bconnect-review", label: "مراجعة بي كونكت", icon: FileSearch },
+        { path: "/invoices/branch-transfer-control", label: "مطابقة تحويلات الفروع", icon: ArrowLeftRight },
         { path: "/pending-invoices", label: "فواتير تنتظر المراجعة", icon: ClipboardList, badgeKey: "invoices" },
       ]},
       { label: "الطلبية والاستلام", items: [
@@ -135,9 +136,9 @@ const quickLinks = [
   { path: "/", label: "الرئيسية", icon: LayoutDashboard },
   { path: "/invoice-center", label: "مركز الفواتير", icon: Layers3 },
   { path: "/invoices/bconnect-review", label: "مراجعة بي كونكت", icon: FileSearch },
+  { path: "/invoices/branch-transfer-control", label: "تحويلات الفروع", icon: ArrowLeftRight },
   { path: "/invoices/new", label: "فاتورة جديدة", icon: FilePlus2 },
   { path: "/purchase-center", label: "مركز الطلبية", icon: Zap },
-  { path: "/shift-delivery", label: "تسليم الشيفت", icon: Clock },
 ];
 
 function BrandHeader({ compact = false }) {
