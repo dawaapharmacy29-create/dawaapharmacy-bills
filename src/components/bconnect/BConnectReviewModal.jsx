@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ShieldCheck, Sparkles, X, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ShieldCheck, Sparkles, X, XCircle } from 'lucide-react';
 import { base44, performanceApi } from '@/api/base44Client';
 import { bconnectAtomicCreate } from '@/api/bconnectAtomicCreateClient';
 import { Button } from '@/components/ui/button';
@@ -35,26 +35,26 @@ function formatArabicDate(value) {
   const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return value || '—';
   const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-  return new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date);
+  return new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date);
 }
 
 function writeErrorText(error) {
   const code = String(error?.message || error || '');
   const map = {
-    stale_revision: 'الفاتورة اتعدلت من مكان آخر. أعد رفع الملف أو افتحها من جديد قبل الحفظ.',
-    legacy_identity_collision: 'الحفظ محجوب لأن رقم الفاتورة مكرر داخل نفس الفرع. يلزم تحقيق يدوي.',
-    invoice_already_exists: 'الفاتورة اتسجلت بالفعل في نفس الفرع. أعد رفع ملف B-Connect لمراجعة النسخة الحالية.',
+    stale_revision: 'الفاتورة اتعدلت من مكان آخر. أعد فتحها قبل الحفظ.',
+    legacy_identity_collision: 'رقم الفاتورة مكرر داخل نفس الفرع؛ يلزم تحقيق يدوي.',
+    invoice_already_exists: 'الفاتورة اتسجلت بالفعل في نفس الفرع. أعد رفع الملف.',
     invalid_payment_type: 'اختر طريقة الدفع: آجل أو كاش.',
-    forbidden: 'صلاحيتك الحالية لا تسمح بتنفيذ هذه العملية.',
-    forbidden_edit: 'صلاحيتك الحالية لا تسمح بتعديل هذه الفاتورة في حالتها الحالية.',
-    forbidden_branch: 'صلاحيتك لا تشمل فرع هذه الفاتورة.',
-    invalid_supplier: 'المورد غير مؤكد في سجل الموردين. اختر موردًا مسجلًا ثم أعد المحاولة.',
-    source_review_required: 'مصدر الفاتورة يحتاج مراجعة قبل السماح بالتعديل.',
-    identity_change_forbidden: 'رقم الفاتورة والفرع ثابتان ولا يمكن تغيير هوية الفاتورة.',
-    invalid_invoice: 'راجع التاريخ والإجمالي والمرتجع والنقدي قبل الحفظ.',
+    forbidden: 'صلاحيتك الحالية لا تسمح بهذه العملية.',
+    forbidden_edit: 'صلاحيتك الحالية لا تسمح بتعديل هذه الفاتورة.',
+    forbidden_branch: 'صلاحيتك لا تشمل هذا الفرع.',
+    invalid_supplier: 'اختر موردًا مسجلًا ومؤكدًا.',
+    source_review_required: 'مصدر الفاتورة يحتاج مراجعة قبل التعديل.',
+    identity_change_forbidden: 'رقم الفاتورة والفرع ثابتان ولا يمكن تغييرهما.',
+    invalid_invoice: 'راجع التاريخ والإجمالي والمرتجع والنقدي.',
     invalid_request: 'بيانات الحفظ غير مكتملة أو غير صالحة.',
     invalid_session: 'انتهت جلسة الدخول. سجل الدخول مرة أخرى.',
-    idempotency_conflict: 'تم اكتشاف تعارض في محاولة الحفظ. أعد فتح الفاتورة.',
+    idempotency_conflict: 'حدث تعارض أثناء الحفظ. أعد فتح الفاتورة.',
     empty_edit_patch: 'لا يوجد تعديل جديد للحفظ.',
   };
   return map[code] || code || 'تعذر حفظ الفاتورة.';
@@ -64,9 +64,9 @@ function StatusBadge({ row }) {
   const decision = classifyBConnectReviewRow(row);
   const Icon = icons[row.status] || AlertTriangle;
   const special = decision.code === 'missing'
-    ? { label: 'ناقصة للتسجيل', style: 'bg-sky-50 text-sky-700 border-sky-200' }
+    ? { label: 'ناقصة', style: 'bg-sky-50 text-sky-700 border-sky-200' }
     : decision.code === 'duplicate'
-      ? { label: 'تكرار — تحقيق يدوي', style: 'bg-rose-50 text-rose-700 border-rose-200' }
+      ? { label: 'تكرار', style: 'bg-rose-50 text-rose-700 border-rose-200' }
       : decision.code === 'blocked'
         ? { label: 'محجوبة', style: 'bg-slate-100 text-slate-700 border-slate-300' }
         : null;
@@ -87,20 +87,16 @@ function CompareValue({ label, source, current, moneyValue = false, normalize, d
   const normalizedCurrent = currentKnown ? (normalize ? normalize(current) : current) : null;
   const comparable = comparison ? comparison !== 'unknown' : sourceKnown && currentKnown && normalizedSource !== null && normalizedCurrent !== null;
   const same = comparison ? comparison === 'match' : comparable && String(normalizedSource) === String(normalizedCurrent);
-  const tone = !comparable ? 'border-slate-200 bg-slate-50/60' : same ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/50';
   const format = (value, known) => {
     if (!known) return 'غير متاح';
     if (display) return display(value);
     if (moneyValue) return money(value) === '—' ? 'غير متاح' : `${money(value)} ج`;
     return value || 'غير متاح';
   };
-  const displayDiffers = sourceKnown && currentKnown && String(format(source, true)) !== String(format(current, true));
-  return <div className={`grid gap-2 rounded-xl border p-3 md:grid-cols-[140px_1fr_1fr] ${tone}`}>
-    <div className="font-bold text-slate-700">{label}</div>
-    <div><div className="text-[11px] text-slate-400">B-Connect</div><div className="mt-1 break-words font-medium">{format(source, sourceKnown)}</div></div>
-    <div><div className="text-[11px] text-slate-400">المسجل في التطبيق</div><div className="mt-1 break-words font-medium">{format(current, currentKnown)}</div></div>
-    {!comparable && <div className="md:col-start-2 md:col-span-2 text-[11px] text-slate-500">لا يُعتبر اختلافًا مؤكدًا لأن القيمة غير متاحة في أحد المصدرين.</div>}
-    {comparison === 'match' && displayDiffers && <div className="md:col-start-2 md:col-span-2 text-[11px] text-teal-700">مطابق حسب هوية/تطبيع البيانات المعتمد، حتى لو اختلف شكل النص الظاهر.</div>}
+  return <div className={`grid gap-2 rounded-xl border px-3 py-2.5 md:grid-cols-[110px_1fr_1fr] ${!comparable ? 'border-slate-200 bg-slate-50' : same ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
+    <div className="text-xs font-black text-slate-700">{label}</div>
+    <div><div className="text-[10px] text-slate-400">B-Connect</div><div className="mt-0.5 break-words text-sm font-bold">{format(source, sourceKnown)}</div></div>
+    <div><div className="text-[10px] text-slate-400">التطبيق</div><div className="mt-0.5 break-words text-sm font-bold">{format(current, currentKnown)}</div></div>
   </div>;
 }
 
@@ -139,6 +135,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
   const [suppliers, setSuppliers] = useState([]);
   const [supplierError, setSupplierError] = useState('');
   const [saveState, setSaveState] = useState({ saving: false, error: '', success: '' });
+  const [showAllDetails, setShowAllDetails] = useState(false);
 
   useEffect(() => {
     if (!row) return;
@@ -156,6 +153,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
       notes: app.notes || '',
     });
     setSaveState({ saving: false, error: '', success: '' });
+    setShowAllDetails(false);
   }, [row]);
 
   useEffect(() => {
@@ -188,24 +186,36 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
     : suppliers;
   const fieldsDisabled = blocked || readOnly || saveState.saving;
   const changedPatch = buildChangedPatch(app, draft);
-  const hasChanges = Object.keys(changedPatch).length > 0;
+  const changedCount = Object.keys(changedPatch).length;
+  const hasChanges = changedCount > 0;
   const canSave = !isCreate && !fieldsDisabled && !!app.id && hasRevision && hasChanges && !!draft.supplier_id && !!draft.supplier_name;
   const createMissingRequirements = isCreate ? [
-    !draft.supplier_id || !draft.supplier_name ? 'اختر المورد المسجل' : null,
-    !draft.invoice_date ? 'حدد تاريخ الفاتورة' : null,
-    draft.total_value === '' ? 'راجع إجمالي الفاتورة' : null,
-    !['كاش', 'آجل'].includes(draft.payment_type) ? 'اختر طريقة الدفع: آجل أو كاش' : null,
+    !draft.supplier_id || !draft.supplier_name ? 'اختر المورد' : null,
+    !draft.invoice_date ? 'حدد التاريخ' : null,
+    draft.total_value === '' ? 'راجع الإجمالي' : null,
+    !['كاش', 'آجل'].includes(draft.payment_type) ? 'اختر طريقة الدفع' : null,
   ].filter(Boolean) : [];
   const canCreate = isCreate && !blocked && !saveState.saving && createMissingRequirements.length === 0;
-  const canAcceptAsIs = !blocked
-    && !readOnly
-    && !isCreate
-    && !!app.id
-    && row.status === 'review'
-    && row.checks?.branch === 'match'
-    && row.financial?.comparable === true
-    && row.financial?.match === true;
-  const modeLabel = readOnly ? 'عرض التفاصيل فقط' : isCreate ? 'تسجيل فاتورة ناقصة بأمان' : blocked ? 'عرض وتحقيق فقط' : 'مراجعة وتعديل وحفظ آمن';
+  const canAcceptAsIs = decisionView.fastAccept === true && !blocked && !readOnly && !isCreate && !!app.id;
+
+  const sourceReturn = normalizedMoneyOrNull(source.return_value);
+  const appReturn = normalizedMoneyOrNull(app.returned_value);
+  const returnMismatch = sourceReturn !== null && appReturn !== null && sourceReturn !== appReturn;
+  const financialMismatch = decisionView.financialDifference !== null && decisionView.financialDifference !== 0;
+
+  const showBranchCompare = showAllDetails || blocked || row.checks?.branch !== 'match';
+  const showSupplierCompare = showAllDetails || decisionView.supplierMismatch;
+  const showDateCompare = showAllDetails || decisionView.dateMismatch;
+  const showTotalCompare = showAllDetails || financialMismatch;
+  const showReturnCompare = showAllDetails || returnMismatch || decisionView.hasReturn;
+  const hasFocusedDifference = showBranchCompare || showSupplierCompare || showDateCompare || showTotalCompare || showReturnCompare;
+
+  const showSupplierEditor = isCreate || showAllDetails || decisionView.supplierMismatch;
+  const showDateEditor = isCreate || showAllDetails || decisionView.dateMismatch;
+  const showTotalEditor = isCreate || showAllDetails || financialMismatch;
+  const showReturnEditor = isCreate || showAllDetails || returnMismatch || decisionView.hasReturn;
+  const showPaymentEditor = isCreate || showAllDetails;
+  const showNotesEditor = isCreate || showAllDetails || decisionView.hasNote;
 
   const chooseSupplier = (supplierId) => {
     const supplier = supplierChoices.find((item) => String(item.id) === String(supplierId));
@@ -220,7 +230,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
       total_value: source.invoice_value !== null && source.invoice_value !== undefined ? fieldText(source.invoice_value) : old.total_value,
       returned_value: source.return_value !== null && source.return_value !== undefined ? fieldText(source.return_value) : old.returned_value,
     }));
-    setSaveState({ saving: false, error: '', success: 'تم تجهيز قيم B-Connect القابلة للتعديل. راجع زر الحفظ فقط.' });
+    setSaveState({ saving: false, error: '', success: 'تم تجهيز قيم B-Connect. لو مناسبة اضغط حفظ.' });
   };
 
   const restoreAppValues = () => {
@@ -275,7 +285,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
       if (!result?.ok || !Number.isSafeInteger(Number(result.revision))) throw new Error('تعذر تأكيد نتيجة الحفظ.');
       const refreshedApp = await verifyReadback({ invoiceId: app.id, expectedRevision: result.revision, branch });
       applyVerifiedRow(refreshedApp);
-      setSaveState({ saving: false, error: '', success: 'تم حفظ الحقول التي عدّلتها فقط، والتحقق منها بإعادة قراءة الفاتورة من قاعدة البيانات.' });
+      setSaveState({ saving: false, error: '', success: 'تم الحفظ والتحقق.' });
     } catch (error) {
       setSaveState({ saving: false, error: writeErrorText(error), success: '' });
     }
@@ -291,92 +301,96 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
       if (!result?.ok || !result.invoice_id || !Number.isSafeInteger(Number(result.revision))) throw new Error('تعذر تأكيد نتيجة التسجيل.');
       const refreshedApp = await verifyReadback({ invoiceId: result.invoice_id, expectedRevision: result.revision, branch });
       applyVerifiedRow(refreshedApp);
-      setSaveState({ saving: false, error: '', success: 'تم تسجيل الفاتورة والتحقق منها بإعادة قراءتها من قاعدة البيانات.' });
+      setSaveState({ saving: false, error: '', success: 'تم التسجيل والتحقق.' });
     } catch (error) {
       setSaveState({ saving: false, error: writeErrorText(error), success: '' });
     }
   };
 
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/40 p-3 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget && !saveState.saving) onClose(); }}>
-    <div dir="rtl" className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border bg-white shadow-2xl">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-slate-50 px-5 py-4 md:px-7">
-        <div><div className="flex flex-wrap items-center gap-2"><h2 className="text-xl font-black">مراجعة الفاتورة {row.number}</h2><StatusBadge row={row} /></div><p className="mt-1 text-sm text-slate-500">{normalizeBranch(source.branch || app.branch) || 'فرع غير معروف'} — {modeLabel}</p></div>
-        <Button type="button" variant="outline" size="sm" disabled={saveState.saving} onClick={onClose}><X className="ml-1 h-4 w-4" />إغلاق</Button>
+  return <div className="fixed inset-0 z-[100] flex justify-end bg-slate-950/35 backdrop-blur-[1px]" onMouseDown={(event) => { if (event.target === event.currentTarget && !saveState.saving) onClose(); }}>
+    <div dir="rtl" className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-r bg-white shadow-2xl">
+      <div className="flex items-center justify-between gap-3 border-b bg-white px-4 py-3 md:px-5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-black">فاتورة {row.number}</h2><StatusBadge row={row} /><span className="text-xs font-bold text-slate-500">{normalizeBranch(source.branch || app.branch) || 'فرع غير معروف'}</span></div>
+        </div>
+        <Button type="button" variant="ghost" size="sm" disabled={saveState.saving} onClick={onClose}><X className="h-4 w-4" /></Button>
       </div>
-      <div className="overflow-y-auto px-5 py-5 md:px-7">
-        <div className="mb-4 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+
+      <div className="overflow-y-auto p-4 md:p-5">
+        <div className={`rounded-2xl border p-3 ${decisionView.confidence?.code === 'blocked' || decisionView.confidence?.code === 'low' ? 'border-rose-200 bg-rose-50/60' : decisionView.confidence?.code === 'high_explanation' || decisionView.confidence?.code === 'medium' ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4 text-teal-700" /><span className="font-black text-teal-950">القرار الذكي: {decisionView.label}</span><span className="rounded-full border border-teal-200 bg-white px-2 py-1 text-[11px] font-black text-teal-700">{decisionView.confidence?.label || 'ثقة غير محددة'}{Number.isFinite(decisionView.confidence?.score) ? ` — ${decisionView.confidence.score}%` : ''}</span></div>
-              <div className="mt-2 text-sm font-bold text-slate-800">{decisionView.instruction}</div>
-              {decisionView.evidence?.label && <div className="mt-1 text-xs text-slate-600">الدليل الأقوى: <strong>{decisionView.evidence.label}</strong></div>}
-              <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold">
-                {decisionView.financialDifference !== null && decisionView.financialDifference !== 0 && <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700">فرق مالي {money(Math.abs(decisionView.financialDifference))} ج</span>}
-                {decisionView.supplierMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">مورد مختلف</span>}
-                {decisionView.dateMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">فرق تاريخ {decisionView.dateDifferenceDays == null ? 'غير محدد' : `${Math.abs(decisionView.dateDifferenceDays)} يوم`}</span>}
-                {decisionView.hasNote && <span className="rounded-full bg-violet-100 px-2 py-1 text-violet-700">ملاحظة موجودة</span>}
-                {decisionView.hasReturn && <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700">يوجد مرتجع</span>}
+              <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
+              <div className="mt-1 text-sm font-bold text-slate-700">{decisionView.instruction}</div>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold">
+                {financialMismatch && <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700">فرق {money(Math.abs(decisionView.financialDifference))} ج</span>}
+                {decisionView.supplierMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">مورد</span>}
+                {decisionView.dateMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">تاريخ {decisionView.dateDifferenceDays == null ? '' : `${Math.abs(decisionView.dateDifferenceDays)} يوم`}</span>}
+                {decisionView.evidence?.label && <span className="rounded-full bg-white px-2 py-1 text-slate-700">{decisionView.evidence.label}</span>}
+                {decisionView.hasNote && <span className="rounded-full bg-violet-100 px-2 py-1 text-violet-700">ملاحظة</span>}
+                {decisionView.hasReturn && <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-700">مرتجع</span>}
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {canAcceptAsIs && <Button type="button" size="sm" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد القرار الآن</Button>}
-              {!isCreate && !blocked && !readOnly && !canAcceptAsIs && <Button type="button" size="sm" variant="outline" disabled={saveState.saving} onClick={applySourceValues}>جهّز قيم B-Connect</Button>}
-              {!isCreate && hasChanges && <Button type="button" size="sm" variant="ghost" disabled={saveState.saving} onClick={restoreAppValues}>إلغاء التعديلات</Button>}
+              {canAcceptAsIs && <Button type="button" size="sm" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الآن</Button>}
+              {!isCreate && !blocked && !readOnly && !canAcceptAsIs && <Button type="button" size="sm" variant="outline" disabled={saveState.saving} onClick={applySourceValues}>جهّز التصحيح</Button>}
+              {hasChanges && !isCreate && <Button type="button" size="sm" variant="ghost" disabled={saveState.saving} onClick={restoreAppValues}>تراجع</Button>}
             </div>
           </div>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-          <section className="space-y-3">
-            <div className="flex items-center justify-between gap-2"><h3 className="font-black">المقارنة</h3><span className="text-xs text-slate-400">الاختلافات المؤكدة فقط تحتاج قرارًا</span></div>
-            <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} comparison={row.checks?.branch} />
-            <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} comparison={supplierComparison} />
-            <CompareValue label="المستخدم" source={source.user} current={appEnteredBy} normalize={normalizeUserName} />
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] leading-5 text-slate-500">مقارنة المستخدم للمراجعة فقط؛ لا تغيّر تصنيف الفاتورة ولا تحفظ اسم مستخدم B-Connect تلقائيًا.</div>
-            <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} comparison={row.checks?.invoice_date} />
-            <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : 'mismatch') : 'unknown'} />
-            <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-950"><div className="font-black">سبب المراجعة</div><div>{(row.reasons || []).join(' — ') || 'لا توجد اختلافات مسجلة.'}</div></div>
-            {canAcceptAsIs && <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs leading-6 text-teal-900">رقم الفاتورة والفرع والقيمة المالية متطابقون. يمكنك اعتماد اختلاف التاريخ أو المورد كما هو بدون تعديل بيانات التطبيق.</div>}
-          </section>
-          <section className="rounded-2xl border bg-slate-50/70 p-4 md:p-5">
-            <div className="mb-4 flex items-center justify-between gap-2"><div><h3 className="font-black">{isCreate ? 'بيانات تسجيل الفاتورة' : 'البيانات المسجلة'}</h3><p className="mt-1 text-xs text-slate-500">{isCreate ? 'راجع المورد وطريقة الدفع قبل التسجيل. رقم الفاتورة والفرع ثابتان.' : readOnly ? 'هذه الفاتورة سليمة؛ البيانات للعرض فقط.' : 'رقم الفاتورة والفرع ثابتان، ولا يُحفظ إلا الحقل الذي عدّلته.'}</p></div><ShieldCheck className="h-5 w-5 text-teal-600" /></div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">رقم الفاتورة</span><input disabled value={row.number || ''} className="h-10 w-full rounded-xl border bg-slate-100 px-3 text-sm font-bold text-slate-500" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">الفرع</span><input disabled value={normalizeBranch(source.branch || app.branch) || ''} className="h-10 w-full rounded-xl border bg-slate-100 px-3 text-sm font-bold text-slate-500" /></label>
-              <div className="sm:col-span-2 rounded-xl border bg-white p-3">
-                <div className="text-xs font-bold text-slate-600">المورد المسجل</div>
-                {blocked || readOnly ? <div className="mt-1 font-bold">{app.supplier_name || source.supplier || 'غير محدد'}</div> : <select value={draft.supplier_id || ''} onChange={(event) => chooseSupplier(event.target.value)} disabled={saveState.saving} className="mt-2 h-10 w-full rounded-xl border bg-white px-3 text-sm"><option value="">اختر المورد المسجل</option>{supplierChoices.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select>}
-                {!blocked && !readOnly && <BConnectSupplierSuggestions sourceName={source.supplier} suppliers={supplierChoices} selectedId={draft.supplier_id} onSelect={chooseSupplier} disabled={saveState.saving} />}
-                <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">اسم المورد في B-Connect: <strong>{source.supplier || 'غير متاح'}</strong></div>
-                {supplierError && !blocked && !readOnly && <div className="mt-2 text-xs text-rose-600">تعذر تحميل قائمة الموردين: {supplierError}</div>}
-              </div>
-              <label className="space-y-1.5"><span className="flex items-center justify-between gap-2 text-xs font-bold text-slate-600"><span>التاريخ</span>{!fieldsDisabled && source.date && dateOnly(source.date) !== dateOnly(draft.invoice_date) && <button type="button" onClick={() => setDraft((old) => ({ ...old, invoice_date: dateOnly(source.date) }))} className="text-[11px] font-black text-teal-700">استخدم B-Connect</button>}</span><input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /><span className="block text-[11px] text-slate-500">{formatArabicDate(draft.invoice_date)}</span></label>
-              <label className="space-y-1.5"><span className="flex items-center justify-between gap-2 text-xs font-bold text-slate-600"><span>الإجمالي</span>{!fieldsDisabled && source.invoice_value !== null && source.invoice_value !== undefined && normalizedMoneyOrNull(source.invoice_value) !== normalizedMoneyOrNull(draft.total_value) && <button type="button" onClick={() => setDraft((old) => ({ ...old, total_value: fieldText(source.invoice_value) }))} className="text-[11px] font-black text-teal-700">استخدم B-Connect</button>}</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="flex items-center justify-between gap-2 text-xs font-bold text-slate-600"><span>المرتجع</span>{!fieldsDisabled && source.return_value !== null && source.return_value !== undefined && normalizedMoneyOrNull(source.return_value) !== normalizedMoneyOrNull(draft.returned_value) && <button type="button" onClick={() => setDraft((old) => ({ ...old, returned_value: fieldText(source.return_value) }))} className="text-[11px] font-black text-teal-700">استخدم B-Connect</button>}</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">النقدي</span><input inputMode="decimal" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100" /></label>
-              <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">طريقة الدفع</span><select value={draft.payment_type} onChange={(e) => setDraft((old) => ({ ...old, payment_type: e.target.value }))} disabled={fieldsDisabled} className="h-10 w-full rounded-xl border bg-white px-3 text-sm disabled:bg-slate-100"><option value="">اختر طريقة الدفع</option><option value="آجل">آجل</option><option value="كاش">كاش</option></select></label>
-              <label className="space-y-1.5 sm:col-span-2"><span className="text-xs font-bold text-slate-600">ملاحظات</span><textarea rows={3} value={draft.notes} onChange={(e) => setDraft((old) => ({ ...old, notes: e.target.value }))} disabled={fieldsDisabled} className="w-full rounded-xl border bg-white px-3 py-2 text-sm disabled:bg-slate-100" /></label>
+        <div className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-black">الاختلافات المؤثرة</h3>
+              <button type="button" onClick={() => setShowAllDetails((value) => !value)} className="inline-flex items-center gap-1 text-xs font-black text-teal-700">{showAllDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}{showAllDetails ? 'إخفاء المطابق' : 'عرض كل البيانات'}</button>
             </div>
-            {blocked && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">هذه الحالة محجوبة من الحفظ الآمن.</div>}
-            {isCreate && !blocked && <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-6 text-sky-800">سيتم إنشاء الفاتورة كمسودة تحت المراجعة بعد فحص أخير يمنع تكرار رقم الفاتورة داخل نفس الفرع. لن يتم تغيير أي فاتورة موجودة.</div>}
-            {readOnly && !blocked && <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">الفاتورة سليمة؛ العرض فقط.</div>}
-            {!blocked && !readOnly && !isCreate && !hasRevision && <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">رقم النسخة غير متاح. أعد رفع ملف B-Connect.</div>}
-            {!blocked && !readOnly && !isCreate && hasRevision && <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-800">الحفظ الفعلي مفعّل للفواتير الموجودة فقط. أي حقل لم تغيّره لا يُرسل للحفظ ولا يتغير في قاعدة البيانات.</div>}
-            {!blocked && !readOnly && !isCreate && hasRevision && !hasChanges && <div className="mt-3 text-xs text-slate-500">عدّل حقلًا واحدًا على الأقل لتفعيل زر الحفظ.</div>}
-            {isCreate && !blocked && !canCreate && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-6 text-amber-800">لتفعيل زر «اعتماد وتسجيل الفاتورة»: {createMissingRequirements.join(' — ')}</div>}
-            {isCreate && !blocked && canCreate && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">البيانات الأساسية مكتملة. يمكنك الآن اعتماد وتسجيل الفاتورة.</div>}
-            {saveState.error && <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{saveState.error}</div>}
-            {saveState.success && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">{saveState.success}</div>}
+
+            {!hasFocusedDifference && !showAllDetails && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-bold text-emerald-800">لا توجد فروق مؤثرة إضافية.</div>}
+            {showBranchCompare && <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} comparison={row.checks?.branch} />}
+            {showSupplierCompare && <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} comparison={supplierComparison} />}
+            {showDateCompare && <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} comparison={row.checks?.invoice_date} />}
+            {showTotalCompare && <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : 'mismatch') : 'unknown'} />}
+            {showReturnCompare && <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />}
+            {showAllDetails && <CompareValue label="المستخدم" source={source.user} current={appEnteredBy} normalize={normalizeUserName} />}
+            {showAllDetails && row.reasons?.length > 0 && <div className="rounded-xl border bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-600">{row.reasons.join(' — ')}</div>}
+            {decisionView.note && <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs leading-6 text-violet-900"><strong>الملاحظة:</strong> {decisionView.note}</div>}
+          </section>
+
+          <section className="rounded-2xl border bg-slate-50/70 p-3 md:p-4">
+            <div className="mb-3 flex items-center justify-between gap-2"><div><h3 className="font-black">{isCreate ? 'تسجيل سريع' : 'تصحيح سريع'}</h3><p className="mt-0.5 text-[11px] text-slate-500">تظهر الحقول التي تحتاج قرارك فقط.</p></div><ShieldCheck className="h-5 w-5 text-teal-600" /></div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {showAllDetails && <><label className="space-y-1"><span className="text-xs font-bold">رقم الفاتورة</span><input disabled value={row.number || ''} className="h-9 w-full rounded-lg border bg-slate-100 px-3 text-sm" /></label><label className="space-y-1"><span className="text-xs font-bold">الفرع</span><input disabled value={normalizeBranch(source.branch || app.branch) || ''} className="h-9 w-full rounded-lg border bg-slate-100 px-3 text-sm" /></label></>}
+
+              {showSupplierEditor && <div className="sm:col-span-2 rounded-xl border bg-white p-3"><div className="text-xs font-black">المورد</div>{blocked || readOnly ? <div className="mt-1 font-bold">{app.supplier_name || source.supplier || 'غير محدد'}</div> : <select value={draft.supplier_id || ''} onChange={(event) => chooseSupplier(event.target.value)} disabled={saveState.saving} className="mt-2 h-9 w-full rounded-lg border bg-white px-3 text-sm"><option value="">اختر المورد</option>{supplierChoices.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select>}{!blocked && !readOnly && <BConnectSupplierSuggestions sourceName={source.supplier} suppliers={supplierChoices} selectedId={draft.supplier_id} onSelect={chooseSupplier} disabled={saveState.saving} />}{supplierError && <div className="mt-2 text-xs text-rose-600">{supplierError}</div>}</div>}
+
+              {showDateEditor && <label className="space-y-1"><span className="flex items-center justify-between gap-2 text-xs font-bold"><span>التاريخ</span>{!fieldsDisabled && source.date && dateOnly(source.date) !== dateOnly(draft.invoice_date) && <button type="button" onClick={() => setDraft((old) => ({ ...old, invoice_date: dateOnly(source.date) }))} className="text-[11px] font-black text-teal-700">استخدم B-Connect</button>}</span><input type="date" value={draft.invoice_date} onChange={(e) => setDraft((old) => ({ ...old, invoice_date: e.target.value }))} disabled={fieldsDisabled} className="h-9 w-full rounded-lg border bg-white px-3 text-sm disabled:bg-slate-100" /></label>}
+
+              {showTotalEditor && <label className="space-y-1"><span className="flex items-center justify-between gap-2 text-xs font-bold"><span>الإجمالي</span>{!fieldsDisabled && source.invoice_value !== null && source.invoice_value !== undefined && normalizedMoneyOrNull(source.invoice_value) !== normalizedMoneyOrNull(draft.total_value) && <button type="button" onClick={() => setDraft((old) => ({ ...old, total_value: fieldText(source.invoice_value) }))} className="text-[11px] font-black text-teal-700">استخدم B-Connect</button>}</span><input inputMode="decimal" value={draft.total_value} onChange={(e) => setDraft((old) => ({ ...old, total_value: e.target.value }))} disabled={fieldsDisabled} className="h-9 w-full rounded-lg border bg-white px-3 text-sm disabled:bg-slate-100" /></label>}
+
+              {showReturnEditor && <label className="space-y-1"><span className="flex items-center justify-between gap-2 text-xs font-bold"><span>المرتجع</span>{!fieldsDisabled && source.return_value !== null && source.return_value !== undefined && normalizedMoneyOrNull(source.return_value) !== normalizedMoneyOrNull(draft.returned_value) && <button type="button" onClick={() => setDraft((old) => ({ ...old, returned_value: fieldText(source.return_value) }))} className="text-[11px] font-black text-teal-700">استخدم B-Connect</button>}</span><input inputMode="decimal" value={draft.returned_value} onChange={(e) => setDraft((old) => ({ ...old, returned_value: e.target.value }))} disabled={fieldsDisabled} className="h-9 w-full rounded-lg border bg-white px-3 text-sm disabled:bg-slate-100" /></label>}
+
+              {showPaymentEditor && <><label className="space-y-1"><span className="text-xs font-bold">النقدي</span><input inputMode="decimal" value={draft.cash_amount} onChange={(e) => setDraft((old) => ({ ...old, cash_amount: e.target.value }))} disabled={fieldsDisabled} className="h-9 w-full rounded-lg border bg-white px-3 text-sm disabled:bg-slate-100" /></label><label className="space-y-1"><span className="text-xs font-bold">طريقة الدفع</span><select value={draft.payment_type} onChange={(e) => setDraft((old) => ({ ...old, payment_type: e.target.value }))} disabled={fieldsDisabled} className="h-9 w-full rounded-lg border bg-white px-3 text-sm disabled:bg-slate-100"><option value="">اختر</option><option value="آجل">آجل</option><option value="كاش">كاش</option></select></label></>}
+
+              {showNotesEditor && <label className="space-y-1 sm:col-span-2"><span className="text-xs font-bold">ملاحظات</span><textarea rows={2} value={draft.notes} onChange={(e) => setDraft((old) => ({ ...old, notes: e.target.value }))} disabled={fieldsDisabled} className="w-full rounded-lg border bg-white px-3 py-2 text-sm disabled:bg-slate-100" /></label>}
+            </div>
+
+            {blocked && <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs font-bold text-rose-700">الحفظ محجوب لهذه الحالة.</div>}
+            {isCreate && !blocked && !canCreate && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">ناقص: {createMissingRequirements.join(' — ')}</div>}
+            {saveState.error && <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">{saveState.error}</div>}
+            {saveState.success && <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs font-bold text-emerald-700">{saveState.success}</div>}
           </section>
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-white px-5 py-4 md:px-7">
-        <div className="text-xs text-slate-500">{isCreate ? 'لا يوجد رقم سجل بعد.' : <>رقم السجل: <span className="font-mono">{app.id || 'غير موجود'}</span>{hasRevision && <span className="mr-2">نسخة: {revision}</span>}</>}</div>
+
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t bg-white px-4 py-3 md:px-5">
+        <div className="text-xs text-slate-400">{showAllDetails && !isCreate ? <>السجل: <span className="font-mono">{app.id || '—'}</span>{hasRevision ? ` · نسخة ${revision}` : ''}</> : hasChanges ? `${changedCount} تعديل جاهز للحفظ` : 'راجع القرار ثم نفّذ'}</div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" disabled={saveState.saving} onClick={onClose}>إلغاء</Button>
-          {!isCreate && (canAcceptAsIs ? <Button type="button" variant="outline" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الاختلاف كما هو</Button> : <Button type="button" variant="outline" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>تمت المراجعة</Button>)}
-          {isCreate && !blocked ? <Button type="button" disabled={!canCreate} onClick={createMissing} title={!canCreate ? createMissingRequirements.join(' — ') : 'اعتماد وتسجيل الفاتورة'}>{saveState.saving ? 'جاري التسجيل والتحقق...' : 'اعتماد وتسجيل الفاتورة'}</Button> : blocked || readOnly ? <Button type="button" disabled>لا يوجد حفظ مطلوب</Button> : <Button type="button" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ والتحقق...' : hasChanges ? `حفظ ${Object.keys(changedPatch).length} تعديل` : 'حفظ التعديل'}</Button>}
+          <Button type="button" variant="outline" size="sm" disabled={saveState.saving} onClick={onClose}>إغلاق</Button>
+          {!isCreate && !canAcceptAsIs && !blocked && !readOnly && <Button type="button" variant="ghost" size="sm" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>تمت المراجعة</Button>}
+          {canAcceptAsIs && <Button type="button" size="sm" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الآن</Button>}
+          {isCreate && !blocked ? <Button type="button" size="sm" disabled={!canCreate} onClick={createMissing}>{saveState.saving ? 'جاري التسجيل...' : 'اعتماد وتسجيل'}</Button> : blocked || readOnly || canAcceptAsIs ? null : <Button type="button" size="sm" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ...' : hasChanges ? `حفظ ${changedCount} تعديل` : 'حفظ'}</Button>}
         </div>
       </div>
     </div>
