@@ -1,5 +1,5 @@
 import { classifyBConnectReviewRow } from './bconnectReviewDecisionPolicy.js';
-import { normalizeMoney } from './purchaseInvoiceTruth.js';
+import { normalizeBranch, normalizeMoney } from './purchaseInvoiceTruth.js';
 
 const dateOnly = (value) => String(value || '').slice(0, 10);
 
@@ -17,6 +17,16 @@ function noteText(row) {
 function numeric(value) {
   const normalized = normalizeMoney(value);
   return normalized === null ? null : Number(normalized);
+}
+
+function normalizeText(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 function nearlyEqual(a, b) {
@@ -52,6 +62,29 @@ function noteSignal(note) {
   return { code: 'note_present', confidence: 'low', label: 'توجد ملاحظة قد تساعد في تفسير الفرق' };
 }
 
+function confidenceFor({ policy, identityConfirmed, financialMatch, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, absDifference, evidence }) {
+  if (policy.code === 'duplicate' || policy.code === 'blocked' || !identityConfirmed && policy.code !== 'missing') {
+    return { code: 'blocked', label: 'محظور', score: 0 };
+  }
+  if (fastAccept) {
+    let score = 100;
+    if (dateMismatch && dayDifference !== null) score -= Math.min(Math.abs(dayDifference) * 3, 15);
+    if (supplierMismatch) score -= 3;
+    if (hasNote) score -= 12;
+    if (hasReturn) score -= 12;
+    if (score >= 95) return { code: 'very_high', label: 'ثقة عالية جدًا', score };
+    if (score >= 85) return { code: 'high', label: 'ثقة عالية', score };
+    return { code: 'medium', label: 'ثقة متوسطة', score };
+  }
+  if (absDifference !== null && absDifference > 0) {
+    if (evidence?.confidence === 'high') return { code: 'high_explanation', label: 'تفسير قوي — يحتاج اعتمادك', score: 85 };
+    if (evidence?.confidence === 'medium') return { code: 'medium', label: 'ثقة متوسطة', score: 65 };
+    return { code: 'low', label: 'ثقة منخفضة', score: 35 };
+  }
+  if (identityConfirmed && financialMatch) return { code: 'high', label: 'ثقة عالية', score: 90 };
+  return { code: 'low', label: 'ثقة منخفضة', score: 30 };
+}
+
 export function buildBConnectPurchaseDecision(row = {}) {
   const policy = classifyBConnectReviewRow(row);
   const difference = row?.financial?.difference == null ? null : Number(row.financial.difference);
@@ -68,7 +101,6 @@ export function buildBConnectPurchaseDecision(row = {}) {
     && row?.checks?.branch === 'match'
     && row?.checks?.system_invoice_number === 'match';
 
-  // Fast acceptance must never be broader than the existing execution policy.
   const fastAccept = policy.code === 'proposed'
     && policy.selectable === true
     && identityConfirmed
@@ -79,6 +111,14 @@ export function buildBConnectPurchaseDecision(row = {}) {
   const exactReturnExplanation = returnExplanation({ difference, appReturn: returned, sourceReturn });
   const noteEvidence = noteSignal(note);
   const evidence = exactReturnExplanation || noteEvidence;
+  const confidence = confidenceFor({ policy, identityConfirmed, financialMatch, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, absDifference, evidence });
+
+  // Bulk approval is deliberately stricter than individual approval.
+  const bulkEligible = fastAccept
+    && confidence.code === 'very_high'
+    && !hasNote
+    && !hasReturn
+    && (!dateMismatch || (dayDifference !== null && Math.abs(dayDifference) <= 3));
 
   let lane = 'investigate';
   let label = 'حقق';
@@ -137,8 +177,10 @@ export function buildBConnectPurchaseDecision(row = {}) {
     tone,
     nextAction,
     fastAccept,
+    bulkEligible,
     policyCode: policy.code,
     selectable: policy.selectable === true,
+    confidence,
     financialDifference: Number.isFinite(difference) ? difference : null,
     absoluteFinancialDifference: absDifference,
     supplierMismatch,
@@ -163,4 +205,34 @@ export function countBConnectDecisionLanes(rows = []) {
     acc[lane] = (acc[lane] || 0) + 1;
     return acc;
   }, { approve: 0, correct: 0, explain: 0, register: 0, investigate: 0, clean: 0 });
+}
+
+export function buildBConnectDecisionGroups(rows = []) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const view = buildBConnectPurchaseDecision(row);
+    if (!view.bulkEligible) return;
+    const branch = normalizeBranch(row?.bconnect?.branch || row?.app?.branch) || 'غير معروف';
+    const sourceSupplier = normalizeText(row?.bconnect?.supplier);
+    const appSupplier = normalizeText(row?.app?.supplier_name);
+    const dateDelta = view.dateMismatch && view.dateDifferenceDays !== null ? view.dateDifferenceDays : 0;
+    const pattern = view.supplierMismatch && view.dateMismatch
+      ? 'supplier_date'
+      : view.supplierMismatch
+        ? 'supplier'
+        : 'date';
+    const key = [branch, pattern, sourceSupplier, appSupplier, dateDelta].join('|');
+    if (!groups.has(key)) {
+      const description = pattern === 'supplier_date'
+        ? `نفس ربط المورد + فرق تاريخ ${Math.abs(dateDelta)} يوم`
+        : pattern === 'supplier'
+          ? 'نفس ربط المورد والقيمة متطابقة'
+          : `فرق تاريخ ${Math.abs(dateDelta)} يوم والقيمة متطابقة`;
+      groups.set(key, { key, branch, pattern, description, rows: [], confidence: view.confidence });
+    }
+    groups.get(key).rows.push(row);
+  });
+  return [...groups.values()]
+    .filter((group) => group.rows.length >= 2)
+    .sort((a, b) => b.rows.length - a.rows.length || a.description.localeCompare(b.description, 'ar'));
 }
