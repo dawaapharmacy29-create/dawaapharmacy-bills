@@ -10,7 +10,7 @@ const HEADER_ALIASES = {
   date: ['التاريخ', 'تاريخ', 'date', 'datetime'],
   user: ['المستخدم', 'الدكتور', 'الموظف', 'اسم المستخدم', 'user', 'doctor', 'employee'],
   branch: ['الفرع', 'المخزن', 'الموقع', 'branch', 'warehouse', 'location'],
-  counterparty: ['العميل', 'المورد', 'الفرع المقابل', 'customer', 'supplier', 'counterparty'],
+  counterparty: ['العميل', 'عميل', 'المورد', 'مورد', 'الفرع المقابل', 'customer', 'supplier', 'counterparty'],
 };
 
 function text(value) {
