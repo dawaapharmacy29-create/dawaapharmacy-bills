@@ -63,7 +63,7 @@ const BranchPerformanceCenter = lazy(() => import('./pages/BranchPerformanceCent
 const SalesPurchasesReport = lazy(() => import('./pages/SalesPurchasesReport'));
 const Base44SyncReview = lazy(() => import('./pages/Base44SyncReview'));
 const BConnectInvoiceReview = lazy(() => import('./pages/BConnectInvoiceReview'));
-const BranchTransferControl = lazy(() => import('./pages/BranchTransferControl'));
+const BranchTransferControl = lazy(() => import('./pages/BranchTransferControlSmart'));
 
 function PageLoading() {
   return <div dir="rtl" className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
