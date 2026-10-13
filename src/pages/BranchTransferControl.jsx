@@ -14,6 +14,7 @@ import {
   transferBranchLabel, transferErrorRate, explainTransferCase,
 } from '@/lib/branchTransferControl';
 import { applyLearnedUnitRules, learnUnitRule, removeUnitRule, suggestUnitRule, unitRuleLabel } from '@/lib/branchTransferUnitRules';
+import { buildTransferIncidents, summarizeTransferIncidents } from '@/lib/branchTransferIncidentIntelligence';
 
 const STORAGE_KEY = 'dawaa.branch-transfer-control.shadow.v1';
 
@@ -158,17 +159,27 @@ export default function BranchTransferControl() {
     .filter((item) => item.type !== 'matched' && !['dismissed', 'verified'].includes(item.decision?.status))
     .sort((a, b) => (b.decision_intelligence?.issue_confidence?.score || 0) - (a.decision_intelligence?.issue_confidence?.score || 0) || b.severity - a.severity), [decoratedCases]);
 
-  const filteredActionable = useMemo(() => actionable.filter((item) => {
-    if (activeFilter === 'strong') return (item.decision_intelligence?.issue_confidence?.score || 0) >= 75;
-    if (activeFilter === 'missing') return ['sale_without_purchase', 'purchase_without_sale'].includes(item.type);
-    if (activeFilter === 'qty') return item.type === 'quantity_mismatch';
-    if (activeFilter === 'code') return item.type === 'code_mismatch';
-    if (activeFilter === 'unit') return item.type === 'unit_conversion_review';
+  const incidentCases = useMemo(() => decoratedCases.filter((item) => item.type === 'matched' || !['dismissed', 'verified'].includes(item.decision?.status)), [decoratedCases]);
+  const incidents = useMemo(() => buildTransferIncidents(incidentCases), [incidentCases]);
+  const incidentSummary = useMemo(() => summarizeTransferIncidents(incidents), [incidents]);
+
+  const incidentMatchesFilter = (incident, key) => incident.cases.some((item) => {
+    if (key === 'strong') return (item.decision_intelligence?.issue_confidence?.score || 0) >= 75 || incident.root_cause_confidence >= 90;
+    if (key === 'missing') return ['sale_without_purchase', 'purchase_without_sale'].includes(item.type);
+    if (key === 'qty') return item.type === 'quantity_mismatch';
+    if (key === 'code') return item.type === 'code_mismatch';
+    if (key === 'unit') return item.type === 'unit_conversion_review';
     return true;
-  }), [actionable, activeFilter]);
+  });
+
+  const filteredIncidents = useMemo(() => incidents.filter((incident) => incidentMatchesFilter(incident, activeFilter)), [incidents, activeFilter]);
 
   const followup = useMemo(() => decoratedCases.filter((item) => ['in_progress', 'waiting_verification'].includes(item.decision?.status)), [decoratedCases]);
-  const selected = useMemo(() => filteredActionable.find((item) => item.id === selectedId) || filteredActionable[0] || null, [filteredActionable, selectedId]);
+  const selectedIncident = useMemo(() => filteredIncidents.find((incident) => incident.case_ids.includes(selectedId)) || filteredIncidents[0] || null, [filteredIncidents, selectedId]);
+  const selected = useMemo(() => {
+    if (!selectedIncident) return null;
+    return selectedIncident.cases.find((item) => item.id === selectedId) || selectedIncident.cases[0] || null;
+  }, [selectedIncident, selectedId]);
   const employees = useMemo(() => employeeTransferStats(decoratedCases), [decoratedCases]);
   const resolvedCount = Object.values(ledger.decisions).filter((decision) => ['verified', 'dismissed'].includes(decision.status)).length;
   const learnedRules = useMemo(() => Object.values(ledger.unitRules || {}).filter((rule) => rule?.active), [ledger.unitRules]);
@@ -176,8 +187,8 @@ export default function BranchTransferControl() {
   const loadedFileCount = Object.values(sources).reduce((sum, source) => sum + (source?.fileNames?.length || 0), 0);
 
   useEffect(() => {
-    if (selectedId && !filteredActionable.some((item) => item.id === selectedId)) setSelectedId('');
-  }, [activeFilter, filteredActionable, selectedId]);
+    if (selectedId && !filteredIncidents.some((incident) => incident.case_ids.includes(selectedId))) setSelectedId('');
+  }, [activeFilter, filteredIncidents, selectedId]);
 
   const handleAutoFiles = async (files) => {
     if (!files?.length) return;
@@ -232,9 +243,26 @@ export default function BranchTransferControl() {
     if (!item) return;
     const event = { case_id: item.id, action, status, at: nowIso(), type: item.type, from: item.from, to: item.to, product_name: item.product_name };
     setLedger((old) => ({ ...old, decisions: { ...old.decisions, [item.id]: { status, action, updated_at: event.at } }, events: [event, ...old.events].slice(0, 1000) }));
-    const index = filteredActionable.findIndex((candidate) => candidate.id === item.id);
-    const next = filteredActionable[index + 1] || filteredActionable[index - 1];
+    const index = actionable.findIndex((candidate) => candidate.id === item.id);
+    const next = actionable[index + 1] || actionable[index - 1];
     setSelectedId(next?.id || '');
+  };
+
+  const recordIncidentDecision = (incident, status, action) => {
+    if (!incident) return;
+    const at = nowIso();
+    setLedger((old) => {
+      const decisions = { ...old.decisions };
+      const events = [];
+      incident.cases.forEach((item) => {
+        decisions[item.id] = { status, action, updated_at: at, incident_id: incident.id };
+        events.push({ case_id: item.id, incident_id: incident.id, action, status, at, type: item.type, from: item.from, to: item.to, product_name: item.product_name });
+      });
+      return { ...old, decisions, events: [...events, ...old.events].slice(0, 1000) };
+    });
+    const index = filteredIncidents.findIndex((candidate) => candidate.id === incident.id);
+    const next = filteredIncidents[index + 1] || filteredIncidents[index - 1];
+    setSelectedId(next?.cases?.[0]?.id || '');
   };
 
   const approveUnitRule = (item) => {
@@ -259,16 +287,9 @@ export default function BranchTransferControl() {
   const unitSuggestion = selected?.type === 'unit_conversion_review' ? suggestUnitRule(selected) : null;
   const selectedMeta = selected ? (typeMeta[selected.type] || typeMeta.quantity_mismatch) : null;
   const selectedIntel = selected?.decision_intelligence;
-  const strongest = actionable[0];
+  const strongestIncident = incidents[0];
 
-  const filterCount = (key) => actionable.filter((item) => {
-    if (key === 'strong') return (item.decision_intelligence?.issue_confidence?.score || 0) >= 75;
-    if (key === 'missing') return ['sale_without_purchase', 'purchase_without_sale'].includes(item.type);
-    if (key === 'qty') return item.type === 'quantity_mismatch';
-    if (key === 'code') return item.type === 'code_mismatch';
-    if (key === 'unit') return item.type === 'unit_conversion_review';
-    return true;
-  }).length;
+  const filterCount = (key) => incidents.filter((incident) => incidentMatchesFilter(incident, key)).length;
 
   return <div dir="rtl" className="min-h-full bg-gradient-to-b from-slate-50 via-white to-slate-50/70">
     <div className="mx-auto w-full max-w-[1480px] space-y-4 px-3 py-4 sm:px-5 lg:px-6">
@@ -320,21 +341,21 @@ export default function BranchTransferControl() {
 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <StatCard label="مشكلة قوية" value={intelligenceSummary.high_issue_confidence} hint="ثقة مشكلة ≥ 75%" tone="rose" />
-        <StatCard label="قرار الآن" value={actionable.length} hint="مرتبة حسب قوة الدليل" tone="amber" />
+        <StatCard label="قرارات فعلية" value={incidentSummary.total} hint={`${incidentSummary.line_issues} فرق خام بعد تجميع السبب`} tone="amber" />
         <StatCard label="تحويل وحدة" value={intelligenceSummary.review_conversion} hint="مراجعة وليست خطأ" tone="sky" />
         <StatCard label="سليم وصامت" value={intelligenceSummary.silent} hint="لا يحتاج تدخل" tone="emerald" />
       </div>
 
-      {strongest && <Card className="border-rose-200 bg-gradient-to-l from-rose-50 to-white p-3.5 shadow-sm">
+      {strongestIncident && <Card className="border-rose-200 bg-gradient-to-l from-rose-50 to-white p-3.5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-black text-rose-700"><Zap className="h-4 w-4" /> أول حالة تستحق نظرك الآن</div>
-            <div className="mt-1 truncate text-lg font-black text-slate-950">{strongest.product_name}</div>
-            <div className="mt-1 text-xs font-bold text-slate-500">{strongest.decision_intelligence?.summary}</div>
+            <div className="flex items-center gap-2 text-xs font-black text-rose-700"><Zap className="h-4 w-4" /> أقوى سبب جذري يستحق نظرك الآن</div>
+            <div className="mt-1 truncate text-lg font-black text-slate-950">{strongestIncident.label}{strongestIncident.invoice ? ` · فاتورة ${strongestIncident.invoice}` : ''}</div>
+            <div className="mt-1 text-xs font-bold leading-5 text-slate-500">{strongestIncident.summary}</div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="rounded-xl bg-white px-3 py-2 text-center ring-1 ring-rose-100"><div className="text-[9px] font-black text-slate-400">ثقة المشكلة</div><div className="text-xl font-black text-rose-700">{strongest.decision_intelligence?.issue_confidence?.score || 0}%</div></div>
-            <Button size="sm" onClick={() => { setActiveView('now'); setActiveFilter('all'); setSelectedId(strongest.id); }} className="bg-rose-600 font-black hover:bg-rose-700">افتح الآن</Button>
+            <div className="rounded-xl bg-white px-3 py-2 text-center ring-1 ring-rose-100"><div className="text-[9px] font-black text-slate-400">ثقة السبب الجذري</div><div className="text-xl font-black text-rose-700">{strongestIncident.root_cause_confidence}%</div></div>
+            <Button size="sm" onClick={() => { setActiveView('now'); setActiveFilter('all'); setSelectedId(strongestIncident.cases?.[0]?.id || ''); }} className="bg-rose-600 font-black hover:bg-rose-700">افتح القرار</Button>
           </div>
         </div>
       </Card>}
@@ -350,17 +371,20 @@ export default function BranchTransferControl() {
 
         {!sales.length && !purchases.length ? <Card className="flex min-h-64 flex-col items-center justify-center border-dashed border-teal-200 bg-teal-50/30 p-6 text-center">
           <BrainCircuit className="h-9 w-9 text-teal-700" /><div className="mt-3 text-lg font-black text-slate-950">ارفع الملفات وخلّي النظام يفرز الضوضاء</div><div className="mt-1 text-sm font-bold text-slate-500">المطابق يختفي، والتحويلات المحتملة لا تُحسب كأخطاء، والمشكلة الأقوى تصعد أولًا.</div>
-        </Card> : !selected ? <Card className="flex min-h-48 flex-col items-center justify-center border-emerald-200 bg-emerald-50/50 p-6 text-center"><CheckCircle2 className="h-8 w-8 text-emerald-600" /><div className="mt-2 font-black text-slate-950">لا توجد حالات في الفلتر الحالي</div></Card> :
-          <div className="grid gap-3 lg:grid-cols-[330px_minmax(0,1fr)]">
+        </Card> : !selectedIncident || !selected ? <Card className="flex min-h-48 flex-col items-center justify-center border-emerald-200 bg-emerald-50/50 p-6 text-center"><CheckCircle2 className="h-8 w-8 text-emerald-600" /><div className="mt-2 font-black text-slate-950">لا توجد قرارات في الفلتر الحالي</div></Card> :
+          <div className="grid gap-3 lg:grid-cols-[350px_minmax(0,1fr)]">
             <Card className="h-fit max-h-[72vh] overflow-y-auto border-slate-200 p-2 shadow-sm">
-              <div className="px-2 py-2 text-xs font-black text-slate-500">{filteredActionable.length} حالة مرتبة حسب قوة دليل المشكلة</div>
-              <div className="space-y-1.5">{filteredActionable.map((item) => {
-                const intel = item.decision_intelligence || explainTransferCase(item);
-                const active = item.id === selected.id;
-                return <button key={item.id} onClick={() => setSelectedId(item.id)} className={`w-full rounded-xl border p-3 text-right transition ${active ? 'border-teal-300 bg-teal-50 ring-1 ring-teal-200' : 'border-slate-100 bg-white hover:bg-slate-50'}`}>
-                  <div className="flex items-center justify-between gap-2"><CaseBadge item={item} /><span className={`text-sm font-black ${intel.issue_confidence.score >= 75 ? 'text-rose-700' : 'text-slate-600'}`}>{intel.issue_confidence.score}%</span></div>
-                  <div className="mt-2 truncate text-sm font-black text-slate-950">{item.product_name}</div>
-                  <div className="mt-1 flex items-center justify-between text-[10px] font-bold text-slate-400"><span>{transferBranchLabel(item.from)} → {transferBranchLabel(item.to)}</span><span>ربط {intel.journey_confidence.score}%</span></div>
+              <div className="px-2 py-2">
+                <div className="text-xs font-black text-slate-700">{filteredIncidents.length} قرار فعلي</div>
+                <div className="mt-0.5 text-[10px] font-bold text-slate-400">{filteredIncidents.reduce((sum, incident) => sum + incident.line_issue_count, 0)} فرق خام تم تجميعها حسب السبب المحتمل</div>
+              </div>
+              <div className="space-y-1.5">{filteredIncidents.map((incident) => {
+                const active = selectedIncident?.id === incident.id;
+                return <button key={incident.id} onClick={() => setSelectedId(incident.cases?.[0]?.id || '')} className={`w-full rounded-xl border p-3 text-right transition ${active ? 'border-teal-300 bg-teal-50 ring-1 ring-teal-200' : 'border-slate-100 bg-white hover:bg-slate-50'}`}>
+                  <div className="flex items-center justify-between gap-2"><span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black text-slate-600">{incident.label}</span><span className={`text-sm font-black ${incident.root_cause_confidence >= 90 ? 'text-rose-700' : 'text-slate-600'}`}>{incident.root_cause_confidence}%</span></div>
+                  <div className="mt-2 truncate text-sm font-black text-slate-950">{incident.invoice ? `فاتورة ${incident.invoice}` : incident.product_names?.[0]}</div>
+                  <div className="mt-1 text-[10px] font-bold text-slate-400">{incident.line_issue_count > 1 ? `${incident.line_issue_count} أصناف/حركات تحت نفس القرار` : incident.product_names?.[0]}</div>
+                  <div className="mt-1 flex items-center justify-between text-[10px] font-bold text-slate-400"><span>{transferBranchLabel(incident.from)} → {transferBranchLabel(incident.to)}</span><span>{incident.employee_error_confirmed ? 'خطأ موظف مؤكد' : 'ليس اتهام موظف'}</span></div>
                 </button>;
               })}</div>
             </Card>
@@ -377,6 +401,18 @@ export default function BranchTransferControl() {
               </div>
 
               <div className="space-y-3 p-4 sm:p-5">
+                <div className={`rounded-2xl border p-4 ${selectedIncident.root_cause_confidence >= 90 ? 'border-rose-200 bg-rose-50' : 'border-teal-200 bg-teal-50'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-black text-slate-600">السبب الجذري المحتمل</div>
+                    <div className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-700">ثقة {selectedIncident.root_cause_confidence}%</div>
+                  </div>
+                  <div className="mt-1 text-base font-black leading-7 text-slate-950">{selectedIncident.label}{selectedIncident.invoice ? ` · فاتورة ${selectedIncident.invoice}` : ''}</div>
+                  <div className="mt-1 text-xs font-bold leading-6 text-slate-600">{selectedIncident.summary}</div>
+                  <div className="mt-2 rounded-xl bg-white/80 p-2.5 text-xs font-black leading-5 text-teal-900">{selectedIncident.recommended_check}</div>
+                  {selectedIncident.line_issue_count > 1 && <div className="mt-2 flex flex-wrap gap-1.5">{selectedIncident.cases.slice(0, 12).map((item) => <span key={item.id} className="rounded-full border border-white bg-white/80 px-2 py-1 text-[10px] font-bold text-slate-700">{item.product_name} {item.sale_codes?.[0] || item.purchase_codes?.[0] ? `· ${item.sale_codes?.[0] || item.purchase_codes?.[0]}` : ''}</span>)}</div>}
+                  <div className="mt-2 text-[10px] font-black text-slate-500">اختلاف الملف مؤكد حسب البيانات المحملة، لكن ده لا يعني تلقائيًا إن موظف ارتكب خطأ.</div>
+                </div>
+
                 <div className={`rounded-2xl border p-4 ${selectedIntel?.issue_confidence?.score >= 75 ? 'border-rose-200 bg-rose-50' : selected.type === 'unit_conversion_review' ? 'border-sky-200 bg-sky-50' : 'border-amber-200 bg-amber-50'}`}>
                   <div className="flex items-center gap-2 text-xs font-black text-slate-600"><Gauge className="h-4 w-4" /> خلاصة العقل</div>
                   <div className="mt-1.5 text-base font-black leading-7 text-slate-950">{selectedIntel?.summary}</div>
@@ -392,10 +428,10 @@ export default function BranchTransferControl() {
                 <IdentityDiagnosis item={selected} />
 
                 <div className="sticky bottom-2 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur">
-                  {unitSuggestion ? <Button onClick={() => approveUnitRule(selected)} className="gap-2 bg-sky-600 font-black hover:bg-sky-700"><WandSparkles className="h-4 w-4" /> اعتماد: {unitRuleLabel(unitSuggestion)}</Button> : <Button onClick={() => recordDecision(selected, 'waiting_verification', 'تم التنفيذ - ينتظر التحقق')} className="gap-2 bg-teal-700 font-black hover:bg-teal-800"><ShieldCheck className="h-4 w-4" /> تم التنفيذ</Button>}
-                  <Button variant="outline" onClick={() => recordDecision(selected, 'in_progress', 'بدأت المراجعة')} className="font-black">جاري المراجعة</Button>
-                  <Button variant="outline" onClick={() => recordDecision(selected, 'dismissed', 'ليست مشكلة بعد المراجعة')} className="font-black">ليست مشكلة</Button>
-                  <Button variant="ghost" onClick={() => { const index = filteredActionable.findIndex((item) => item.id === selected.id); const next = filteredActionable[index + 1] || filteredActionable[0]; setSelectedId(next?.id || ''); }} className="font-black text-slate-500">تخطي</Button>
+                  {unitSuggestion ? <Button onClick={() => approveUnitRule(selected)} className="gap-2 bg-sky-600 font-black hover:bg-sky-700"><WandSparkles className="h-4 w-4" /> اعتماد: {unitRuleLabel(unitSuggestion)}</Button> : <Button onClick={() => recordIncidentDecision(selectedIncident, 'waiting_verification', `تم تنفيذ قرار السبب الجذري: ${selectedIncident.label}`)} className="gap-2 bg-teal-700 font-black hover:bg-teal-800"><ShieldCheck className="h-4 w-4" /> تم تنفيذ القرار</Button>}
+                  <Button variant="outline" onClick={() => recordIncidentDecision(selectedIncident, 'in_progress', `بدأت مراجعة السبب الجذري: ${selectedIncident.label}`)} className="font-black">جاري المراجعة</Button>
+                  <Button variant="outline" onClick={() => recordIncidentDecision(selectedIncident, 'dismissed', `ليست مشكلة بعد مراجعة السبب الجذري: ${selectedIncident.label}`)} className="font-black">ليست مشكلة</Button>
+                  <Button variant="ghost" onClick={() => { const index = filteredIncidents.findIndex((incident) => incident.id === selectedIncident.id); const next = filteredIncidents[index + 1] || filteredIncidents[0]; setSelectedId(next?.cases?.[0]?.id || ''); }} className="font-black text-slate-500">تخطي</Button>
                 </div>
               </div>
             </Card>
