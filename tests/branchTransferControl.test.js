@@ -119,7 +119,9 @@ test('recognizes 7 syringes versus one box as unit-conversion evidence, not a co
   assert.equal(cases.length, 1);
   assert.equal(cases[0].type, 'unit_conversion_review');
   assert.equal(cases[0].unit_conversion_evidence?.pack_count, 7);
-  assert.equal(cases[0].match_confidence, 'medium');
+  // High confidence describes the evidence that both rows belong to the same transfer episode.
+  // It does not auto-approve the conversion rule; the case stays in unit_conversion_review.
+  assert.equal(cases[0].match_confidence, 'high');
 });
 
 test('keeps repeated same-code transfers as separate episodes when they are far apart', () => {
