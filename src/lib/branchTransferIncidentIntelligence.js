@@ -24,15 +24,15 @@ function productCode(item) {
 
 function incidentKindLabel(kind) {
   return {
-    whole_sale_invoice_missing: 'فاتورة بيع كاملة غير ظاهرة في الشراء',
-    partial_sale_invoice_missing: 'صنف/أصناف من فاتورة بيع غير ظاهرة في الشراء',
-    whole_purchase_invoice_missing: 'فاتورة شراء كاملة بلا بيع مقابل',
-    partial_purchase_invoice_missing: 'صنف/أصناف شراء بلا بيع مقابل',
-    unit_conversion: 'تحويل وحدة/عبوة',
+    whole_sale_invoice_missing: 'فاتورة كاملة: الشراء ناقص',
+    partial_sale_invoice_missing: 'شراء ناقص',
+    whole_purchase_invoice_missing: 'فاتورة كاملة: البيع ناقص',
+    partial_purchase_invoice_missing: 'بيع ناقص',
+    unit_conversion: 'تحويل عبوة',
     quantity_mismatch: 'فرق كمية',
-    code_mismatch: 'اختلاف كود/هوية صنف',
-    single_missing: 'حركة بلا مقابل',
-  }[kind] || 'حالة تحتاج مراجعة';
+    code_mismatch: 'اختلاف كود',
+    single_missing: 'طرف ناقص',
+  }[kind] || 'تحتاج مراجعة';
 }
 
 function buildMissingInvoiceIncident({ key, side, invoice, cases, allCases }) {
