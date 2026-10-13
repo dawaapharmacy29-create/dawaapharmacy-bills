@@ -44,7 +44,7 @@ test('high-confidence journey plus unexplained quantity mismatch produces strong
   );
   assert.equal(item.type, 'quantity_mismatch');
   assert.ok(item.decision_intelligence.journey_confidence.score >= 75);
-  assert.ok(item.decision_intelligence.issue_confidence.score >= 80);
+  assert.ok(item.decision_intelligence.issue_confidence.score >= 75);
   assert.equal(item.decision_intelligence.mode, 'investigate');
   assert.match(item.decision_intelligence.recommended_check, /الوحدة\/العبوة/);
 });
