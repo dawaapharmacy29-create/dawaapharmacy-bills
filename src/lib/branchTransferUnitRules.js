@@ -57,13 +57,18 @@ export function suggestUnitRule(item) {
 
 export function unitRuleLabel(rule) {
   if (!rule) return '';
+  const ratio = round(rule.purchase_per_sale, 3);
+  return `1 ${rule.sale_unit || 'وحدة بيع'} = ${ratio} ${rule.purchase_unit || 'علبة'}`;
+}
+
+export function humanUnitRuleLabel(rule) {
+  if (!rule) return '';
   const ratio = Number(rule.purchase_per_sale);
   if (!Number.isFinite(ratio) || ratio <= 0) return '';
   const saleUnit = humanUnit(rule.sale_unit, 'وحدة');
   const purchaseUnit = humanUnit(rule.purchase_unit, 'علبة');
   if (ratio < 1) {
-    const salePerPurchase = round(1 / ratio, 2);
-    return `1 ${purchaseUnit} = ${salePerPurchase} ${saleUnit}`;
+    return `1 ${purchaseUnit} = ${round(1 / ratio, 2)} ${saleUnit}`;
   }
   return `1 ${saleUnit} = ${round(ratio, 2)} ${purchaseUnit}`;
 }
