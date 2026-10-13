@@ -40,6 +40,7 @@ test('marks equal sale and purchase as matched', () => {
   assert.equal(cases[0].type, 'matched');
   assert.equal(cases[0].sale_qty, 2);
   assert.equal(cases[0].purchase_qty, 2);
+  assert.equal(cases[0].match_confidence, 'high');
 });
 
 test('detects quantity mismatch without losing direction', () => {
@@ -73,16 +74,70 @@ test('detects sale without purchase and purchase without sale', () => {
   assert.equal(reconcileBranchTransfers([], [purchase()])[0].type, 'purchase_without_sale');
 });
 
-test('aggregates split invoices for the same product and day', () => {
+test('balances close split invoices as one transfer episode when totals agree', () => {
   const cases = reconcileBranchTransfers(
-    [sale({ qty: 1, invoice: 'S-1' }), sale({ qty: 3, invoice: 'S-2' })],
-    [purchase({ qty: 2, invoice: 'P-1' }), purchase({ qty: 2, invoice: 'P-2' })],
+    [sale({ qty: 1, invoice: 'S-1' }), sale({ qty: 3, invoice: 'S-2', date: '2026-10-12 10:03' })],
+    [purchase({ qty: 2, invoice: 'P-1' }), purchase({ qty: 2, invoice: 'P-2', date: '2026-10-12 10:04' })],
   );
   assert.equal(cases.length, 1);
   assert.equal(cases[0].type, 'matched');
   assert.equal(cases[0].sale_qty, 4);
   assert.equal(cases[0].purchase_qty, 4);
-  assert.deepEqual(cases[0].sale_invoices, ['S-1', 'S-2']);
+  assert.equal(cases[0].episode_balanced, true);
+});
+
+test('matches real 68511 scenario across midnight using evidence instead of calendar day', () => {
+  const cases = reconcileBranchTransfers(
+    [sale({
+      branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي', product_name: 'Naviluca 200 mg 7 cap', code: '68511', qty: 1,
+      invoice: '77452', date: '2026-10-12 23:58',
+    })],
+    [purchase({
+      branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم', product_name: 'Naviluca 200 mg 7 cap', code: '68511', qty: 1,
+      invoice: '11300', date: '2026-10-13 00:05',
+    })],
+  );
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].type, 'matched');
+  assert.equal(cases[0].cross_midnight, true);
+  assert.equal(cases[0].match_confidence, 'high');
+  assert.ok(cases[0].time_gap_minutes <= 8);
+  assert.match(cases[0].match_reason, /منتصف الليل/);
+});
+
+test('recognizes 7 syringes versus one box as unit-conversion evidence, not a confirmed quantity error', () => {
+  const cases = reconcileBranchTransfers(
+    [sale({
+      branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي', product_name: 'bonosome 7 syringes', code: '79767', qty: 7,
+      unit: 'One Unit', invoice: '77456', date: '2026-10-13 00:26',
+    })],
+    [purchase({
+      branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم', product_name: 'bonosome 7 syringes', code: '79767', qty: 1,
+      invoice: '11303', date: '2026-10-13 00:33',
+    })],
+  );
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].type, 'unit_conversion_review');
+  assert.equal(cases[0].unit_conversion_evidence?.pack_count, 7);
+  // High confidence describes the evidence that both rows belong to the same transfer episode.
+  // It does not auto-approve the conversion rule; the case stays in unit_conversion_review.
+  assert.equal(cases[0].match_confidence, 'high');
+});
+
+test('keeps repeated same-code transfers as separate episodes when they are far apart', () => {
+  const cases = reconcileBranchTransfers(
+    [
+      sale({ code: '24362', qty: 1, invoice: 'S-AM', date: '2026-10-12 10:00' }),
+      sale({ code: '24362', qty: 1, invoice: 'S-PM', date: '2026-10-12 20:00' }),
+    ],
+    [
+      purchase({ code: '24362', qty: 1, invoice: 'P-AM', date: '2026-10-12 10:12' }),
+      purchase({ code: '24362', qty: 1, invoice: 'P-PM', date: '2026-10-12 20:15' }),
+    ],
+  );
+  assert.equal(cases.length, 2);
+  assert.ok(cases.every((item) => item.type === 'matched'));
+  assert.deepEqual(cases.map((item) => item.sale_invoices[0]).sort(), ['S-AM', 'S-PM']);
 });
 
 test('summary and branch error rate reflect only confirmed current evidence', () => {
