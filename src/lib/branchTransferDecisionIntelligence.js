@@ -170,7 +170,7 @@ export function summarizeDecisionIntelligence(cases = []) {
   return cases.reduce((acc, item) => {
     const intel = item.decision_intelligence || explainTransferCase(item);
     acc[intel.mode] = (acc[intel.mode] || 0) + 1;
-    if (intel.issue_confidence.score >= 80) acc.high_issue_confidence += 1;
+    if (intel.issue_confidence.score >= 75) acc.high_issue_confidence += 1;
     if (intel.journey_confidence.score >= 90) acc.high_journey_confidence += 1;
     return acc;
   }, { silent: 0, review_conversion: 0, investigate: 0, urgent_review: 0, high_issue_confidence: 0, high_journey_confidence: 0 });
