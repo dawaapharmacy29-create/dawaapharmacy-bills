@@ -16,6 +16,7 @@ import {
   applyLearnedUnitRules, humanUnitRuleLabel, learnUnitRule, removeUnitRule, suggestUnitRule, unitRuleLabel,
 } from '@/lib/branchTransferUnitRules';
 import { buildTransferIncidents, summarizeTransferIncidents } from '@/lib/branchTransferIncidentIntelligence';
+import { buildOperationTimeline } from '@/lib/branchTransferOperationTimeline';
 
 const STORAGE_KEY = 'dawaa.branch-transfer-control.shadow.v1';
 
@@ -79,7 +80,15 @@ function SourceUpload({ sourceKey, source, onFiles }) {
   </label>;
 }
 
-function FlowNode({ branch, title, value, status = 'done', note }) {
+function OperationMeta({ operation }) {
+  if (!operation?.available) return null;
+  return <div className="mt-3 space-y-1.5 border-t border-black/5 pt-3">
+    <div className="flex items-start gap-2 text-[11px] font-bold leading-5 text-slate-600"><UserRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" /><span><b className="text-slate-700">مدخل الفاتورة:</b> {operation.userLabel}</span></div>
+    <div className="flex items-start gap-2 text-[11px] font-bold leading-5 text-slate-600"><Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" /><span>{operation.timeLabel}</span></div>
+  </div>;
+}
+
+function FlowNode({ branch, title, value, status = 'done', note, operation }) {
   const classes = status === 'done'
     ? 'border-emerald-200 bg-emerald-50'
     : status === 'review'
@@ -94,6 +103,7 @@ function FlowNode({ branch, title, value, status = 'done', note }) {
     </div>
     <div className="mt-2 text-3xl font-black text-slate-950">{value}</div>
     {note && <div className="mt-1.5 text-[11px] font-bold leading-5 text-slate-500">{note}</div>}
+    <OperationMeta operation={operation} />
   </div>;
 }
 
@@ -104,25 +114,28 @@ function transferFlow(incident, item) {
   const purchaseQty = Number(item?.purchase_qty || 0);
   const saleUnit = item?.sale_units?.join('، ') || '';
   const purchaseUnit = item?.purchase_units?.join('، ') || '';
+  const timeline = buildOperationTimeline(incident);
 
   if (incident.side === 'sale') {
     return {
       from, to,
-      left: { title: 'البيع', value: saleQty || 'مسجل', status: 'done', note: saleUnit || 'الحركة موجودة' },
-      right: { title: 'الشراء', value: purchaseQty || 'غير مسجل', status: 'missing', note: 'لم نجد شراءً مقابلًا' },
+      left: { title: 'البيع', value: saleQty || 'مسجل', status: 'done', note: saleUnit || 'الحركة موجودة', operation: timeline.sale },
+      right: { title: 'الشراء', value: purchaseQty || 'غير مسجل', status: 'missing', note: 'لم نجد شراءً مقابلًا', operation: timeline.purchase },
       step: `سجّل شراء ${to}`,
       detail: incident.invoice ? `فاتورة ${incident.invoice} · البيع موجود في ${from}` : `البيع موجود في ${from}`,
       doneLabel: `تم التأكد من شراء ${to}`,
+      gapLabel: timeline.gapLabel,
     };
   }
   if (incident.side === 'purchase') {
     return {
       from, to,
-      left: { title: 'البيع', value: saleQty || 'غير مسجل', status: 'missing', note: 'لم نجد بيعًا مقابلًا' },
-      right: { title: 'الشراء', value: purchaseQty || 'مسجل', status: 'done', note: purchaseUnit || 'الحركة موجودة' },
+      left: { title: 'البيع', value: saleQty || 'غير مسجل', status: 'missing', note: 'لم نجد بيعًا مقابلًا', operation: timeline.sale },
+      right: { title: 'الشراء', value: purchaseQty || 'مسجل', status: 'done', note: purchaseUnit || 'الحركة موجودة', operation: timeline.purchase },
       step: `سجّل بيع ${from}`,
       detail: incident.invoice ? `فاتورة ${incident.invoice} · الشراء موجود في ${to}` : `الشراء موجود في ${to}`,
       doneLabel: `تم التأكد من بيع ${from}`,
+      gapLabel: timeline.gapLabel,
     };
   }
   if (incident.kind === 'unit_conversion') {
@@ -130,40 +143,44 @@ function transferFlow(incident, item) {
     const relation = suggestion ? humanUnitRuleLabel(suggestion) : '';
     return {
       from, to,
-      left: { title: 'خرج', value: saleQty, status: 'done', note: saleUnit || 'وحدة البيع' },
-      right: { title: 'دخل', value: purchaseQty, status: 'done', note: purchaseUnit || 'وحدة الشراء' },
+      left: { title: 'خرج', value: saleQty, status: 'done', note: saleUnit || 'وحدة البيع', operation: timeline.sale },
+      right: { title: 'دخل', value: purchaseQty, status: 'done', note: purchaseUnit || 'وحدة الشراء', operation: timeline.purchase },
       step: relation ? `أكد: ${relation}` : 'أكد علاقة العبوة مرة واحدة',
       detail: 'بعد الاعتماد، النظام يتعلم نفس العلاقة لهذا الصنف والاتجاه.',
       doneLabel: 'تمت مراجعة تحويل العبوة',
+      gapLabel: timeline.gapLabel,
     };
   }
   if (incident.kind === 'quantity_mismatch') {
     return {
       from, to,
-      left: { title: 'خرج', value: saleQty, status: 'review', note: saleUnit || 'كمية البيع' },
-      right: { title: 'دخل', value: purchaseQty, status: 'review', note: purchaseUnit || 'كمية الشراء' },
+      left: { title: 'خرج', value: saleQty, status: 'review', note: saleUnit || 'كمية البيع', operation: timeline.sale },
+      right: { title: 'دخل', value: purchaseQty, status: 'review', note: purchaseUnit || 'كمية الشراء', operation: timeline.purchase },
       step: 'راجع فرق الكمية',
       detail: 'تأكد من الوحدة والعبوة قبل اعتباره عجزًا.',
       doneLabel: 'تمت مراجعة فرق الكمية',
+      gapLabel: timeline.gapLabel,
     };
   }
   if (incident.kind === 'code_mismatch') {
     return {
       from, to,
-      left: { title: 'البيع', value: saleQty, status: 'review', note: `كود ${item?.sale_codes?.join('، ') || '—'}` },
-      right: { title: 'الشراء', value: purchaseQty, status: 'review', note: `كود ${item?.purchase_codes?.join('، ') || '—'}` },
+      left: { title: 'البيع', value: saleQty, status: 'review', note: `كود ${item?.sale_codes?.join('، ') || '—'}`, operation: timeline.sale },
+      right: { title: 'الشراء', value: purchaseQty, status: 'review', note: `كود ${item?.purchase_codes?.join('، ') || '—'}`, operation: timeline.purchase },
       step: 'راجع هوية الصنف',
       detail: 'قارن العبوة والتركيز والشكل قبل دمج أي كودين.',
       doneLabel: 'تمت مراجعة هوية الصنف',
+      gapLabel: timeline.gapLabel,
     };
   }
   return {
     from, to,
-    left: { title: 'المصدر', value: saleQty, status: 'review' },
-    right: { title: 'المستلم', value: purchaseQty, status: 'review' },
+    left: { title: 'المصدر', value: saleQty, status: 'review', operation: timeline.sale },
+    right: { title: 'المستلم', value: purchaseQty, status: 'review', operation: timeline.purchase },
     step: 'راجع الحركة',
     detail: incident.recommended_check || '',
     doneLabel: 'تمت المراجعة',
+    gapLabel: timeline.gapLabel,
   };
 }
 
@@ -333,7 +350,7 @@ export default function BranchTransferDecisionCommand() {
         <Card className="overflow-hidden border-slate-200 shadow-md">
           <div className="border-b border-slate-100 bg-white p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-black text-slate-400">مسار العملية</div><div className="mt-1 text-xl font-black text-slate-950">{selectedIncident.invoice ? `فاتورة ${selectedIncident.invoice}` : selected.product_name}</div><div className="mt-1 text-xs font-bold text-slate-500">{selectedIncident.line_issue_count > 1 ? `${selectedIncident.line_issue_count} أصناف تحت نفس القرار` : selected.product_name}</div></div><div className="rounded-xl bg-slate-100 px-3 py-2 text-center"><div className="text-[9px] font-black text-slate-400">ثقة السبب</div><div className="text-xl font-black text-slate-900">{selectedIncident.root_cause_confidence}%</div></div></div></div>
           <div className="space-y-4 p-4 sm:p-5">
-            <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center"><FlowNode branch={flow.from} {...flow.left} /><div className="flex shrink-0 flex-col items-center justify-center px-2 text-teal-700"><ArrowLeftRight className="h-6 w-6" /><span className="mt-1 text-[9px] font-black text-slate-400">تحويل</span></div><FlowNode branch={flow.to} {...flow.right} /></div>
+            <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center"><FlowNode branch={flow.from} {...flow.left} /><div className="flex shrink-0 flex-col items-center justify-center px-2 text-teal-700"><ArrowLeftRight className="h-6 w-6" /><span className="mt-1 text-[9px] font-black text-slate-400">تحويل</span>{flow.gapLabel && <span className="mt-2 max-w-28 rounded-full bg-teal-50 px-2 py-1 text-center text-[9px] font-black leading-4 text-teal-800 ring-1 ring-teal-100">{flow.gapLabel}</span>}</div><FlowNode branch={flow.to} {...flow.right} /></div>
 
             <div className="rounded-2xl border-2 border-teal-200 bg-gradient-to-l from-teal-50 to-white p-4"><div className="text-[11px] font-black text-teal-700">الخطوة التالية</div><div className="mt-1 text-xl font-black leading-8 text-slate-950">{flow.step}</div>{flow.detail && <div className="mt-1 text-xs font-bold text-slate-500">{flow.detail}</div>}{selectedIncident.line_issue_count > 1 && <div className="mt-1 text-xs font-bold text-slate-500">قرار واحد للفاتورة بدل مراجعة {selectedIncident.line_issue_count} أصناف منفصلة.</div>}</div>
 
