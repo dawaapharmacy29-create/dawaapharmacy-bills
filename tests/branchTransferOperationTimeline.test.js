@@ -16,7 +16,8 @@ test('extracts invoice user and timestamp once from grouped sale lines', () => {
   assert.equal(value.userLabel, 'د علياء سامي');
   assert.deepEqual(value.invoices, ['10769']);
   assert.equal(value.timestamps.length, 1);
-  assert.match(value.timeLabel, /2026/);
+  assert.notEqual(value.timeLabel, 'غير متاح في الملف');
+  assert.match(value.timeLabel, /·/);
 });
 
 test('does not invent missing operator or time data', () => {
