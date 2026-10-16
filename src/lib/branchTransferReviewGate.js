@@ -66,23 +66,32 @@ export function gateTransferReviewCases(cases = [], sourcePresence = {}, context
       ? context.latestEvidenceDay
       : latestTransferEvidenceDay(cases),
   };
-  const actionable = [];
+  const reviewable = [];
+  const matchedContext = [];
   const suppressed = [];
   cases.forEach((item) => {
     const reason = suppressionReason(item, sourcePresence, effectiveContext);
+    if (item?.type === 'matched') {
+      matchedContext.push(item);
+      suppressed.push({ item, reason: 'resolved_by_evidence' });
+      return;
+    }
     if (reason) suppressed.push({ item, reason });
-    else actionable.push(item);
+    else reviewable.push(item);
   });
   const counts = suppressed.reduce((acc, entry) => {
     acc[entry.reason] = (acc[entry.reason] || 0) + 1;
     return acc;
   }, {});
   return {
-    actionable,
+    // buildTransferIncidents needs matched rows as context to distinguish a whole missing invoice
+    // from a partial missing invoice, but matched rows are never rendered as incidents.
+    actionable: [...matchedContext, ...reviewable],
+    reviewable,
     suppressed,
     latest_evidence_day: effectiveContext.latestEvidenceDay || null,
     summary: {
-      actionable: actionable.length,
+      actionable: reviewable.length,
       resolved_by_evidence: counts.resolved_by_evidence || 0,
       already_reviewed: counts.already_reviewed || 0,
       incomplete_source: counts.counterpart_source_not_loaded || 0,
