@@ -22,6 +22,7 @@ function counterpartSourceLoaded(item, sourcePresence = {}) {
 }
 
 function validTimestamp(value) {
+  if (value == null || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -87,7 +88,7 @@ export function buildDirectionalEvidenceCoverage(cases = []) {
 
 function coverageSpansReviewDay(minEvidenceDay, maxEvidenceDay, caseDay) {
   if (!caseDay) return true;
-  if (!minEvidenceDay || !maxEvidenceDay) return true;
+  if (!minEvidenceDay || !maxEvidenceDay) return false;
   return minEvidenceDay <= caseDay && maxEvidenceDay > caseDay;
 }
 
@@ -102,7 +103,7 @@ function directionalHorizonMature(item, directionalCoverage = {}) {
   const caseDay = itemDay(item);
   if (!caseDay) return true;
   const bucket = directionalCoverage[directionKey(item)];
-  if (!bucket) return true;
+  if (!bucket) return false;
   const sides = neededCoverageSides(item);
   if (!sides.length) return true;
   return sides.every((side) => coverageSpansReviewDay(
