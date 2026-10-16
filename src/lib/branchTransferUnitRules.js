@@ -28,6 +28,45 @@ function humanUnit(value, fallback) {
   return unit;
 }
 
+function exactCode(item) {
+  const codes = [...new Set([...(item?.sale_codes || []), ...(item?.purchase_codes || [])].map(text).filter(Boolean))];
+  return codes.length === 1 ? codes[0] : null;
+}
+
+function unitFamily(value) {
+  const unit = normalize(value);
+  if (!unit) return null;
+  if (/علب|box|pack/.test(unit)) return 'box';
+  if (/شريط|strip/.test(unit)) return 'strip';
+  if (/سرنج|syringe/.test(unit)) return 'syringe';
+  if (/امبول|ampoule|amp\b/.test(unit)) return 'ampoule';
+  if (/فيال|vial/.test(unit)) return 'vial';
+  if (/كيس|sachet/.test(unit)) return 'sachet';
+  if (/قطعه|piece|pcs?/.test(unit)) return 'piece';
+  return null;
+}
+
+function implicitUnitConversionEvidence(item) {
+  if (!item || item.type !== 'quantity_mismatch' || !exactCode(item) || item.sale_qty <= 0 || item.purchase_qty <= 0) return null;
+  const saleUnit = item.sale_units?.[0];
+  const purchaseUnit = item.purchase_units?.[0];
+  const saleFamily = unitFamily(saleUnit);
+  const purchaseFamily = unitFamily(purchaseUnit);
+  if (!saleFamily || !purchaseFamily || saleFamily === purchaseFamily) return null;
+  const hasBoxSide = saleFamily === 'box' || purchaseFamily === 'box';
+  if (!hasBoxSide) return null;
+  const ratio = Math.max(item.sale_qty, item.purchase_qty) / Math.min(item.sale_qty, item.purchase_qty);
+  const roundedRatio = Math.round(ratio);
+  if (roundedRatio < 2 || roundedRatio > 12 || Math.abs(ratio - roundedRatio) > Math.max(0.06, roundedRatio * 0.03)) return null;
+  return {
+    kind: 'explicit_unit_ratio',
+    ratio: round(ratio, 3),
+    sale_unit: saleUnit,
+    purchase_unit: purchaseUnit,
+    reason: `الوحدات مختلفة بوضوح (${saleUnit || 'وحدة بيع'} مقابل ${purchaseUnit || 'وحدة شراء'}) والنسبة ${round(ratio, 3)}:1؛ ده أقرب لتحويل عبوة من فرق كمية حقيقي.`,
+  };
+}
+
 export function unitRuleKey(item) {
   const product = normalize(item?.product_name);
   const from = text(item?.from || 'unknown');
@@ -88,17 +127,30 @@ export function applyLearnedUnitRules(cases = [], rules = {}) {
   return cases.map((item) => {
     if (!item.sale_qty || !item.purchase_qty) return item;
     const rule = rules[unitRuleKey(item)];
-    if (!caseMatchesUnitRule(item, rule)) return item;
+    if (caseMatchesUnitRule(item, rule)) {
+      return {
+        ...item,
+        original_type: item.type,
+        type: 'matched',
+        severity: 0,
+        matched_by_unit_rule: true,
+        unit_rule_key: rule.key,
+        unit_rule_label: unitRuleLabel(rule),
+        expected_purchase_qty: round(item.sale_qty * Number(rule.purchase_per_sale), 4),
+        next_action: 'مطابق بعد تطبيق قاعدة تحويل وحدة سبق اعتمادها.',
+      };
+    }
+    const implicit = implicitUnitConversionEvidence(item);
+    if (!implicit) return item;
     return {
       ...item,
       original_type: item.type,
-      type: 'matched',
-      severity: 0,
-      matched_by_unit_rule: true,
-      unit_rule_key: rule.key,
-      unit_rule_label: unitRuleLabel(rule),
-      expected_purchase_qty: round(item.sale_qty * Number(rule.purchase_per_sale), 4),
-      next_action: 'مطابق بعد تطبيق قاعدة تحويل وحدة سبق اعتمادها.',
+      type: 'unit_conversion_review',
+      severity: 45,
+      implicit_unit_conversion: true,
+      implicit_unit_conversion_evidence: implicit,
+      unit_conversion_evidence: item.unit_conversion_evidence || implicit,
+      next_action: `${implicit.reason} أكّد معامل التحويل مرة واحدة قبل اعتباره فرق كمية.`,
     };
   });
 }
