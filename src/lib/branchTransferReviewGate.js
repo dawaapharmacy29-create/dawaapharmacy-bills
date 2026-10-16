@@ -21,18 +21,49 @@ function counterpartSourceLoaded(item, sourcePresence = {}) {
   return true;
 }
 
-function suppressionReason(item, sourcePresence) {
+function itemTimestamps(item) {
+  return [...(item?.sale_lines || []), ...(item?.purchase_lines || [])]
+    .map((line) => Number(line?.timestamp_ms))
+    .filter(Number.isFinite);
+}
+
+function dayKey(timestamp) {
+  if (!Number.isFinite(timestamp)) return null;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function itemDay(item) {
+  const timestamps = itemTimestamps(item);
+  return timestamps.length ? dayKey(Math.min(...timestamps)) : null;
+}
+
+function needsMaturity(item) {
+  return ['quantity_mismatch', 'sale_without_purchase', 'purchase_without_sale'].includes(item?.type);
+}
+
+function suppressionReason(item, sourcePresence, context) {
   if (item?.type === 'matched') return 'resolved_by_evidence';
   if (CLOSED_STATUSES.has(item?.decision?.status)) return 'already_reviewed';
   if (!counterpartSourceLoaded(item, sourcePresence)) return 'counterpart_source_not_loaded';
+  if (context?.latestEvidenceDay && needsMaturity(item) && itemDay(item) === context.latestEvidenceDay) return 'evidence_horizon_open';
   return null;
 }
 
-export function gateTransferReviewCases(cases = [], sourcePresence = {}) {
+export function latestTransferEvidenceDay(cases = []) {
+  const timestamps = cases.flatMap(itemTimestamps);
+  return timestamps.length ? dayKey(Math.max(...timestamps)) : null;
+}
+
+export function gateTransferReviewCases(cases = [], sourcePresence = {}, context = {}) {
   const actionable = [];
   const suppressed = [];
   cases.forEach((item) => {
-    const reason = suppressionReason(item, sourcePresence);
+    const reason = suppressionReason(item, sourcePresence, context);
     if (reason) suppressed.push({ item, reason });
     else actionable.push(item);
   });
@@ -48,6 +79,7 @@ export function gateTransferReviewCases(cases = [], sourcePresence = {}) {
       resolved_by_evidence: counts.resolved_by_evidence || 0,
       already_reviewed: counts.already_reviewed || 0,
       incomplete_source: counts.counterpart_source_not_loaded || 0,
+      awaiting_later_evidence: counts.evidence_horizon_open || 0,
       suppressed_total: suppressed.length,
     },
   };
