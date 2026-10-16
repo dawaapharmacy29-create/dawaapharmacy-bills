@@ -25,6 +25,12 @@ function formatClock(date) {
   }).format(date);
 }
 
+function invoicePrefix(invoices = []) {
+  if (invoices.length === 1) return `فاتورة ${invoices[0]} · `;
+  if (invoices.length > 1) return `فواتير ${invoices.join('، ')} · `;
+  return '';
+}
+
 export function formatArabicOperationDate(timestamp) {
   const ms = validTimestamp(timestamp);
   if (ms == null) return null;
@@ -49,19 +55,21 @@ export function buildSideOperationMetadata(incident, side) {
       timestamps: [],
       timeLabel: 'غير متاح في الملف',
       invoices: [],
+      invoiceLabel: 'غير متاح في الملف',
     };
   }
 
   const users = unique(lines.map((line) => line?.user));
   const timestamps = [...new Set(lines.map((line) => validTimestamp(line?.timestamp_ms)).filter((value) => value != null))].sort((a, b) => a - b);
   const invoices = unique(lines.map((line) => line?.invoice));
+  const prefix = invoicePrefix(invoices);
 
   let userLabel = 'غير متاح في الملف';
   if (users.length === 1) userLabel = users[0];
   else if (users.length > 1) userLabel = `أكثر من مستخدم: ${users.join('، ')}`;
 
   let timeLabel = 'غير متاح في الملف';
-  if (timestamps.length === 1) timeLabel = formatArabicOperationDate(timestamps[0]) || timeLabel;
+  if (timestamps.length === 1) timeLabel = `${prefix}${formatArabicOperationDate(timestamps[0]) || timeLabel}`;
   else if (timestamps.length > 1) {
     const first = new Date(timestamps[0]);
     const last = new Date(timestamps[timestamps.length - 1]);
@@ -72,10 +80,12 @@ export function buildSideOperationMetadata(incident, side) {
       const dayDate = new Intl.DateTimeFormat('ar-EG', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
       }).format(first);
-      timeLabel = `${dayDate} · ${formatClock(first)}–${formatClock(last)}`;
+      timeLabel = `${prefix}${dayDate} · ${formatClock(first)}–${formatClock(last)}`;
     } else {
-      timeLabel = `${formatArabicOperationDate(timestamps[0])} → ${formatArabicOperationDate(timestamps[timestamps.length - 1])}`;
+      timeLabel = `${prefix}${formatArabicOperationDate(timestamps[0])} → ${formatArabicOperationDate(timestamps[timestamps.length - 1])}`;
     }
+  } else if (invoices.length) {
+    timeLabel = invoices.length === 1 ? `فاتورة ${invoices[0]} · الوقت غير متاح في الملف` : `فواتير ${invoices.join('، ')} · الوقت غير متاح في الملف`;
   }
 
   return {
@@ -85,6 +95,7 @@ export function buildSideOperationMetadata(incident, side) {
     timestamps,
     timeLabel,
     invoices,
+    invoiceLabel: invoices.length === 1 ? `فاتورة ${invoices[0]}` : invoices.length > 1 ? `فواتير ${invoices.join('، ')}` : 'غير متاح في الملف',
   };
 }
 
