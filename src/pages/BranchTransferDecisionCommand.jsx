@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertOctagon, AlertTriangle, ArrowLeftRight, BrainCircuit, CheckCircle2, ChevronDown, ChevronUp,
+  AlertOctagon, AlertTriangle, ArrowLeftRight, BrainCircuit, CalendarDays, CheckCircle2, ChevronDown, ChevronUp,
   CircleHelp, Clock3, Copy, FileSpreadsheet, Files, History, Keyboard, RefreshCw, Route, ScanSearch,
   Search, ShieldCheck, Sparkles, UserRound, WandSparkles, XCircle,
 } from 'lucide-react';
@@ -22,6 +22,9 @@ import { branchReviewQueueForIncident, incidentMatchesBranchQueue } from '@/lib/
 import {
   compareIncidentsByDay, formatIncidentDayLabel, incidentDayKey, incidentDayOptions, incidentMatchesDay,
 } from '@/lib/branchTransferIncidentDay';
+import {
+  formatTransferReturnEvidence, summarizeTransferReturnEvidence,
+} from '@/lib/branchTransferReturnIntelligence';
 
 const STORAGE_KEY = 'dawaa.branch-transfer-control.shadow.v1';
 const EVIDENCE_KEY = 'dawaa.branch-transfer-evidence.v1';
@@ -154,6 +157,14 @@ function FlowNode({ branch, title, value, status = 'done', note, operation }) {
   </div>;
 }
 
+function ReturnEvidencePanel({ evidence = [] }) {
+  if (!evidence.length) return null;
+  return <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+    <div className="flex items-center gap-2 text-sm font-black text-emerald-950"><RefreshCw className="h-4 w-4" /> المرتجع محسوب داخل صافي الحركة</div>
+    <div className="mt-2 grid gap-2 sm:grid-cols-2">{evidence.map((entry) => <div key={entry.side} className="rounded-xl border border-emerald-100 bg-white/80 p-3"><div className="text-[10px] font-black text-emerald-700">{entry.label}</div><div className="mt-1 text-sm font-black text-slate-950">{entry.text}</div><div className="mt-1 text-[10px] font-bold text-slate-500">المطابقة تستخدم الصافي، مع الاحتفاظ بالكمية الأصلية والمرتجع كدليل للمراجعة.</div></div>)}</div>
+  </div>;
+}
+
 function transferFlow(incident, item) {
   const from = branchName(incident.from);
   const to = branchName(incident.to);
@@ -162,31 +173,41 @@ function transferFlow(incident, item) {
   const saleUnit = item?.sale_units?.join('، ') || '';
   const purchaseUnit = item?.purchase_units?.join('، ') || '';
   const timeline = buildOperationTimeline(incident);
+  const saleReturn = summarizeTransferReturnEvidence(item?.sale_lines || [], saleQty);
+  const purchaseReturn = summarizeTransferReturnEvidence(item?.purchase_lines || [], purchaseQty);
+  const saleReturnText = formatTransferReturnEvidence(saleReturn, { movement: 'البيع', unit: saleUnit });
+  const purchaseReturnText = formatTransferReturnEvidence(purchaseReturn, { movement: 'الشراء', unit: purchaseUnit });
+  const saleNote = saleReturnText || saleUnit || 'كمية البيع';
+  const purchaseNote = purchaseReturnText || purchaseUnit || 'كمية الشراء';
+  const returnEvidence = [
+    ...(saleReturn.has_return ? [{ side: 'sale', label: `${from} — البيع`, text: saleReturnText }] : []),
+    ...(purchaseReturn.has_return ? [{ side: 'purchase', label: `${to} — الشراء`, text: purchaseReturnText }] : []),
+  ];
 
   if (incident.side === 'sale') return {
     from, to,
-    left: { title: 'البيع', value: saleQty || 'مسجل', status: 'done', note: saleUnit || 'الحركة موجودة', operation: timeline.sale },
+    left: { title: 'البيع', value: saleQty || 'مسجل', status: 'done', note: saleNote, operation: timeline.sale },
     right: { title: 'الشراء', value: purchaseQty || 'غير مسجل', status: 'missing', note: 'لم نجد شراءً مقابلًا', operation: timeline.purchase },
     step: `سجّل شراء ${to}`, detail: incident.invoice ? `فاتورة ${incident.invoice} · البيع موجود في ${from}` : `البيع موجود في ${from}`,
-    doneLabel: `تم التأكد من شراء ${to}`, gapLabel: timeline.gapLabel,
+    doneLabel: `تم التأكد من شراء ${to}`, gapLabel: timeline.gapLabel, returnEvidence,
   };
   if (incident.side === 'purchase') return {
     from, to,
     left: { title: 'البيع', value: saleQty || 'غير مسجل', status: 'missing', note: 'لم نجد بيعًا مقابلًا', operation: timeline.sale },
-    right: { title: 'الشراء', value: purchaseQty || 'مسجل', status: 'done', note: purchaseUnit || 'الحركة موجودة', operation: timeline.purchase },
+    right: { title: 'الشراء', value: purchaseQty || 'مسجل', status: 'done', note: purchaseNote, operation: timeline.purchase },
     step: `سجّل بيع ${from}`, detail: incident.invoice ? `فاتورة ${incident.invoice} · الشراء موجود في ${to}` : `الشراء موجود في ${to}`,
-    doneLabel: `تم التأكد من بيع ${from}`, gapLabel: timeline.gapLabel,
+    doneLabel: `تم التأكد من بيع ${from}`, gapLabel: timeline.gapLabel, returnEvidence,
   };
   if (incident.kind === 'unit_conversion') {
     const suggestion = suggestUnitRule(item); const relation = suggestion ? humanUnitRuleLabel(suggestion) : '';
-    return { from, to, left: { title: 'خرج', value: saleQty, status: 'done', note: saleUnit || 'وحدة البيع', operation: timeline.sale }, right: { title: 'دخل', value: purchaseQty, status: 'done', note: purchaseUnit || 'وحدة الشراء', operation: timeline.purchase }, step: relation ? `أكد: ${relation}` : 'أكد علاقة العبوة مرة واحدة', detail: 'بعد الاعتماد، النظام يتعلم نفس العلاقة لهذا الصنف والاتجاه.', doneLabel: 'تمت مراجعة تحويل العبوة', gapLabel: timeline.gapLabel };
+    return { from, to, left: { title: 'خرج', value: saleQty, status: 'done', note: saleNote, operation: timeline.sale }, right: { title: 'دخل', value: purchaseQty, status: 'done', note: purchaseNote, operation: timeline.purchase }, step: relation ? `أكد: ${relation}` : 'أكد علاقة العبوة مرة واحدة', detail: 'بعد الاعتماد، النظام يتعلم نفس العلاقة لهذا الصنف والاتجاه.', doneLabel: 'تمت مراجعة تحويل العبوة', gapLabel: timeline.gapLabel, returnEvidence };
   }
   if (incident.kind === 'quantity_mismatch') {
     const diff = Math.abs(purchaseQty - saleQty);
-    return { from, to, left: { title: 'خرج', value: saleQty, status: 'review', note: saleUnit || 'كمية البيع', operation: timeline.sale }, right: { title: 'دخل', value: purchaseQty, status: 'review', note: purchaseUnit || 'كمية الشراء', operation: timeline.purchase }, step: `راجع فرق الكمية (${Number(diff.toFixed(3))})`, detail: 'تأكد من الوحدة، ثم شوف الحركات اللاحقة قبل اعتباره عجزًا.', doneLabel: 'تمت مراجعة فرق الكمية', gapLabel: timeline.gapLabel };
+    return { from, to, left: { title: 'خرج', value: saleQty, status: 'review', note: saleNote, operation: timeline.sale }, right: { title: 'دخل', value: purchaseQty, status: 'review', note: purchaseNote, operation: timeline.purchase }, step: `راجع فرق الكمية (${Number(diff.toFixed(3))})`, detail: returnEvidence.length ? 'تم خصم المرتجعات أولًا؛ الفرق الظاهر هنا فرق صافي بعد المرتجع.' : 'تأكد من الوحدة، ثم شوف الحركات اللاحقة قبل اعتباره عجزًا.', doneLabel: 'تمت مراجعة فرق الكمية', gapLabel: timeline.gapLabel, returnEvidence };
   }
-  if (incident.kind === 'code_mismatch') return { from, to, left: { title: 'البيع', value: saleQty, status: 'review', note: 'الكود موضح بالأعلى', operation: timeline.sale }, right: { title: 'الشراء', value: purchaseQty, status: 'review', note: 'الكود موضح بالأعلى', operation: timeline.purchase }, step: 'راجع هوية الصنف قبل أي دمج', detail: 'نفس الاسم لا يكفي وحده لو الكود مختلف.', doneLabel: 'تمت مراجعة هوية الصنف', gapLabel: timeline.gapLabel };
-  return { from, to, left: { title: 'المصدر', value: saleQty, status: 'review', operation: timeline.sale }, right: { title: 'المستلم', value: purchaseQty, status: 'review', operation: timeline.purchase }, step: 'راجع الحركة', detail: incident.recommended_check || '', doneLabel: 'تمت المراجعة', gapLabel: timeline.gapLabel };
+  if (incident.kind === 'code_mismatch') return { from, to, left: { title: 'البيع', value: saleQty, status: 'review', note: saleReturnText || 'الكود موضح بالأعلى', operation: timeline.sale }, right: { title: 'الشراء', value: purchaseQty, status: 'review', note: purchaseReturnText || 'الكود موضح بالأعلى', operation: timeline.purchase }, step: 'راجع هوية الصنف قبل أي دمج', detail: 'نفس الاسم لا يكفي وحده لو الكود مختلف.', doneLabel: 'تمت مراجعة هوية الصنف', gapLabel: timeline.gapLabel, returnEvidence };
+  return { from, to, left: { title: 'المصدر', value: saleQty, status: 'review', note: saleReturnText, operation: timeline.sale }, right: { title: 'المستلم', value: purchaseQty, status: 'review', note: purchaseReturnText, operation: timeline.purchase }, step: 'راجع الحركة', detail: incident.recommended_check || '', doneLabel: 'تمت المراجعة', gapLabel: timeline.gapLabel, returnEvidence };
 }
 
 function formatEvidenceTime(timestamp) {
@@ -273,6 +294,9 @@ export default function BranchTransferDecisionCommand() {
     .filter((incident) => incidentMatchesBranchQueue(incident, branchQueue))
     .filter((incident) => incidentMatches(incident, filter)), [incidents, branchQueue, filter]);
   const days = useMemo(() => incidentDayOptions(dayCandidates), [dayCandidates]);
+  const dayPresets = useMemo(() => days.filter((day) => day.preset), [days]);
+  const specificDays = useMemo(() => days.filter((day) => !day.preset), [days]);
+  const activeDayOption = useMemo(() => days.find((day) => day.key === dayFilter) || null, [days, dayFilter]);
   const visibleIncidents = useMemo(() => {
     const q = query.trim().toLowerCase();
     return incidents
@@ -427,7 +451,7 @@ export default function BranchTransferDecisionCommand() {
     {view === 'now' && <>
       <Card className="border-slate-200 p-2 shadow-sm"><div className="grid grid-cols-2 gap-2 lg:grid-cols-4">{branchQueues.map(([key, label]) => { const active = branchQueue === key; const count = branchQueueCount(key); return <button key={key} onClick={() => { setBranchQueue(key); setDayFilter('all'); setSelectedId(''); }} className={`rounded-xl border px-3 py-3 text-sm font-black transition ${active ? key === 'shamy' ? 'border-sky-300 bg-sky-50 text-sky-900 ring-1 ring-sky-200' : key === 'shokry' ? 'border-emerald-300 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200' : key === 'shared' ? 'border-amber-300 bg-amber-50 text-amber-900 ring-1 ring-amber-200' : 'border-teal-300 bg-teal-50 text-teal-900 ring-1 ring-teal-200' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}><span>{label}</span><span className="mr-1 text-xs opacity-70">({count})</span></button>; })}</div>{branchQueue !== 'all' && <div className="mt-2 px-2 pb-1 text-[11px] font-bold leading-5 text-slate-500">{branchQueue === 'shared' ? 'الحالات المشتركة فيها الطرفان مسجلان، لذلك لا ينسب النظام الخطأ لفرع واحد قبل المراجعة.' : `يعرض هنا فقط القرارات التي تحتاج مراجعة ${branchQueue === 'shamy' ? 'الشامي' : 'شكري'} مباشرة.`}</div>}</Card>
 
-      {days.length > 0 && <Card className="border-slate-200 p-2 shadow-sm"><div className="mb-2 px-1 text-[11px] font-black text-slate-500">فلتر اليوم — الأحدث يظهر أولًا</div><div className="flex gap-2 overflow-x-auto pb-1"><button onClick={() => { setDayFilter('all'); setSelectedId(''); }} className={`shrink-0 rounded-full border px-3 py-2 text-xs font-black ${dayFilter === 'all' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>كل الأيام ({dayCandidates.length})</button>{days.map((day) => <button key={day.key} onClick={() => { setDayFilter(day.key); setSelectedId(''); }} className={`shrink-0 rounded-full border px-3 py-2 text-xs font-black ${dayFilter === day.key ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>{day.label} <span className="opacity-70">({day.count})</span></button>)}</div></Card>}
+      {days.length > 0 && <Card className="border-slate-200 p-4 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="rounded-xl bg-teal-50 p-2 text-teal-700"><CalendarDays className="h-5 w-5" /></div><div><div className="text-sm font-black text-slate-900">مراجعة حسب اليوم</div><div className="mt-0.5 text-[10px] font-bold text-slate-400">فترة سريعة أو يوم محدد — من غير شريط أيام طويل.</div></div></div><div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left"><div className="text-[9px] font-black text-slate-400">المحدد الآن</div><div className="mt-0.5 text-xs font-black text-slate-800">{dayFilter === 'all' ? `كل الفترة · ${dayCandidates.length} قرار` : `${activeDayOption?.label || 'الفترة المختارة'} · ${activeDayOption?.count || visibleIncidents.length} قرار`}</div></div></div><div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4"><button onClick={() => { setDayFilter('all'); setSelectedId(''); }} className={`rounded-xl border px-3 py-3 text-right transition ${dayFilter === 'all' ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><div className="text-xs font-black">كل الفترة</div><div className={`mt-1 text-[10px] font-bold ${dayFilter === 'all' ? 'text-slate-300' : 'text-slate-400'}`}>{dayCandidates.length} قرار</div></button>{dayPresets.slice(0, 3).map((day) => <button key={day.key} onClick={() => { setDayFilter(day.key); setSelectedId(''); }} className={`rounded-xl border px-3 py-3 text-right transition ${dayFilter === day.key ? 'border-teal-700 bg-teal-700 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-700 hover:bg-teal-50'}`}><div className="text-xs font-black">{day.preset === 'latest' ? 'أحدث يوم' : day.preset === 'last3' ? 'آخر 3 أيام' : 'آخر 7 أيام'}</div><div className={`mt-1 text-[10px] font-bold ${dayFilter === day.key ? 'text-teal-100' : 'text-slate-400'}`}>{day.preset === 'latest' ? day.label.replace('أحدث يوم · ', '') : `${day.count} قرار`}</div></button>)}</div>{specificDays.length > 0 && <div className="mt-3 flex flex-col gap-2 rounded-xl border border-slate-100 bg-slate-50 p-3 sm:flex-row sm:items-center"><div className="min-w-40"><div className="text-xs font-black text-slate-700">يوم محدد</div><div className="text-[10px] font-bold text-slate-400">نعرض فقط الأيام اللي فيها مراجعات.</div></div><select value={specificDays.some((day) => day.key === dayFilter) ? dayFilter : ''} onChange={(event) => { if (event.target.value) { setDayFilter(event.target.value); setSelectedId(''); } }} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-slate-700 outline-none focus:border-teal-400"><option value="">اختار يوم...</option>{specificDays.map((day) => <option key={day.key} value={day.key}>{day.label} — {day.count} قرار</option>)}</select>{dayFilter !== 'all' && <Button size="sm" variant="outline" onClick={() => { setDayFilter('all'); setSelectedId(''); }} className="font-black">مسح فلتر اليوم</Button>}</div>}</Card>}
 
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center"><div className="relative flex-1"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => { setQuery(e.target.value); setSelectedId(''); }} placeholder="ابحث باسم الصنف أو الكود أو رقم الفاتورة..." className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pr-10 pl-3 text-sm font-bold outline-none focus:border-teal-400" /></div><div className="flex gap-2 overflow-x-auto pb-1">{filters.map(([key, label]) => <button key={key} onClick={() => { setFilter(key); setDayFilter('all'); setSelectedId(''); }} className={`shrink-0 rounded-full border px-3 py-2 text-xs font-black ${filter === key ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>{label} <span className="opacity-70">({filterCount(key)})</span></button>)}</div></div>
 
@@ -441,6 +465,7 @@ export default function BranchTransferDecisionCommand() {
 
             <div className="flex flex-col items-stretch gap-2 md:flex-row md:items-center"><FlowNode branch={flow.from} {...flow.left} /><div className="flex shrink-0 flex-col items-center justify-center px-2 text-teal-700"><ArrowLeftRight className="h-6 w-6" /><span className="mt-1 text-[9px] font-black text-slate-400">{flow.gapLabel || 'تحويل'}</span></div><FlowNode branch={flow.to} {...flow.right} /></div>
 
+            <ReturnEvidencePanel evidence={flow.returnEvidence || []} />
             <RollingEvidencePanel evidence={rollingEvidence} onCopy={copyValue} />
 
             <div className="rounded-2xl border-2 border-teal-200 bg-gradient-to-l from-teal-50 to-white p-4"><div className="text-[11px] font-black text-teal-700">الخطوة التالية</div><div className="mt-1 text-xl font-black leading-8 text-slate-950">{flow.step}</div>{flow.detail && <div className="mt-1 text-xs font-bold text-slate-500">{flow.detail}</div>}{selectedIncident.line_issue_count > 1 && <div className="mt-1 text-xs font-bold text-slate-500">قرار واحد بدل مراجعة {selectedIncident.line_issue_count} أصناف منفصلة.</div>}</div>
