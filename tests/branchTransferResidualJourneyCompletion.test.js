@@ -66,6 +66,11 @@ test('does not choose arbitrarily when two residual movements could both explain
   );
 
   assert.equal(cases.some((entry) => entry.residual_journey_completed), false);
-  assert.ok(cases.some((entry) => entry.type === 'quantity_mismatch'));
+  const mismatch = cases.find((entry) => entry.type === 'quantity_mismatch');
+  assert.ok(mismatch);
+  assert.equal(mismatch.residual_candidate_count, 2);
+  assert.equal(mismatch.residual_needed_qty, 1);
+  assert.equal(mismatch.residual_candidates.length, 2);
+  assert.match(mismatch.residual_review_reason, /لم يتم اختيار أي واحد تلقائيًا/);
   assert.equal(cases.filter((entry) => entry.type === 'purchase_without_sale').length, 2);
 });
