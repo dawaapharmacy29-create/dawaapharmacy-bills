@@ -60,10 +60,16 @@ export function latestTransferEvidenceDay(cases = []) {
 }
 
 export function gateTransferReviewCases(cases = [], sourcePresence = {}, context = {}) {
+  const effectiveContext = {
+    ...context,
+    latestEvidenceDay: Object.prototype.hasOwnProperty.call(context, 'latestEvidenceDay')
+      ? context.latestEvidenceDay
+      : latestTransferEvidenceDay(cases),
+  };
   const actionable = [];
   const suppressed = [];
   cases.forEach((item) => {
-    const reason = suppressionReason(item, sourcePresence, context);
+    const reason = suppressionReason(item, sourcePresence, effectiveContext);
     if (reason) suppressed.push({ item, reason });
     else actionable.push(item);
   });
@@ -74,6 +80,7 @@ export function gateTransferReviewCases(cases = [], sourcePresence = {}, context
   return {
     actionable,
     suppressed,
+    latest_evidence_day: effectiveContext.latestEvidenceDay || null,
     summary: {
       actionable: actionable.length,
       resolved_by_evidence: counts.resolved_by_evidence || 0,
