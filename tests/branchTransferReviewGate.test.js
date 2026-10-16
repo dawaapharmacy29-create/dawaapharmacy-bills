@@ -138,6 +138,31 @@ test('the same missing purchase becomes reviewable once purchase evidence reache
   assert.equal(result.reviewable.some((entry) => entry.id === 'missing-purchase'), true);
 });
 
+test('a counterpart file that starts after the case day does not falsely prove a missing movement', () => {
+  const missing = item({
+    id: 'old-sale',
+    type: 'sale_without_purchase',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-10T18:00:00')],
+  });
+  const laterOnlyCoverage = item({
+    id: 'later-only',
+    type: 'matched',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-12T09:00:00')],
+    purchase_lines: [line('2026-10-12T09:10:00')],
+  });
+  const result = gateTransferReviewCases(
+    [missing, laterOnlyCoverage],
+    { shokrySale: true, shamyPurchase: true },
+    { latestEvidenceDay: '2026-10-12' },
+  );
+  assert.equal(result.reviewable.some((entry) => entry.id === 'old-sale'), false);
+  assert.equal(result.summary.awaiting_directional_coverage, 1);
+});
+
 test('quantity differences wait until both sale and purchase evidence have moved beyond the case day', () => {
   const mismatch = item({
     id: 'qty-gap',
