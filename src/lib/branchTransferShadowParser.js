@@ -6,11 +6,12 @@ const HEADER_ALIASES = {
   counterparty_code: ['كود العميل', 'كود المورد', 'ك.العميل', 'ك.المورد', 'customer code', 'supplier code', 'counterparty code'],
   qty: ['الكمية', 'كميه', 'العدد', 'عدد', 'qty', 'quantity', 'count'],
   unit: ['الوحدة', 'وحدة', 'unit'],
-  invoice: ['رقم الفاتورة', 'رقم الفاتوره', 'الفاتورة', 'الفاتوره', 'فاتورة', 'مسلسل', 'serial', 'invoice', 'invoice number'],
+  invoice: ['رقم الفاتورة', 'رقم الفاتوره', 'الفاتورة', 'الفاتوره', 'فاتورة', 'مسلسل', 'الرقم', 'serial', 'invoice', 'invoice number'],
   date: ['التاريخ', 'تاريخ', 'date', 'datetime'],
   user: ['المستخدم', 'الدكتور', 'الموظف', 'اسم المستخدم', 'user', 'doctor', 'employee'],
   branch: ['الفرع', 'المخزن', 'الموقع', 'branch', 'warehouse', 'location'],
   counterparty: ['العميل', 'عميل', 'المورد', 'مورد', 'الفرع المقابل', 'customer', 'supplier', 'counterparty'],
+  expiry: ['صلاحية', 'ت صلاحية', 'ت.صلاحية', 'الصلاحية', 'تاريخ الصلاحية', 'expiry', 'expiration', 'expiration date'],
 };
 
 function text(value) {
@@ -35,8 +36,8 @@ const NORMALIZED_ALIASES = Object.fromEntries(
 
 function detectHeader(row) {
   const map = {};
-  row.forEach((cell, index) => {
-    const normalized = normalizeHeader(cell);
+  row.forEach((cellValue, index) => {
+    const normalized = normalizeHeader(cellValue);
     if (!normalized) return;
     Object.entries(NORMALIZED_ALIASES).some(([key, aliases]) => {
       if (aliases.includes(normalized)) {
@@ -155,6 +156,68 @@ function parseBConnectPurchaseRows(rows, defaults = {}) {
   };
 }
 
+function salesHeaderMap(row) {
+  const normalized = row.map(normalizeHeader);
+  const invoice = normalized.indexOf(normalizeHeader('الرقم'));
+  const counterpartyCode = normalized.indexOf(normalizeHeader('الكود'));
+  const counterparty = normalized.indexOf(normalizeHeader('العميل'));
+  const date = normalized.indexOf(normalizeHeader('التاريخ'));
+  const user = normalized.indexOf(normalizeHeader('المستخدم'));
+  if ([invoice, counterpartyCode, counterparty, date, user].some((value) => value < 0)) return null;
+  return { invoice, counterparty_code: counterpartyCode, counterparty, date, user };
+}
+
+function parseBConnectSalesInvoiceHeaders(rows, defaults = {}) {
+  let header = null;
+  let headerRow = -1;
+  const items = [];
+  const warnings = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = Array.isArray(rows[index]) ? rows[index] : [];
+    if (!rowHasContent(row)) continue;
+    if (!header) {
+      const detected = salesHeaderMap(row);
+      if (detected) {
+        header = detected;
+        headerRow = index;
+      }
+      continue;
+    }
+    const invoice = text(row[header.invoice]);
+    const counterparty = text(row[header.counterparty]);
+    const counterpartyCode = text(row[header.counterparty_code]);
+    const user = text(row[header.user]);
+    const date = row[header.date] || defaults.date || '';
+    if (!invoice || !date) continue;
+    items.push({
+      row_number: index + 1,
+      invoice,
+      date,
+      user,
+      branch: defaults.branch || '',
+      counterparty: defaults.counterparty || counterparty,
+      counterparty_code: text(defaults.counterparty_code) || counterpartyCode,
+      source_format: 'bconnect_sales_invoice_headers',
+    });
+  }
+
+  if (!header) return null;
+  if (!items.length) warnings.push('تم العثور على رأس فواتير البيع لكن لم يتم استخراج فواتير صالحة.');
+  return {
+    valid: Boolean(items.length),
+    items,
+    warnings,
+    meta: {
+      source_format: 'bconnect_sales_invoice_headers',
+      header_row: headerRow + 1,
+      invoice_count: items.length,
+      item_count: items.length,
+      detected_fields: Object.keys(header),
+    },
+  };
+}
+
 function parseFlatRows(rows, defaults = {}) {
   let header = null;
   let headerRow = -1;
@@ -193,6 +256,7 @@ function parseFlatRows(rows, defaults = {}) {
       branch: defaults.branch || text(cell(row, header, 'branch')) || '',
       counterparty: defaults.counterparty || text(cell(row, header, 'counterparty')) || '',
       counterparty_code: text(defaults.counterparty_code) || text(cell(row, header, 'counterparty_code')) || '',
+      expiration_raw: cell(row, header, 'expiry') ?? null,
       source_format: 'flat_transfer_rows',
     });
   }
@@ -216,6 +280,8 @@ function parseFlatRows(rows, defaults = {}) {
 export function parseTransferRows(rows, defaults = {}) {
   const purchase = parseBConnectPurchaseRows(rows, defaults);
   if (purchase) return purchase;
+  const salesHeaders = parseBConnectSalesInvoiceHeaders(rows, defaults);
+  if (salesHeaders) return salesHeaders;
   return parseFlatRows(rows, defaults);
 }
 

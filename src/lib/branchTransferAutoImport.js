@@ -1,11 +1,14 @@
 import { parseTransferWorkbook } from './branchTransferShadowParser.js';
 import { resolveTransferBranch } from './branchTransferControl.js';
+import { enrichSaleRowsWithInvoiceHeaders } from './branchTransferEvidencePreparation.js';
 
 export const AUTO_SOURCE_CONFIG = {
   shokrySale: { label: 'بيع شكري → الشامي', side: 'sale', branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي' },
   shamyPurchase: { label: 'شراء الشامي من شكري', side: 'purchase', branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم' },
   shamySale: { label: 'بيع الشامي → شكري', side: 'sale', branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم' },
   shokryPurchase: { label: 'شراء شكري من الشامي', side: 'purchase', branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي' },
+  shokrySaleHeaders: { label: 'بيانات فواتير بيع شكري', side: 'sale_headers', branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي' },
+  shamySaleHeaders: { label: 'بيانات فواتير بيع الشامي', side: 'sale_headers', branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم' },
 };
 
 const COUNTERPARTY_CODE_BRANCH = {
@@ -64,6 +67,10 @@ function sourceKeyFor(format, counterpartyBranch) {
     if (counterpartyBranch === 'shamy') return 'shokrySale';
     if (counterpartyBranch === 'shokry') return 'shamySale';
   }
+  if (format === 'bconnect_sales_invoice_headers') {
+    if (counterpartyBranch === 'shamy') return 'shokrySaleHeaders';
+    if (counterpartyBranch === 'shokry') return 'shamySaleHeaders';
+  }
   if (format === 'bconnect_purchase_report') {
     if (counterpartyBranch === 'shokry') return 'shamyPurchase';
     if (counterpartyBranch === 'shamy') return 'shokryPurchase';
@@ -73,11 +80,13 @@ function sourceKeyFor(format, counterpartyBranch) {
 
 export function classifyParsedTransferFile(parsed) {
   if (!parsed?.valid || !parsed.items?.length) {
-    return { sourceKey: null, confidence: 'none', reason: 'الملف لا يحتوي على أصناف صالحة.' };
+    return { sourceKey: null, confidence: 'none', reason: 'الملف لا يحتوي على بيانات صالحة.' };
   }
 
   const format = parsed.meta?.source_format;
-  const side = format === 'flat_transfer_rows' ? 'sale' : format === 'bconnect_purchase_report' ? 'purchase' : null;
+  const side = ['flat_transfer_rows', 'bconnect_sales_invoice_headers'].includes(format)
+    ? 'sale'
+    : format === 'bconnect_purchase_report' ? 'purchase' : null;
   const counterparties = parsed.items.map((item) => item.counterparty).filter(Boolean);
   const branches = parsed.items.map((item) => item.branch).filter(Boolean);
   const nameBranch = majorityBranch(counterparties);
@@ -112,17 +121,18 @@ export function classifyParsedTransferFile(parsed) {
   }
 
   if (format === 'bconnect_purchase_report') {
-    if (nameBranch === 'shokry') return { sourceKey: 'shamyPurchase', confidence: 'medium', reason: 'تقرير مشتريات ومورده فرع شكري/أبو العزم؛ لم يتوفر كود مورد معروف فتم الاعتماد على الاسم.' };
-    if (nameBranch === 'shamy') return { sourceKey: 'shokryPurchase', confidence: 'medium', reason: 'تقرير مشتريات ومورده فرع الشامي؛ لم يتوفر كود مورد معروف فتم الاعتماد على الاسم.' };
+    if (nameBranch === 'shokry') return { sourceKey: 'shamyPurchase', confidence: 'medium', reason: 'تقرير مشتريات ومورده فرع شكري/أبو العزم؛ تم الاعتماد على الاسم.' };
+    if (nameBranch === 'shamy') return { sourceKey: 'shokryPurchase', confidence: 'medium', reason: 'تقرير مشتريات ومورده فرع الشامي؛ تم الاعتماد على الاسم.' };
   }
 
-  if (format === 'flat_transfer_rows') {
+  if (format === 'flat_transfer_rows' || format === 'bconnect_sales_invoice_headers') {
     const destination = nameBranch;
     const explicitSource = majorityBranch(branches);
-    if (explicitSource === 'shokry' && destination === 'shamy') return { sourceKey: 'shokrySale', confidence: 'medium', reason: 'تقرير بيع من شكري للعميل الشامي؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
-    if (explicitSource === 'shamy' && destination === 'shokry') return { sourceKey: 'shamySale', confidence: 'medium', reason: 'تقرير بيع من الشامي للعميل شكري/أبو العزم؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
-    if (destination === 'shamy') return { sourceKey: 'shokrySale', confidence: 'medium', reason: 'تقرير بيع والعميل هو فرع الشامي؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
-    if (destination === 'shokry') return { sourceKey: 'shamySale', confidence: 'medium', reason: 'تقرير بيع والعميل هو فرع شكري/أبو العزم؛ لم يتوفر كود عميل معروف فتم الاعتماد على الاسم.' };
+    const headerFile = format === 'bconnect_sales_invoice_headers';
+    if (explicitSource === 'shokry' && destination === 'shamy') return { sourceKey: headerFile ? 'shokrySaleHeaders' : 'shokrySale', confidence: 'medium', reason: 'تم تحديد بيع شكري للعميل الشامي من بيانات الملف.' };
+    if (explicitSource === 'shamy' && destination === 'shokry') return { sourceKey: headerFile ? 'shamySaleHeaders' : 'shamySale', confidence: 'medium', reason: 'تم تحديد بيع الشامي لشكري من بيانات الملف.' };
+    if (destination === 'shamy') return { sourceKey: headerFile ? 'shokrySaleHeaders' : 'shokrySale', confidence: 'medium', reason: 'العميل هو فرع الشامي، إذن المصدر شكري.' };
+    if (destination === 'shokry') return { sourceKey: headerFile ? 'shamySaleHeaders' : 'shamySale', confidence: 'medium', reason: 'العميل هو فرع شكري/أبو العزم، إذن المصدر الشامي.' };
   }
 
   return { sourceKey: null, confidence: 'low', reason: 'لم أستطع تحديد اتجاه الملف بأمان من بياناته الداخلية.' };
@@ -170,11 +180,22 @@ function rowFingerprint(item, sourceKey) {
     text(item.code),
     text(item.product_name),
     String(item.qty ?? ''),
+    text(item.expiration_raw),
     text(item.date),
     text(item.user),
     text(item.row_number),
     text(item.source_format),
   ].join('::');
+}
+
+function enrichBuiltSources(sources) {
+  if (sources.shokrySale?.items?.length && sources.shokrySaleHeaders?.items?.length) {
+    sources.shokrySale.items = enrichSaleRowsWithInvoiceHeaders(sources.shokrySale.items, sources.shokrySaleHeaders.items);
+  }
+  if (sources.shamySale?.items?.length && sources.shamySaleHeaders?.items?.length) {
+    sources.shamySale.items = enrichSaleRowsWithInvoiceHeaders(sources.shamySale.items, sources.shamySaleHeaders.items);
+  }
+  return sources;
 }
 
 export function buildSourcesFromInspections(inspections = []) {
@@ -207,7 +228,11 @@ export function buildSourcesFromInspections(inspections = []) {
       const key = rowFingerprint(item, entry.sourceKey);
       if (seenRows.has(key)) return;
       seenRows.add(key);
-      uniqueItems.push(item);
+      uniqueItems.push({
+        ...item,
+        source_file: entry.fileName,
+        source_fingerprint: entry.fingerprint || '',
+      });
     });
     bucket.items.push(...uniqueItems);
     bucket.fileNames.push(entry.fileName);
@@ -216,5 +241,5 @@ export function buildSourcesFromInspections(inspections = []) {
     sources[entry.sourceKey] = bucket;
   });
 
-  return { sources, ambiguous, duplicates, errors };
+  return { sources: enrichBuiltSources(sources), ambiguous, duplicates, errors };
 }

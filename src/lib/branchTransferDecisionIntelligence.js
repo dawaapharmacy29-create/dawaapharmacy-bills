@@ -1,3 +1,5 @@
+import { buildDecisionEvidence } from './branchTransferDecisionEvidence.js';
+
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, Math.round(Number(value) || 0)));
 
 function confidenceLabel(score) {
@@ -70,7 +72,7 @@ function issueConfidence(item, journey) {
     return {
       score,
       label: confidenceLabel(score),
-      reason: `الحركتان مرجح أنهما لنفس الرحلة، لكن الكمية غير متوازنة: بيع ${diff.sale} مقابل شراء ${diff.purchase}.`,
+      reason: `بعد تجميع سطور نفس الصنف داخل الفاتورة، ما زالت الكمية غير متوازنة: بيع ${diff.sale} مقابل شراء ${diff.purchase}.`,
     };
   }
 
@@ -93,7 +95,7 @@ function issueConfidence(item, journey) {
   return { score: 40, label: confidenceLabel(40), reason: 'الأدلة غير كافية لتقدير قوة المشكلة.' };
 }
 
-function buildSignals(item, journey, issue) {
+function buildSignals(item, journey, issue, evidence) {
   const signals = [];
   if (item?.sale_lines?.length && item?.purchase_lines?.length) {
     signals.push({
@@ -102,6 +104,24 @@ function buildSignals(item, journey, issue) {
       strength: journey.score,
       label: 'قوة ربط الرحلة',
       detail: journey.reason,
+    });
+  }
+  if (evidence?.quantity?.consolidated) {
+    signals.push({
+      key: 'invoice-consolidation',
+      kind: 'context',
+      strength: 98,
+      label: 'تجميع سطور الفاتورة',
+      detail: evidence.quantity.detail,
+    });
+  }
+  if (evidence?.actor?.status === 'complete') {
+    signals.push({
+      key: 'actor-coverage',
+      kind: 'context',
+      strength: 94,
+      label: 'البائع والمشتري معروفان',
+      detail: evidence.actor.detail,
     });
   }
   if (item?.cross_midnight) signals.push({ key: 'cross-midnight', kind: 'context', strength: 90, label: 'عبور منتصف الليل', detail: 'اختلاف تاريخ اليوم لا يُعتبر اختلاف رحلة طالما باقي الأدلة متماسكة.' });
@@ -120,6 +140,7 @@ function uncertainties(item, journey) {
   if (journey.score > 0 && journey.score < 75) list.push('ربط البيع بالشراء متوسط/ضعيف؛ لا تعتمد فرق الكمية كخطأ موظف قبل مراجعة الفاتورتين.');
   if (item?.type === 'unit_conversion_review') list.push('لا يتم اعتماد معامل التحويل تلقائيًا؛ يلزم تأكيد بشري مرة واحدة قبل تعميمه على نفس الصنف والاتجاه.');
   if (item?.type === 'code_mismatch') list.push('اختلاف الكود قد يكون SKU مختلفًا فعلًا أو كودًا مكررًا؛ لا يتم دمج الأكواد تلقائيًا.');
+  if (item?.sale_lines?.some((line) => line?.raw?.invoice_header_conflict || line?.invoice_header_conflict)) list.push('وجد النظام أكثر من رأس فاتورة بيع متعارض لنفس الرقم؛ لم يختر اسم دكتور تلقائيًا حتى لا ينسب الحركة للشخص الخطأ.');
   return list;
 }
 
@@ -130,30 +151,35 @@ function decisionMode(item, issue) {
   return 'investigate';
 }
 
-function recommendedCheck(item) {
+function recommendedCheck(item, evidence) {
   if (item?.type === 'sale_without_purchase') return 'ابدأ بفاتورة الشراء في الفرع المستلم، ثم تحقق هل الصنف وصل فعليًا أم لا.';
   if (item?.type === 'purchase_without_sale') return 'ابدأ بفاتورة البيع في الفرع المصدر قبل مساءلة موظف الشراء.';
-  if (item?.type === 'quantity_mismatch') return 'افتح فاتورتي البيع والشراء جنبًا إلى جنب، ثم راجع الوحدة/العبوة قبل اعتبار الفرق عجزًا.';
+  if (item?.type === 'quantity_mismatch') return evidence?.quantity?.consolidated
+    ? 'النظام جمع سطور نفس الصنف داخل الفاتورة بالفعل وما زال الفرق موجودًا؛ راجع الوحدة ثم الحركات اللاحقة.'
+    : 'افتح فاتورتي البيع والشراء جنبًا إلى جنب، ثم راجع الوحدة/العبوة قبل اعتبار الفرق عجزًا.';
   if (item?.type === 'unit_conversion_review') return 'أكد علاقة الوحدة مرة واحدة فقط إذا كانت صحيحة، وبعدها يسمح للنظام بتطبيقها على نفس الصنف والاتجاه.';
   if (item?.type === 'code_mismatch') return 'راجع العبوة والتركيز والشكل الدوائي أولًا؛ لو كلها متطابقة فالمشكلة غالبًا Master Data وليست حركة مخزون.';
   return 'لا يوجد إجراء مطلوب.';
 }
 
 export function explainTransferCase(item = {}) {
+  const evidence = buildDecisionEvidence(item);
   const journey = journeyConfidence(item);
   const issue = issueConfidence(item, journey);
   const mode = decisionMode(item, issue);
   return {
-    version: 'decision-intelligence-v1',
+    version: 'decision-intelligence-v2',
+    evidence,
+    decision_score: evidence.decision_score,
     journey_confidence: journey,
     issue_confidence: issue,
     mode,
     human_decision_required: !['silent'].includes(mode),
-    signals: buildSignals(item, journey, issue),
+    signals: buildSignals(item, journey, issue, evidence),
     uncertainties: uncertainties(item, journey),
-    recommended_check: recommendedCheck(item),
+    recommended_check: recommendedCheck(item, evidence),
     summary: mode === 'silent'
-      ? 'الحركة سليمة حسب الأدلة الحالية؛ لا تحتاج قرارًا.'
+      ? evidence.explanation
       : mode === 'review_conversion'
         ? 'النظام واثق من ربط الرحلة، لكنه غير واثق أن فرق الكمية خطأ؛ الاحتمال الأقوى تحويل عبوة/وحدة.'
         : issue.score >= 80
