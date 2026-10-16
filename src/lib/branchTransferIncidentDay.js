@@ -59,6 +59,25 @@ export function incidentDayOptions(incidents = []) {
     });
 }
 
+export function smartDayFilterKeys(dayOptions = [], filter = 'all') {
+  const dated = dayOptions.filter((day) => day.key !== 'unknown');
+  if (!filter || filter === 'all') return null;
+  if (filter === 'latest') return new Set(dated.slice(0, 1).map((day) => day.key));
+  if (filter === 'last3') return new Set(dated.slice(0, 3).map((day) => day.key));
+  if (filter === 'last7') return new Set(dated.slice(0, 7).map((day) => day.key));
+  return new Set([filter]);
+}
+
+export function incidentMatchesSmartDay(incident, filter = 'all', dayOptions = []) {
+  const keys = smartDayFilterKeys(dayOptions, filter);
+  if (!keys) return true;
+  return keys.has(incidentDayKey(incident));
+}
+
+export function smartDayFilterCount(incidents = [], filter = 'all', dayOptions = []) {
+  return incidents.filter((incident) => incidentMatchesSmartDay(incident, filter, dayOptions)).length;
+}
+
 export function compareIncidentsByDay(a, b, priorityFn = () => 0) {
   const aKey = incidentDayKey(a);
   const bKey = incidentDayKey(b);
