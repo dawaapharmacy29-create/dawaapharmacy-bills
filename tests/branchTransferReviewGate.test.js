@@ -19,9 +19,12 @@ function line(timestamp) {
   return { timestamp_ms: new Date(timestamp).getTime() };
 }
 
-test('matched evidence is silent and never enters the active decision queue', () => {
+test('matched evidence stays as incident context but never becomes reviewable', () => {
   const result = gateTransferReviewCases([item({ type: 'matched' })], {});
-  assert.equal(result.actionable.length, 0);
+  assert.equal(result.reviewable.length, 0);
+  assert.equal(result.actionable.length, 1);
+  assert.equal(result.actionable[0].type, 'matched');
+  assert.equal(result.summary.actionable, 0);
   assert.equal(result.summary.resolved_by_evidence, 1);
 });
 
@@ -33,8 +36,8 @@ test('confirmed and dismissed decisions stay out of the active queue', () => {
     item({ decision: { status: 'in_progress' } }),
   ];
   const result = gateTransferReviewCases(cases, {});
-  assert.equal(result.actionable.length, 1);
-  assert.equal(result.actionable[0].decision.status, 'in_progress');
+  assert.equal(result.reviewable.length, 1);
+  assert.equal(result.reviewable[0].decision.status, 'in_progress');
   assert.equal(result.summary.already_reviewed, 3);
 });
 
@@ -42,15 +45,15 @@ test('missing purchase is not accused when purchase source was not uploaded', ()
   const result = gateTransferReviewCases([
     item({ type: 'sale_without_purchase', from: 'shokry', to: 'shamy' }),
   ], { shokrySale: true, shamyPurchase: false });
-  assert.equal(result.actionable.length, 0);
+  assert.equal(result.reviewable.length, 0);
   assert.equal(result.summary.incomplete_source, 1);
 });
 
-test('missing purchase becomes actionable only when counterpart source is actually loaded', () => {
+test('missing purchase becomes reviewable only when counterpart source is actually loaded', () => {
   const result = gateTransferReviewCases([
     item({ type: 'sale_without_purchase', from: 'shokry', to: 'shamy' }),
-  ], { shokrySale: true, shamyPurchase: true });
-  assert.equal(result.actionable.length, 1);
+  ], { shokrySale: true, shamyPurchase: true }, { latestEvidenceDay: null });
+  assert.equal(result.reviewable.length, 1);
 });
 
 test('newest-day quantity and missing-side cases wait for later evidence instead of becoming problems immediately', () => {
@@ -69,7 +72,7 @@ test('newest-day quantity and missing-side cases wait for later evidence instead
   const latestDay = latestTransferEvidenceDay([older, newest]);
   const result = gateTransferReviewCases([older, newest], {}, { latestEvidenceDay: latestDay });
   assert.equal(latestDay, '2026-10-16');
-  assert.deepEqual(result.actionable.map((entry) => entry.id), ['older']);
+  assert.deepEqual(result.reviewable.map((entry) => entry.id), ['older']);
   assert.equal(result.summary.awaiting_later_evidence, 1);
 });
 
@@ -80,7 +83,7 @@ test('code conflicts are never hidden just because they are on the newest day', 
     purchase_lines: [line('2026-10-16T18:20:00')],
   });
   const result = gateTransferReviewCases([conflict], {}, { latestEvidenceDay: '2026-10-16' });
-  assert.equal(result.actionable.length, 1);
+  assert.equal(result.reviewable.length, 1);
 });
 
 test('waiting verification is a closed active-queue state', () => {
