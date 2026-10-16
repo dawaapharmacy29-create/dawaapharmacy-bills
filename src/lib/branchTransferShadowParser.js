@@ -5,6 +5,7 @@ const HEADER_ALIASES = {
   code: ['الكود', 'كود', 'كود الصنف', 'كود المنتج', 'ك.صنف', 'باركود', 'barcode', 'code', 'item code', 'product code'],
   counterparty_code: ['كود العميل', 'كود المورد', 'ك.العميل', 'ك.المورد', 'customer code', 'supplier code', 'counterparty code'],
   qty: ['الكمية', 'كميه', 'العدد', 'عدد', 'qty', 'quantity', 'count'],
+  return_qty: ['مرتجع', 'كمية المرتجع', 'كميه المرتجع', 'return qty', 'returned qty', 'returned quantity', 'returns'],
   unit: ['الوحدة', 'وحدة', 'unit'],
   invoice: ['رقم الفاتورة', 'رقم الفاتوره', 'الفاتورة', 'الفاتوره', 'فاتورة', 'مسلسل', 'الرقم', 'serial', 'invoice', 'invoice number'],
   date: ['التاريخ', 'تاريخ', 'date', 'datetime'],
@@ -82,6 +83,16 @@ function number(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function returnAwareQuantity(grossValue, returnValue) {
+  const grossQty = number(grossValue);
+  const parsedReturn = number(returnValue);
+  const returnQty = Math.max(0, parsedReturn == null ? 0 : parsedReturn);
+  if (grossQty == null) return { grossQty: null, returnQty, netQty: null, returnConflict: false };
+  const returnConflict = returnQty > grossQty;
+  const netQty = Math.max(0, grossQty - returnQty);
+  return { grossQty, returnQty, netQty, returnConflict };
+}
+
 function isPurchaseInvoiceHeader(row) {
   return normalizeHeader(row?.[0]) === normalizeHeader('ملاحظات')
     && normalizeHeader(row?.[1]) === normalizeHeader('مستخدم')
@@ -101,6 +112,8 @@ function parseBConnectPurchaseRows(rows, defaults = {}) {
   const warnings = [];
   let current = null;
   let invoiceCount = 0;
+  let returnedLineCount = 0;
+  let returnedQtyTotal = 0;
 
   rows.forEach((row, index) => {
     if (!Array.isArray(row) || !rowHasContent(row)) return;
@@ -121,17 +134,33 @@ function parseBConnectPurchaseRows(rows, defaults = {}) {
     }
     if (!current || !looksLikePurchaseDetail(row)) return;
 
-    const qty = number(row[11]);
-    if (!qty || qty <= 0) {
+    // B-Connect detailed purchase exports store quantity in column L (index 11)
+    // and returned quantity in column J (index 9). Matching must use the net
+    // physical movement, while gross/return evidence stays attached for review.
+    const quantityInfo = returnAwareQuantity(row[11], row[9]);
+    if (!quantityInfo.grossQty || quantityInfo.grossQty <= 0) {
       warnings.push(`تم تجاهل صف مشتريات ${index + 1}: الكمية غير صالحة.`);
       return;
+    }
+    if (quantityInfo.returnConflict) {
+      warnings.push(`صف مشتريات ${index + 1}: كمية المرتجع (${quantityInfo.returnQty}) أكبر من الكمية المسجلة (${quantityInfo.grossQty})؛ تم استخدام صافي صفر للمطابقة حتى المراجعة.`);
+    }
+    if (quantityInfo.returnQty > 0) {
+      returnedLineCount += 1;
+      returnedQtyTotal += quantityInfo.returnQty;
     }
 
     items.push({
       row_number: index + 1,
       product_name: text(row[14]),
       code: text(row[15]),
-      qty,
+      qty: quantityInfo.netQty,
+      gross_qty: quantityInfo.grossQty,
+      return_qty: quantityInfo.returnQty,
+      net_qty: quantityInfo.netQty,
+      has_return: quantityInfo.returnQty > 0,
+      return_conflict: quantityInfo.returnConflict,
+      return_unit_cost: number(row[8]),
       unit: '',
       invoice: current.invoice,
       date: current.date,
@@ -152,7 +181,13 @@ function parseBConnectPurchaseRows(rows, defaults = {}) {
     valid: Boolean(items.length),
     items,
     warnings,
-    meta: { source_format: 'bconnect_purchase_report', invoice_count: invoiceCount, item_count: items.length },
+    meta: {
+      source_format: 'bconnect_purchase_report',
+      invoice_count: invoiceCount,
+      item_count: items.length,
+      returned_line_count: returnedLineCount,
+      returned_qty_total: Number(returnedQtyTotal.toFixed(6)),
+    },
   };
 }
 
@@ -223,6 +258,8 @@ function parseFlatRows(rows, defaults = {}) {
   let headerRow = -1;
   const items = [];
   const warnings = [];
+  let returnedLineCount = 0;
+  let returnedQtyTotal = 0;
 
   for (let index = 0; index < rows.length; index += 1) {
     const row = Array.isArray(rows[index]) ? rows[index] : [];
@@ -237,18 +274,30 @@ function parseFlatRows(rows, defaults = {}) {
     }
 
     const productName = text(cell(row, header, 'product_name'));
-    const qty = number(cell(row, header, 'qty'));
-    if (!productName && qty === null) continue;
-    if (!productName || qty === null || qty === 0) {
+    const quantityInfo = returnAwareQuantity(cell(row, header, 'qty'), cell(row, header, 'return_qty'));
+    if (!productName && quantityInfo.grossQty === null) continue;
+    if (!productName || quantityInfo.grossQty === null || quantityInfo.grossQty === 0) {
       warnings.push(`تم تجاهل الصف ${index + 1}: اسم الصنف أو الكمية غير صالح.`);
       continue;
+    }
+    if (quantityInfo.returnConflict) {
+      warnings.push(`الصف ${index + 1}: كمية المرتجع (${quantityInfo.returnQty}) أكبر من الكمية المسجلة (${quantityInfo.grossQty})؛ تم استخدام صافي صفر للمطابقة حتى المراجعة.`);
+    }
+    if (quantityInfo.returnQty > 0) {
+      returnedLineCount += 1;
+      returnedQtyTotal += quantityInfo.returnQty;
     }
 
     items.push({
       row_number: index + 1,
       product_name: productName,
       code: text(cell(row, header, 'code')),
-      qty,
+      qty: quantityInfo.netQty,
+      gross_qty: quantityInfo.grossQty,
+      return_qty: quantityInfo.returnQty,
+      net_qty: quantityInfo.netQty,
+      has_return: quantityInfo.returnQty > 0,
+      return_conflict: quantityInfo.returnConflict,
       unit: text(cell(row, header, 'unit')),
       invoice: text(cell(row, header, 'invoice')),
       date: cell(row, header, 'date') || defaults.date || '',
@@ -273,6 +322,8 @@ function parseFlatRows(rows, defaults = {}) {
       header_row: headerRow >= 0 ? headerRow + 1 : null,
       item_count: items.length,
       detected_fields: header ? Object.keys(header) : [],
+      returned_line_count: returnedLineCount,
+      returned_qty_total: Number(returnedQtyTotal.toFixed(6)),
     },
   };
 }
