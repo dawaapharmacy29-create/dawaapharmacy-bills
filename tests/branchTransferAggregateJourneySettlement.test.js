@@ -26,11 +26,11 @@ function base(overrides = {}) {
   };
 }
 
-test('silences same-day invoice ambiguity when total exact-code journey is quantity balanced', () => {
+test('silences same-day invoice ambiguity when one real mismatch is completed by missing-side registrations', () => {
   const cases = [
     base({ id: 'a', sale_qty: 3, purchase_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 3, 'S1')], purchase_lines: [line('2026-10-01T10:20:00', 1, 'P1')], sale_invoices: ['S1'], purchase_invoices: ['P1'] }),
-    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-01T12:00:00', 1, 'P2')], purchase_invoices: ['P2'] }),
-    base({ id: 'c', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-01T16:00:00', 1, 'P3')], purchase_invoices: ['P3'] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, sale_codes: [], purchase_lines: [line('2026-10-01T12:00:00', 1, 'P2')], purchase_invoices: ['P2'] }),
+    base({ id: 'c', type: 'purchase_without_sale', purchase_qty: 1, sale_codes: [], purchase_lines: [line('2026-10-01T16:00:00', 1, 'P3')], purchase_invoices: ['P3'] }),
   ];
   const result = settleAggregateProductJourneys(cases);
   assert.equal(result.length, 1);
@@ -43,7 +43,7 @@ test('silences same-day invoice ambiguity when total exact-code journey is quant
 test('allows a journey to finish on the next calendar day', () => {
   const cases = [
     base({ id: 'a', sale_qty: 2, purchase_qty: 1, sale_lines: [line('2026-10-01T23:00:00', 2)], purchase_lines: [line('2026-10-01T23:10:00', 1)] }),
-    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-02T09:00:00', 1)] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, sale_codes: [], purchase_lines: [line('2026-10-02T09:00:00', 1)] }),
   ];
   const result = settleAggregateProductJourneys(cases);
   assert.equal(result.length, 1);
@@ -54,17 +54,38 @@ test('allows a journey to finish on the next calendar day', () => {
 test('does not hide a real remaining quantity difference', () => {
   const cases = [
     base({ id: 'a', sale_qty: 3, purchase_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 3)], purchase_lines: [line('2026-10-01T10:20:00', 1)] }),
-    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-01T12:00:00', 1)] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, sale_codes: [], purchase_lines: [line('2026-10-01T12:00:00', 1)] }),
   ];
   const result = settleAggregateProductJourneys(cases);
   assert.equal(result.filter((item) => item.type !== 'matched').length, 2);
 });
 
+test('never cancels two opposite quantity mismatches merely because their daily totals balance', () => {
+  const cases = [
+    base({ id: 'm1', sale_qty: 3, purchase_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 3)], purchase_lines: [line('2026-10-01T10:10:00', 1)] }),
+    base({ id: 'm2', sale_qty: 1, purchase_qty: 3, sale_lines: [line('2026-10-01T15:00:00', 1)], purchase_lines: [line('2026-10-01T15:10:00', 3)] }),
+  ];
+  const result = settleAggregateProductJourneys(cases);
+  assert.equal(result.length, 2);
+  assert.equal(result.every((item) => item.type === 'quantity_mismatch'), true);
+  assert.equal(result.some((item) => item.aggregate_journey_settled), false);
+});
+
+test('does not auto-pair two independent one-sided movements without a mismatch anchor', () => {
+  const cases = [
+    base({ id: 'sale-only', type: 'sale_without_purchase', sale_qty: 1, purchase_qty: 0, purchase_codes: [], sale_lines: [line('2026-10-01T10:00:00', 1)] }),
+    base({ id: 'purchase-only', type: 'purchase_without_sale', sale_qty: 0, purchase_qty: 1, sale_codes: [], purchase_lines: [line('2026-10-01T18:00:00', 1)] }),
+  ];
+  const result = settleAggregateProductJourneys(cases);
+  assert.equal(result.length, 2);
+  assert.equal(result.every((item) => item.type !== 'matched'), true);
+});
+
 test('never aggregates different codes or directions', () => {
   const cases = [
-    base({ id: 'a', sale_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 1)] }),
-    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_codes: ['200'], sale_codes: [], purchase_lines: [line('2026-10-01T11:00:00', 1)] }),
-    base({ id: 'c', type: 'purchase_without_sale', from: 'shokry', to: 'shamy', purchase_qty: 1, purchase_lines: [line('2026-10-01T11:00:00', 1)] }),
+    base({ id: 'a', sale_qty: 2, purchase_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 2)], purchase_lines: [line('2026-10-01T10:10:00', 1)] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, sale_codes: [], purchase_codes: ['200'], purchase_lines: [line('2026-10-01T11:00:00', 1)] }),
+    base({ id: 'c', type: 'purchase_without_sale', from: 'shokry', to: 'shamy', purchase_qty: 1, sale_codes: [], purchase_lines: [line('2026-10-01T11:00:00', 1)] }),
   ];
   const result = settleAggregateProductJourneys(cases);
   assert.equal(result.filter((item) => item.type !== 'matched').length, 3);
@@ -72,20 +93,8 @@ test('never aggregates different codes or directions', () => {
 
 test('blank timestamps do not create a fake 1970 aggregate journey', () => {
   const cases = [
-    base({
-      id: 'undated-sale',
-      type: 'sale_without_purchase',
-      sale_qty: 1,
-      sale_lines: [{ timestamp_ms: '', qty: 1, invoice: 'S1' }],
-      sale_invoices: ['S1'],
-    }),
-    base({
-      id: 'undated-purchase',
-      type: 'purchase_without_sale',
-      purchase_qty: 1,
-      purchase_lines: [{ timestamp_ms: null, qty: 1, invoice: 'P1' }],
-      purchase_invoices: ['P1'],
-    }),
+    base({ id: 'undated-sale', type: 'sale_without_purchase', sale_qty: 1, purchase_qty: 0, purchase_codes: [], sale_lines: [{ timestamp_ms: '', qty: 1, invoice: 'S1' }], sale_invoices: ['S1'] }),
+    base({ id: 'undated-purchase', type: 'purchase_without_sale', sale_qty: 0, purchase_qty: 1, sale_codes: [], purchase_lines: [{ timestamp_ms: null, qty: 1, invoice: 'P1' }], purchase_invoices: ['P1'] }),
   ];
   const result = settleAggregateProductJourneys(cases);
   assert.equal(result.length, 2);
