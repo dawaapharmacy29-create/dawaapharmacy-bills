@@ -20,6 +20,7 @@ test('decision intelligence explains consolidated multi-expiry match without cre
   assert.equal(intel.mode, 'silent');
   assert.equal(intel.issue_confidence.score, 0);
   assert.equal(intel.evidence.quantity.consolidated, true);
+  assert.match(intel.summary, /تجميع سطور/);
   assert.ok(intel.signals.some((signal) => signal.key === 'invoice-consolidation'));
   assert.ok(intel.signals.some((signal) => signal.key === 'actor-coverage'));
 });
@@ -33,4 +34,5 @@ test('actor header conflict is surfaced as uncertainty instead of assigning blam
     purchase_lines: [{}],
   });
   assert.ok(intel.uncertainties.some((value) => /أكثر من رأس فاتورة بيع متعارض/.test(value)));
+  assert.notEqual(intel.mode, 'silent');
 });
