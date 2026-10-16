@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTransferRows } from '../src/lib/branchTransferShadowParser.js';
-import { classifyParsedTransferFile } from '../src/lib/branchTransferAutoImport.js';
+import { buildSourcesFromInspections, classifyParsedTransferFile } from '../src/lib/branchTransferAutoImport.js';
 import { enrichSaleRowsWithInvoiceHeaders, saleHeaderCoverage } from '../src/lib/branchTransferEvidencePreparation.js';
 import { reconcileBranchTransfers } from '../src/lib/branchTransferControlSmartEngine.js';
 
@@ -52,4 +52,20 @@ test('enriches sale lines with the doctor from matching invoice headers without 
   assert.equal(enriched[0].qty, 1);
   assert.equal(enriched[0].invoice_header_enriched, true);
   assert.equal(saleHeaderCoverage(lines, headers).coverage_percent, 100);
+});
+
+test('auto import enriches Shokry sale rows when both detail and header files are uploaded together', () => {
+  const result = buildSourcesFromInspections([
+    {
+      fileName: 'بيع شكري(1).xlsx', fileSize: 100, fingerprint: 'details', sourceKey: 'shokrySale',
+      parsed: { valid: true, warnings: [], meta: { source_format: 'flat_transfer_rows' }, items: [{ row_number: 5, invoice: '76363', code: '67630', product_name: 'Mirage', qty: 1, date: new Date(2026, 9, 6, 18, 21), user: '', branch: 'الادارة فرع شكري', counterparty: 'دواء الشامي', source_format: 'flat_transfer_rows' }] },
+    },
+    {
+      fileName: 'بيع شكرررررري.xlsx', fileSize: 50, fingerprint: 'headers', sourceKey: 'shokrySaleHeaders',
+      parsed: { valid: true, warnings: [], meta: { source_format: 'bconnect_sales_invoice_headers' }, items: [{ row_number: 3, invoice: '76363', date: new Date(2026, 9, 6, 18, 21), user: 'د دنيا', branch: 'الادارة فرع شكري', counterparty: 'دواء الشامي', source_format: 'bconnect_sales_invoice_headers' }] },
+    },
+  ]);
+  assert.equal(result.sources.shokrySale.items[0].user, 'د دنيا');
+  assert.equal(result.sources.shokrySale.items[0].invoice_header_enriched, true);
+  assert.equal(result.sources.shokrySaleHeaders.items.length, 1);
 });
