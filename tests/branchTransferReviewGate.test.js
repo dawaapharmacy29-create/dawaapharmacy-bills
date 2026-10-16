@@ -113,13 +113,21 @@ test('a sale missing purchase stays quiet until purchase evidence for that direc
   assert.equal(result.summary.awaiting_directional_coverage, 1);
 });
 
-test('the same missing purchase becomes reviewable once purchase evidence reaches the next day', () => {
+test('the same missing purchase becomes reviewable once counterpart evidence spans the case day and reaches the next day', () => {
   const missing = item({
     id: 'missing-purchase',
     type: 'sale_without_purchase',
     from: 'shokry',
     to: 'shamy',
     sale_lines: [line('2026-10-14T18:00:00')],
+  });
+  const sameDayCoverage = item({
+    id: 'purchase-coverage-same-day',
+    type: 'matched',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-14T16:00:00')],
+    purchase_lines: [line('2026-10-14T16:10:00')],
   });
   const nextDayCoverage = item({
     id: 'purchase-coverage-next-day',
@@ -129,9 +137,9 @@ test('the same missing purchase becomes reviewable once purchase evidence reache
     sale_lines: [line('2026-10-15T09:00:00')],
     purchase_lines: [line('2026-10-15T09:10:00')],
   });
-  const coverage = buildDirectionalEvidenceCoverage([missing, nextDayCoverage]);
+  const coverage = buildDirectionalEvidenceCoverage([missing, sameDayCoverage, nextDayCoverage]);
   const result = gateTransferReviewCases(
-    [missing, nextDayCoverage],
+    [missing, sameDayCoverage, nextDayCoverage],
     { shokrySale: true, shamyPurchase: true },
     { latestEvidenceDay: '2026-10-15', directionalCoverage: coverage },
   );
