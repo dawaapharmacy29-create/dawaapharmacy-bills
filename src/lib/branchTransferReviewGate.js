@@ -21,10 +21,18 @@ function counterpartSourceLoaded(item, sourcePresence = {}) {
   return true;
 }
 
+function validTimestamp(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function itemSideTimestamps(item, side) {
+  const lines = side === 'sale' ? (item?.sale_lines || []) : (item?.purchase_lines || []);
+  return lines.map((line) => validTimestamp(line?.timestamp_ms)).filter((value) => value != null);
+}
+
 function itemTimestamps(item) {
-  return [...(item?.sale_lines || []), ...(item?.purchase_lines || [])]
-    .map((line) => Number(line?.timestamp_ms))
-    .filter(Number.isFinite);
+  return [...itemSideTimestamps(item, 'sale'), ...itemSideTimestamps(item, 'purchase')];
 }
 
 function dayKey(timestamp) {
@@ -42,14 +50,61 @@ function itemDay(item) {
   return timestamps.length ? dayKey(Math.min(...timestamps)) : null;
 }
 
+function directionKey(item) {
+  const from = branchToken(item?.from) || String(item?.from || 'unknown');
+  const to = branchToken(item?.to) || String(item?.to || 'unknown');
+  return `${from}::${to}`;
+}
+
+function maxDay(values = []) {
+  return values.filter(Boolean).sort().at(-1) || null;
+}
+
+export function buildDirectionalEvidenceCoverage(cases = []) {
+  const coverage = {};
+  cases.forEach((item) => {
+    const key = directionKey(item);
+    const bucket = coverage[key] || { sale_max_day: null, purchase_max_day: null };
+    const saleDays = itemSideTimestamps(item, 'sale').map(dayKey).filter(Boolean);
+    const purchaseDays = itemSideTimestamps(item, 'purchase').map(dayKey).filter(Boolean);
+    bucket.sale_max_day = maxDay([bucket.sale_max_day, ...saleDays]);
+    bucket.purchase_max_day = maxDay([bucket.purchase_max_day, ...purchaseDays]);
+    coverage[key] = bucket;
+  });
+  return coverage;
+}
+
+function laterDayAvailable(maxEvidenceDay, caseDay) {
+  if (!maxEvidenceDay || !caseDay) return true;
+  return maxEvidenceDay > caseDay;
+}
+
+function neededCoverageSides(item) {
+  if (item?.type === 'sale_without_purchase') return ['purchase'];
+  if (item?.type === 'purchase_without_sale') return ['sale'];
+  if (['quantity_mismatch', 'unit_conversion_review'].includes(item?.type)) return ['sale', 'purchase'];
+  return [];
+}
+
+function directionalHorizonMature(item, directionalCoverage = {}) {
+  const caseDay = itemDay(item);
+  if (!caseDay) return true;
+  const bucket = directionalCoverage[directionKey(item)];
+  if (!bucket) return true;
+  const sides = neededCoverageSides(item);
+  if (!sides.length) return true;
+  return sides.every((side) => laterDayAvailable(bucket[`${side}_max_day`], caseDay));
+}
+
 function needsMaturity(item) {
-  return ['quantity_mismatch', 'sale_without_purchase', 'purchase_without_sale'].includes(item?.type);
+  return ['quantity_mismatch', 'sale_without_purchase', 'purchase_without_sale', 'unit_conversion_review'].includes(item?.type);
 }
 
 function suppressionReason(item, sourcePresence, context) {
   if (item?.type === 'matched') return 'resolved_by_evidence';
   if (CLOSED_STATUSES.has(item?.decision?.status)) return 'already_reviewed';
   if (!counterpartSourceLoaded(item, sourcePresence)) return 'counterpart_source_not_loaded';
+  if (context?.directionalCoverage && needsMaturity(item) && !directionalHorizonMature(item, context.directionalCoverage)) return 'directional_evidence_horizon_open';
   if (context?.latestEvidenceDay && needsMaturity(item) && itemDay(item) === context.latestEvidenceDay) return 'evidence_horizon_open';
   return null;
 }
@@ -65,6 +120,7 @@ export function gateTransferReviewCases(cases = [], sourcePresence = {}, context
     latestEvidenceDay: Object.prototype.hasOwnProperty.call(context, 'latestEvidenceDay')
       ? context.latestEvidenceDay
       : latestTransferEvidenceDay(cases),
+    directionalCoverage: context.directionalCoverage || buildDirectionalEvidenceCoverage(cases),
   };
   const reviewable = [];
   const matchedContext = [];
@@ -90,12 +146,14 @@ export function gateTransferReviewCases(cases = [], sourcePresence = {}, context
     reviewable,
     suppressed,
     latest_evidence_day: effectiveContext.latestEvidenceDay || null,
+    directional_coverage: effectiveContext.directionalCoverage,
     summary: {
       actionable: reviewable.length,
       resolved_by_evidence: counts.resolved_by_evidence || 0,
       already_reviewed: counts.already_reviewed || 0,
       incomplete_source: counts.counterpart_source_not_loaded || 0,
-      awaiting_later_evidence: counts.evidence_horizon_open || 0,
+      awaiting_later_evidence: (counts.evidence_horizon_open || 0) + (counts.directional_evidence_horizon_open || 0),
+      awaiting_directional_coverage: counts.directional_evidence_horizon_open || 0,
       suppressed_total: suppressed.length,
     },
   };
