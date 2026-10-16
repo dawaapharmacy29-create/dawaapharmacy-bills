@@ -47,6 +47,26 @@ test('counts balanced one-to-many journey as a prevented false positive', () => 
   assert.equal(audit.false_positive_prevented, 1);
 });
 
+test('counts bounded residual completion separately without double-counting prevention', () => {
+  const audit = auditTransferAnalysis([{
+    type: 'matched',
+    sale_qty: 3,
+    purchase_qty: 3,
+    sale_codes: ['300'],
+    purchase_codes: ['300'],
+    sale_invoices: ['S3'],
+    purchase_invoices: ['P3', 'P4'],
+    residual_journey_completed: true,
+    episode_balanced: true,
+    time_gap_minutes: 210,
+    sale_lines: [{}],
+    purchase_lines: [{}, {}],
+  }]);
+  assert.equal(audit.residual_journey_completed, 1);
+  assert.equal(audit.composite_journey_matched, 1);
+  assert.equal(audit.false_positive_prevented, 1);
+});
+
 test('keeps quantity mismatch in review even after consolidation', () => {
   const audit = auditTransferAnalysis([{
     type: 'quantity_mismatch',
