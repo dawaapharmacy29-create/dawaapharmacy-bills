@@ -79,7 +79,7 @@ function presetOption(name, label, entries) {
   };
 }
 
-export function incidentDayOptions(incidents = [], { specificLimit = 6 } = {}) {
+export function incidentDayOptions(incidents = [], { specificLimit = 90 } = {}) {
   const raw = rawDayOptions(incidents);
   const dated = raw.filter((day) => day.key !== 'unknown');
   const unknown = raw.find((day) => day.key === 'unknown');
