@@ -131,8 +131,10 @@ export function completeResidualBalancedJourneys(cases = []) {
         && minuteGap(anchorTime, caseStart(item)) <= MAX_COMPLETION_GAP_MINUTES)
       .sort((a, b) => minuteGap(anchorTime, caseStart(a.item)) - minuteGap(anchorTime, caseStart(b.item)));
 
+    // If more than one movement could explain the same residual, evidence is ambiguous.
+    // Keep the cases visible for review instead of selecting a convenient candidate automatically.
+    if (candidates.length !== 1) return;
     const match = candidates[0];
-    if (!match) return;
     const merged = buildCompletedCase([anchor, match.item]);
     if (!nearlyEqual(merged.sale_qty, merged.purchase_qty)) return;
 
