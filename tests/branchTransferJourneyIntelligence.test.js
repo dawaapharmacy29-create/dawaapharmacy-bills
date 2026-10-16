@@ -29,6 +29,25 @@ test('preserves two sale rows of the same invoice/code when expiry differs and r
   assert.equal(item.sale_lines.length, 2);
 });
 
+test('balances one sale invoice against multiple nearby purchase invoices as one journey', () => {
+  const sale = [{
+    invoice: '80001', code: '55555', product_name: 'Journey Product', qty: 3,
+    date: new Date(2026, 9, 10, 10, 0), branch: 'الادارة فرع شكري', counterparty: 'دواء الشامي',
+  }];
+  const purchases = [
+    { invoice: '12001', code: '55555', product_name: 'Journey Product', qty: 2, date: new Date(2026, 9, 10, 10, 15), branch: 'الفرعية الشامي', counterparty: 'دواء ابو العزم' },
+    { invoice: '12002', code: '55555', product_name: 'Journey Product', qty: 1, date: new Date(2026, 9, 10, 10, 35), branch: 'الفرعية الشامي', counterparty: 'دواء ابو العزم' },
+  ];
+  const cases = reconcileBranchTransfers(sale, purchases);
+  const item = cases.find((entry) => entry.sale_codes?.includes('55555'));
+  assert.ok(item);
+  assert.equal(item.type, 'matched');
+  assert.equal(item.sale_qty, 3);
+  assert.equal(item.purchase_qty, 3);
+  assert.equal(item.episode_balanced, true);
+  assert.deepEqual(item.purchase_invoices.sort(), ['12001', '12002']);
+});
+
 test('parses the B-Connect sales invoice header report and classifies it as Shokry sale enrichment', () => {
   const parsed = parseTransferRows([
     ['الرقم', 'النوع', 'الكود', 'العميل', 'التاريخ', 'ع.أصناف', 'المستخدم'],
