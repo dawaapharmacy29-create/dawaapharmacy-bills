@@ -15,29 +15,35 @@ test('extracts invoice user and timestamp once from grouped sale lines', () => {
   ]), 'sale');
   assert.equal(value.userLabel, 'د علياء سامي');
   assert.deepEqual(value.invoices, ['10769']);
+  assert.equal(value.invoiceLabel, 'فاتورة 10769');
   assert.equal(value.timestamps.length, 1);
-  assert.notEqual(value.timeLabel, 'غير متاح في الملف');
+  assert.match(value.timeLabel, /فاتورة 10769/);
   assert.match(value.timeLabel, /·/);
 });
 
-test('does not invent missing operator or time data', () => {
+test('does not invent missing operator or time data while preserving known invoice identity', () => {
   const value = buildSideOperationMetadata(incident([
     { purchase_lines: [{ user: '', invoice: '1', timestamp_ms: null }] },
   ]), 'purchase');
   assert.equal(value.userLabel, 'غير متاح في الملف');
-  assert.equal(value.timeLabel, 'غير متاح في الملف');
+  assert.equal(value.invoiceLabel, 'فاتورة 1');
+  assert.match(value.timeLabel, /فاتورة 1/);
+  assert.match(value.timeLabel, /الوقت غير متاح/);
 });
 
-test('shows multiple users explicitly instead of selecting one arbitrarily', () => {
+test('shows multiple users and invoices explicitly instead of selecting one arbitrarily', () => {
   const value = buildSideOperationMetadata(incident([
     { purchase_lines: [
       { user: 'د أحمد', invoice: '1', timestamp_ms: 1000 },
-      { user: 'د محمود', invoice: '1', timestamp_ms: 1000 },
+      { user: 'د محمود', invoice: '2', timestamp_ms: 1000 },
     ] },
   ]), 'purchase');
   assert.match(value.userLabel, /أكثر من مستخدم/);
   assert.match(value.userLabel, /د أحمد/);
   assert.match(value.userLabel, /د محمود/);
+  assert.match(value.invoiceLabel, /1/);
+  assert.match(value.invoiceLabel, /2/);
+  assert.match(value.timeLabel, /فواتير/);
 });
 
 test('calculates readable gap only when both sides have timestamps', () => {
