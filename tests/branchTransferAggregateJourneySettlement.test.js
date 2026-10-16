@@ -70,6 +70,28 @@ test('never aggregates different codes or directions', () => {
   assert.equal(result.filter((item) => item.type !== 'matched').length, 3);
 });
 
+test('blank timestamps do not create a fake 1970 aggregate journey', () => {
+  const cases = [
+    base({
+      id: 'undated-sale',
+      type: 'sale_without_purchase',
+      sale_qty: 1,
+      sale_lines: [{ timestamp_ms: '', qty: 1, invoice: 'S1' }],
+      sale_invoices: ['S1'],
+    }),
+    base({
+      id: 'undated-purchase',
+      type: 'purchase_without_sale',
+      purchase_qty: 1,
+      purchase_lines: [{ timestamp_ms: null, qty: 1, invoice: 'P1' }],
+      purchase_invoices: ['P1'],
+    }),
+  ];
+  const result = settleAggregateProductJourneys(cases);
+  assert.equal(result.length, 2);
+  assert.equal(result.every((item) => item.type !== 'matched'), true);
+});
+
 test('reports how many noisy review cases were silenced by aggregate settlement', () => {
   const before = [base({ id: 'a' }), base({ id: 'b', type: 'purchase_without_sale' }), base({ id: 'c', type: 'purchase_without_sale' })];
   const after = [{ ...base({ id: 'settled' }), type: 'matched', aggregate_journey_settled: true }];
