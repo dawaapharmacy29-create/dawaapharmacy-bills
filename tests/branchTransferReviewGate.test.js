@@ -196,6 +196,51 @@ test('quantity differences wait until both sale and purchase evidence have moved
   assert.equal(result.summary.awaiting_directional_coverage >= 1, true);
 });
 
+test('blank timestamps never become fake 1970 evidence', () => {
+  const cases = [
+    item({
+      id: 'blank-time',
+      type: 'matched',
+      sale_lines: [{ timestamp_ms: '' }, { timestamp_ms: null }],
+      purchase_lines: [{ timestamp_ms: undefined }],
+    }),
+    item({
+      id: 'real-time',
+      type: 'matched',
+      sale_lines: [line('2026-10-16T10:00:00')],
+      purchase_lines: [line('2026-10-16T10:15:00')],
+    }),
+  ];
+  assert.equal(latestTransferEvidenceDay(cases), '2026-10-16');
+  const coverage = buildDirectionalEvidenceCoverage(cases);
+  assert.equal(coverage['shokry::shamy'].sale_min_day, '2026-10-16');
+  assert.equal(coverage['shokry::shamy'].purchase_min_day, '2026-10-16');
+});
+
+test('missing dated counterpart coverage is treated as insufficient evidence, not proof of a missing movement', () => {
+  const missing = item({
+    id: 'missing-with-date',
+    type: 'sale_without_purchase',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-14T18:00:00')],
+  });
+  const undatedPurchase = item({
+    id: 'undated-purchase',
+    type: 'matched',
+    from: 'shokry',
+    to: 'shamy',
+    purchase_lines: [{ timestamp_ms: '' }],
+  });
+  const result = gateTransferReviewCases(
+    [missing, undatedPurchase],
+    { shokrySale: true, shamyPurchase: true },
+    { latestEvidenceDay: '2026-10-15' },
+  );
+  assert.equal(result.reviewable.some((entry) => entry.id === 'missing-with-date'), false);
+  assert.equal(result.summary.awaiting_directional_coverage, 1);
+});
+
 test('code conflicts are never hidden just because they are on the newest day', () => {
   const conflict = item({
     type: 'code_mismatch',
