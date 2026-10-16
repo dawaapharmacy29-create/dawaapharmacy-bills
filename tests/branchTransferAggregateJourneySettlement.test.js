@@ -1,0 +1,82 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { settleAggregateProductJourneys, summarizeAggregateSettlement } from '../src/lib/branchTransferAggregateJourneySettlement.js';
+
+function line(timestamp, qty = 0, invoice = '') {
+  return { timestamp_ms: new Date(timestamp).getTime(), qty, invoice };
+}
+
+function base(overrides = {}) {
+  return {
+    id: Math.random().toString(36),
+    type: 'quantity_mismatch',
+    severity: 3,
+    from: 'shamy',
+    to: 'shokry',
+    product_name: 'TEST PRODUCT',
+    sale_codes: ['100'],
+    purchase_codes: ['100'],
+    sale_qty: 0,
+    purchase_qty: 0,
+    sale_lines: [],
+    purchase_lines: [],
+    sale_invoices: [],
+    purchase_invoices: [],
+    ...overrides,
+  };
+}
+
+test('silences same-day invoice ambiguity when total exact-code journey is quantity balanced', () => {
+  const cases = [
+    base({ id: 'a', sale_qty: 3, purchase_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 3, 'S1')], purchase_lines: [line('2026-10-01T10:20:00', 1, 'P1')], sale_invoices: ['S1'], purchase_invoices: ['P1'] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-01T12:00:00', 1, 'P2')], purchase_invoices: ['P2'] }),
+    base({ id: 'c', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-01T16:00:00', 1, 'P3')], purchase_invoices: ['P3'] }),
+  ];
+  const result = settleAggregateProductJourneys(cases);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].type, 'matched');
+  assert.equal(result[0].aggregate_journey_settled, true);
+  assert.equal(result[0].sale_qty, 3);
+  assert.equal(result[0].purchase_qty, 3);
+});
+
+test('allows a journey to finish on the next calendar day', () => {
+  const cases = [
+    base({ id: 'a', sale_qty: 2, purchase_qty: 1, sale_lines: [line('2026-10-01T23:00:00', 2)], purchase_lines: [line('2026-10-01T23:10:00', 1)] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-02T09:00:00', 1)] }),
+  ];
+  const result = settleAggregateProductJourneys(cases);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].type, 'matched');
+  assert.equal(result[0].aggregate_settlement_scope, 'same-or-next-day');
+});
+
+test('does not hide a real remaining quantity difference', () => {
+  const cases = [
+    base({ id: 'a', sale_qty: 3, purchase_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 3)], purchase_lines: [line('2026-10-01T10:20:00', 1)] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_lines: [line('2026-10-01T12:00:00', 1)] }),
+  ];
+  const result = settleAggregateProductJourneys(cases);
+  assert.equal(result.filter((item) => item.type !== 'matched').length, 2);
+});
+
+test('never aggregates different codes or directions', () => {
+  const cases = [
+    base({ id: 'a', sale_qty: 1, sale_lines: [line('2026-10-01T10:00:00', 1)] }),
+    base({ id: 'b', type: 'purchase_without_sale', purchase_qty: 1, purchase_codes: ['200'], sale_codes: [], purchase_lines: [line('2026-10-01T11:00:00', 1)] }),
+    base({ id: 'c', type: 'purchase_without_sale', from: 'shokry', to: 'shamy', purchase_qty: 1, purchase_lines: [line('2026-10-01T11:00:00', 1)] }),
+  ];
+  const result = settleAggregateProductJourneys(cases);
+  assert.equal(result.filter((item) => item.type !== 'matched').length, 3);
+});
+
+test('reports how many noisy review cases were silenced by aggregate settlement', () => {
+  const before = [base({ id: 'a' }), base({ id: 'b', type: 'purchase_without_sale' }), base({ id: 'c', type: 'purchase_without_sale' })];
+  const after = [{ ...base({ id: 'settled' }), type: 'matched', aggregate_journey_settled: true }];
+  assert.deepEqual(summarizeAggregateSettlement(before, after), {
+    before_review: 3,
+    after_review: 0,
+    hidden_resolved_cases: 3,
+    settled_journeys: 1,
+  });
+});
