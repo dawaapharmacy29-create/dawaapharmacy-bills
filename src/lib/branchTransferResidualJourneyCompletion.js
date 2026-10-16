@@ -114,6 +114,7 @@ function buildCompletedCase(items) {
     time_gap_minutes: gap == null ? null : Number(gap.toFixed(1)),
     episode_balanced: true,
     residual_journey_completed: true,
+    residual_completion_policy: 'exact-code + exact-residual + same-direction + unique-candidate + within-4h',
     residual_component_case_ids: items.map((item) => item?.id).filter(Boolean),
     next_action: 'لا يوجد إجراء مطلوب؛ اكتملت الكمية بعد فهم رحلة التحويل الموزعة على أكثر من تسجيل.',
   };
@@ -142,6 +143,8 @@ export function completeResidualBalancedJourneys(cases = []) {
         && minuteGap(anchorTime, caseStart(item)) <= MAX_COMPLETION_GAP_MINUTES)
       .sort((a, b) => minuteGap(anchorTime, caseStart(a.item)) - minuteGap(anchorTime, caseStart(b.item)));
 
+    // Auto-completion is intentionally conservative: exactly one candidate must explain
+    // the exact residual for the same code/direction inside a four-hour evidence window.
     if (candidates.length > 1) {
       ambiguousEvidence.set(anchorIndex, {
         residual_review_reason: 'يوجد أكثر من تسجيل بنفس الكود والكمية يمكنه تفسير الفرق؛ لم يتم اختيار أي واحد تلقائيًا.',
