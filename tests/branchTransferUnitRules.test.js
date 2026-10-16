@@ -13,6 +13,8 @@ const unitCase = (overrides = {}) => ({
   purchase_qty: 0.33,
   sale_units: ['شريط'],
   purchase_units: [],
+  sale_codes: ['100'],
+  purchase_codes: ['100'],
   ...overrides,
 });
 
@@ -40,6 +42,51 @@ test('learned rule does not hide a real quantity mismatch', () => {
   assert.equal(caseMatchesUnitRule(future, rule), false);
   const result = applyLearnedUnitRules([future], { [rule.key]: rule })[0];
   assert.equal(result.type, 'unit_conversion_review');
+});
+
+test('explicit three strips versus one box is treated as unit-conversion review, not a quantity error', () => {
+  const item = unitCase({
+    id: 'pravotin',
+    type: 'quantity_mismatch',
+    product_name: 'pravotin plus 30 cap',
+    sale_qty: 3,
+    purchase_qty: 1,
+    sale_units: ['شريط'],
+    purchase_units: ['علبة'],
+    sale_codes: ['77654'],
+    purchase_codes: ['77654'],
+  });
+  const result = applyLearnedUnitRules([item], {})[0];
+  assert.equal(result.type, 'unit_conversion_review');
+  assert.equal(result.implicit_unit_conversion, true);
+  assert.match(result.next_action, /تحويل عبوة/);
+});
+
+test('different explicit units do not trigger conversion when codes conflict', () => {
+  const item = unitCase({
+    type: 'quantity_mismatch',
+    sale_qty: 3,
+    purchase_qty: 1,
+    sale_units: ['شريط'],
+    purchase_units: ['علبة'],
+    sale_codes: ['77654'],
+    purchase_codes: ['99999'],
+  });
+  const result = applyLearnedUnitRules([item], {})[0];
+  assert.equal(result.type, 'quantity_mismatch');
+  assert.equal(result.implicit_unit_conversion, undefined);
+});
+
+test('same unit with ratio difference remains a quantity mismatch', () => {
+  const item = unitCase({
+    type: 'quantity_mismatch',
+    sale_qty: 3,
+    purchase_qty: 1,
+    sale_units: ['علبة'],
+    purchase_units: ['علبة'],
+  });
+  const result = applyLearnedUnitRules([item], {})[0];
+  assert.equal(result.type, 'quantity_mismatch');
 });
 
 test('rule is directional and never applies to the reverse transfer by accident', () => {

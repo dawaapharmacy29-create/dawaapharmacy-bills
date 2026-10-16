@@ -63,6 +63,55 @@ function canonicalizeInternalWarehouses(raw = {}) {
   };
 }
 
+function validTimestamp(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function sanitizeCaseTimestamps(item = {}) {
+  const sanitizeLines = (lines = []) => lines.map((line) => ({
+    ...line,
+    timestamp_ms: validTimestamp(line?.timestamp_ms) ?? undefined,
+  }));
+  return {
+    ...item,
+    sale_lines: sanitizeLines(item.sale_lines),
+    purchase_lines: sanitizeLines(item.purchase_lines),
+  };
+}
+
+function caseIdentity(item = {}) {
+  return String(item.sale_codes?.[0] || item.purchase_codes?.[0] || item.product_name || 'unknown')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stableReviewCaseId(item = {}) {
+  const all = [
+    ...(item.sale_lines || []).map((line) => ({ side: 'sale', line, timestamp: validTimestamp(line?.timestamp_ms) })),
+    ...(item.purchase_lines || []).map((line) => ({ side: 'purchase', line, timestamp: validTimestamp(line?.timestamp_ms) })),
+  ].filter((entry) => entry.timestamp != null && entry.line?.invoice);
+  if (!all.length) return item.id;
+  all.sort((a, b) => a.timestamp - b.timestamp);
+  if (all.length > 1 && all[0].timestamp === all[1].timestamp && all[0].side !== all[1].side) return item.id;
+  const anchor = all[0];
+  const prefix = [item.from || 'unknown', item.to || 'unknown', caseIdentity(item)];
+  return anchor.side === 'sale'
+    ? [...prefix, String(anchor.line.invoice), 'no-purchase'].join('::')
+    : [...prefix, 'no-sale', String(anchor.line.invoice)].join('::');
+}
+
+function stabilizeReviewCase(item = {}) {
+  const sanitized = sanitizeCaseTimestamps(item);
+  if (sanitized.type === 'matched') return sanitized;
+  return {
+    ...sanitized,
+    legacy_case_id: sanitized.id,
+    id: stableReviewCaseId(sanitized),
+  };
+}
+
 export function resolveTransferBranch(value) {
   return internalWarehouse(value)?.parent || resolveSmartTransferBranch(value);
 }
@@ -85,7 +134,7 @@ export function reconcileBranchTransfers(rawSales = [], rawPurchases = []) {
   const prepared = prepareTransferRawEvidence(rawSales, rawPurchases);
   const sales = prepared.sales.map(canonicalizeInternalWarehouses);
   const purchases = prepared.purchases.map(canonicalizeInternalWarehouses);
-  const smartCases = reconcileSmartTransfers(sales, purchases);
+  const smartCases = reconcileSmartTransfers(sales, purchases).map(stabilizeReviewCase);
   const completedJourneys = completeResidualBalancedJourneys(smartCases);
   return completedJourneys.map(enrichTransferDecisionIntelligence);
 }
