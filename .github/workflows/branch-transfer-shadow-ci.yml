@@ -3,7 +3,7 @@ name: Branch Transfer Shadow CI
 on:
   push:
     branches:
-      - 'feat/branch-transfer-control-*'
+      - 'feat/branch-transfer-*'
 
 jobs:
   validate:
