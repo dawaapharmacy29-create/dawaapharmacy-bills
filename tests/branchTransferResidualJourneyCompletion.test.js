@@ -30,6 +30,7 @@ test('completes an exact-code residual quantity gap from a later split purchase 
   assert.equal(item.sale_qty, 3);
   assert.equal(item.purchase_qty, 3);
   assert.equal(item.residual_journey_completed, true);
+  assert.equal(item.residual_completion_policy, 'exact-code + exact-residual + same-direction + unique-candidate + within-4h');
   assert.deepEqual(new Set(item.purchase_invoices), new Set(['P1', 'P2']));
   assert.match(item.match_reason, /اكتملت الكمية/);
 });
