@@ -117,8 +117,8 @@ test('does not choose arbitrarily when two different later movements can each ex
     [sale('S1', 3, 10, 0)],
     [
       purchase('P1', 2, 10, 30),
-      purchase('P2', 1, 12, 0),
-      purchase('P3', 1, 14, 0),
+      purchase('P2', 1, 13, 0),
+      purchase('P3', 1, 16, 0),
     ],
   );
 
