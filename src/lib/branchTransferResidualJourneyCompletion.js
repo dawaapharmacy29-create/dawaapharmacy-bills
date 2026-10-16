@@ -61,6 +61,32 @@ function sameJourneyIdentity(a, b) {
   return Boolean(codeA && codeB && codeA === codeB && a?.from === b?.from && a?.to === b?.to);
 }
 
+function unitFamily(value) {
+  const unit = text(value).toLowerCase();
+  if (!unit) return null;
+  if (/علب|box|pack/.test(unit)) return 'box';
+  if (/شريط|strip/.test(unit)) return 'strip';
+  if (/سرنج|syringe/.test(unit)) return 'syringe';
+  if (/امبول|ampoule|amp\b/.test(unit)) return 'ampoule';
+  if (/فيال|vial/.test(unit)) return 'vial';
+  if (/كيس|sachet/.test(unit)) return 'sachet';
+  if (/قطعه|piece|pcs?/.test(unit)) return 'piece';
+  return null;
+}
+
+function possibleExplicitUnitConversion(anchor) {
+  const sale = Number(anchor?.sale_qty || 0);
+  const purchase = Number(anchor?.purchase_qty || 0);
+  if (sale <= EPSILON || purchase <= EPSILON || !exactCode(anchor)) return false;
+  const saleFamily = unitFamily(anchor?.sale_units?.[0]);
+  const purchaseFamily = unitFamily(anchor?.purchase_units?.[0]);
+  if (!saleFamily || !purchaseFamily || saleFamily === purchaseFamily) return false;
+  if (saleFamily !== 'box' && purchaseFamily !== 'box') return false;
+  const ratio = Math.max(sale, purchase) / Math.min(sale, purchase);
+  const rounded = Math.round(ratio);
+  return rounded >= 2 && rounded <= 12 && Math.abs(ratio - rounded) <= Math.max(0.06, rounded * 0.03);
+}
+
 function neededResidual(anchor) {
   const sale = Number(anchor?.sale_qty || 0);
   const purchase = Number(anchor?.purchase_qty || 0);
@@ -205,6 +231,13 @@ export function completeResidualBalancedJourneys(cases = []) {
 
   cases.forEach((anchor, anchorIndex) => {
     if (consumed.has(anchorIndex) || anchor?.type !== 'quantity_mismatch') return;
+    if (possibleExplicitUnitConversion(anchor)) {
+      reviewEvidence.set(anchorIndex, {
+        residual_review_reason: 'الوحدات تشير لاحتمال تحويل عبوة واضح؛ تم منع إغلاق فرق الكمية بالحركات اللاحقة حتى اعتماد علاقة العبوة أولًا.',
+        residual_unit_conversion_guard: true,
+      });
+      return;
+    }
     const needed = neededResidual(anchor);
     if (!needed) return;
     const anchorEnd = caseEnd(anchor);
