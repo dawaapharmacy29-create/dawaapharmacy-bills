@@ -72,6 +72,16 @@ function mergedTimeGap(saleLines, purchaseLines) {
   return Math.abs(Math.min(...saleTimes) - Math.min(...purchaseTimes)) / 60000;
 }
 
+function candidateEvidence(anchorTime, candidate) {
+  return {
+    case_id: candidate.item?.id || null,
+    invoice_numbers: unique([...(candidate.item?.sale_invoices || []), ...(candidate.item?.purchase_invoices || [])]),
+    qty: Number(candidate.item?.sale_qty || candidate.item?.purchase_qty || 0),
+    users: unique([...(candidate.item?.sale_users || []), ...(candidate.item?.purchase_users || [])]),
+    gap_minutes: Number((minuteGap(anchorTime, caseStart(candidate.item)) || 0).toFixed(1)),
+  };
+}
+
 function buildCompletedCase(items) {
   const anchor = items.find((item) => item.type === 'quantity_mismatch') || items[0];
   const saleLines = mergeLines(items, 'sale_lines');
@@ -112,6 +122,7 @@ function buildCompletedCase(items) {
 export function completeResidualBalancedJourneys(cases = []) {
   const consumed = new Set();
   const completed = [];
+  const ambiguousEvidence = new Map();
 
   cases.forEach((anchor, anchorIndex) => {
     if (consumed.has(anchorIndex) || anchor?.type !== 'quantity_mismatch') return;
@@ -131,9 +142,18 @@ export function completeResidualBalancedJourneys(cases = []) {
         && minuteGap(anchorTime, caseStart(item)) <= MAX_COMPLETION_GAP_MINUTES)
       .sort((a, b) => minuteGap(anchorTime, caseStart(a.item)) - minuteGap(anchorTime, caseStart(b.item)));
 
-    // If more than one movement could explain the same residual, evidence is ambiguous.
-    // Keep the cases visible for review instead of selecting a convenient candidate automatically.
+    if (candidates.length > 1) {
+      ambiguousEvidence.set(anchorIndex, {
+        residual_review_reason: 'يوجد أكثر من تسجيل بنفس الكود والكمية يمكنه تفسير الفرق؛ لم يتم اختيار أي واحد تلقائيًا.',
+        residual_needed_side: needed.side,
+        residual_needed_qty: Number(needed.qty.toFixed(3)),
+        residual_candidate_count: candidates.length,
+        residual_candidates: candidates.map((candidate) => candidateEvidence(anchorTime, candidate)),
+      });
+      return;
+    }
     if (candidates.length !== 1) return;
+
     const match = candidates[0];
     const merged = buildCompletedCase([anchor, match.item]);
     if (!nearlyEqual(merged.sale_qty, merged.purchase_qty)) return;
@@ -144,7 +164,9 @@ export function completeResidualBalancedJourneys(cases = []) {
   });
 
   return [
-    ...cases.filter((_, index) => !consumed.has(index)),
+    ...cases
+      .map((item, index) => ambiguousEvidence.has(index) ? { ...item, ...ambiguousEvidence.get(index) } : item)
+      .filter((_, index) => !consumed.has(index)),
     ...completed,
   ].sort((a, b) => Number(b?.severity || 0) - Number(a?.severity || 0)
     || Number(b?.confidence_score || 0) - Number(a?.confidence_score || 0)
