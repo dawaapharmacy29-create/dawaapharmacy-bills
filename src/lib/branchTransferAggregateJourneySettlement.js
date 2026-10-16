@@ -17,10 +17,16 @@ function exactCode(item) {
   return codes.length === 1 ? codes[0] : null;
 }
 
+function validTimestamp(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function lineTimes(item) {
   return [...(item?.sale_lines || []), ...(item?.purchase_lines || [])]
-    .map((line) => Number(line?.timestamp_ms))
-    .filter(Number.isFinite);
+    .map((line) => validTimestamp(line?.timestamp_ms))
+    .filter((value) => value != null);
 }
 
 function caseStart(item) {
