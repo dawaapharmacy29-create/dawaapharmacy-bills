@@ -17,6 +17,7 @@ function hasExpiryConsolidation(item) {
 
 function hasCompositeJourney(item) {
   return Boolean(item?.episode_balanced)
+    || Boolean(item?.residual_journey_completed)
     || unique(item?.sale_invoices || []).length > 1
     || unique(item?.purchase_invoices || []).length > 1;
 }
@@ -34,6 +35,7 @@ export function auditTransferAnalysis(cases = []) {
     false_positive_prevented: 0,
     expiry_consolidation_matched: 0,
     composite_journey_matched: 0,
+    residual_journey_completed: 0,
     actor_complete: 0,
     actor_partial_or_missing: 0,
     identity_conflicts: 0,
@@ -59,9 +61,13 @@ export function auditTransferAnalysis(cases = []) {
       result.expiry_consolidation_matched += 1;
       result.false_positive_prevented += 1;
     }
+    if (matched && item?.residual_journey_completed) {
+      result.residual_journey_completed += 1;
+      if (!expiryConsolidated) result.false_positive_prevented += 1;
+    }
     if (matched && composite) {
       result.composite_journey_matched += 1;
-      if (!expiryConsolidated) result.false_positive_prevented += 1;
+      if (!expiryConsolidated && !item?.residual_journey_completed) result.false_positive_prevented += 1;
     }
     if (!matched && item?.type === 'quantity_mismatch' && evidence?.quantity?.consolidated) {
       result.quantity_reviews_after_consolidation += 1;
