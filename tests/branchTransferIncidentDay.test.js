@@ -26,16 +26,20 @@ test('uses the first operation timestamp as the primary incident day', () => {
   assert.equal(incidentDayKey(value), '2026-10-14');
 });
 
-test('day options are newest first with counts', () => {
+test('day options expose compact review presets before specific recent days', () => {
   const items = [
     incident('a', [new Date(2026, 9, 12, 10, 0).getTime()]),
     incident('b', [new Date(2026, 9, 14, 10, 0).getTime()]),
     incident('c', [new Date(2026, 9, 14, 12, 0).getTime()]),
   ];
   const options = incidentDayOptions(items);
-  assert.equal(options[0].key, '2026-10-14');
+  assert.equal(options[0].preset, 'latest');
   assert.equal(options[0].count, 2);
-  assert.equal(options[1].key, '2026-10-12');
+  assert.match(options[0].label, /أحدث يوم/);
+  assert.equal(options[1].preset, 'last3');
+  assert.equal(options[1].count, 3);
+  assert.equal(options[3].key, '2026-10-14');
+  assert.equal(options[3].count, 2);
 });
 
 test('filters by one selected day', () => {
@@ -52,11 +56,13 @@ test('smart presets select newest available review days instead of calendar arit
     incident('c', [new Date(2026, 9, 16, 10, 0).getTime()]),
   ];
   const options = incidentDayOptions(items);
-  assert.deepEqual([...smartDayFilterKeys(options, 'latest')], ['2026-10-16']);
-  assert.deepEqual([...smartDayFilterKeys(options, 'last3')], ['2026-10-16', '2026-10-13', '2026-10-10']);
-  assert.equal(incidentMatchesSmartDay(items[1], 'latest', options), false);
-  assert.equal(incidentMatchesSmartDay(items[1], 'last3', options), true);
-  assert.equal(smartDayFilterCount(items, 'last3', options), 3);
+  const latest = options.find((item) => item.preset === 'latest');
+  const last3 = options.find((item) => item.preset === 'last3');
+  assert.deepEqual([...smartDayFilterKeys(options, latest.key)], ['2026-10-16']);
+  assert.deepEqual([...smartDayFilterKeys(options, last3.key)], ['2026-10-16', '2026-10-13', '2026-10-10']);
+  assert.equal(incidentMatchesDay(items[1], latest.key), false);
+  assert.equal(incidentMatchesSmartDay(items[1], last3.key, options), true);
+  assert.equal(smartDayFilterCount(items, last3.key, options), 3);
 });
 
 test('sorts newer days first then keeps priority inside the same day', () => {
