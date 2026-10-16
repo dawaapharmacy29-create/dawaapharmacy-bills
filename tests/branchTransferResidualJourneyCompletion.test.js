@@ -54,3 +54,18 @@ test('does not use a different product code to close a quantity gap', () => {
   assert.equal(cases.some((entry) => entry.residual_journey_completed), false);
   assert.ok(cases.some((entry) => entry.type !== 'matched'));
 });
+
+test('does not choose arbitrarily when two residual movements could both explain the same gap', () => {
+  const cases = reconcileBranchTransfers(
+    [sale('S1', 3, 10, 0)],
+    [
+      purchase('P1', 2, 10, 30),
+      purchase('P2', 1, 11, 0),
+      purchase('P3', 1, 11, 20),
+    ],
+  );
+
+  assert.equal(cases.some((entry) => entry.residual_journey_completed), false);
+  assert.ok(cases.some((entry) => entry.type === 'quantity_mismatch'));
+  assert.equal(cases.filter((entry) => entry.type === 'purchase_without_sale').length, 2);
+});
