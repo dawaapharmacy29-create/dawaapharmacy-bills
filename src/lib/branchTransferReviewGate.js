@@ -56,6 +56,10 @@ function directionKey(item) {
   return `${from}::${to}`;
 }
 
+function minDay(values = []) {
+  return values.filter(Boolean).sort()[0] || null;
+}
+
 function maxDay(values = []) {
   return values.filter(Boolean).sort().at(-1) || null;
 }
@@ -64,19 +68,27 @@ export function buildDirectionalEvidenceCoverage(cases = []) {
   const coverage = {};
   cases.forEach((item) => {
     const key = directionKey(item);
-    const bucket = coverage[key] || { sale_max_day: null, purchase_max_day: null };
+    const bucket = coverage[key] || {
+      sale_min_day: null,
+      sale_max_day: null,
+      purchase_min_day: null,
+      purchase_max_day: null,
+    };
     const saleDays = itemSideTimestamps(item, 'sale').map(dayKey).filter(Boolean);
     const purchaseDays = itemSideTimestamps(item, 'purchase').map(dayKey).filter(Boolean);
+    bucket.sale_min_day = minDay([bucket.sale_min_day, ...saleDays]);
     bucket.sale_max_day = maxDay([bucket.sale_max_day, ...saleDays]);
+    bucket.purchase_min_day = minDay([bucket.purchase_min_day, ...purchaseDays]);
     bucket.purchase_max_day = maxDay([bucket.purchase_max_day, ...purchaseDays]);
     coverage[key] = bucket;
   });
   return coverage;
 }
 
-function laterDayAvailable(maxEvidenceDay, caseDay) {
-  if (!maxEvidenceDay || !caseDay) return true;
-  return maxEvidenceDay > caseDay;
+function coverageSpansReviewDay(minEvidenceDay, maxEvidenceDay, caseDay) {
+  if (!caseDay) return true;
+  if (!minEvidenceDay || !maxEvidenceDay) return true;
+  return minEvidenceDay <= caseDay && maxEvidenceDay > caseDay;
 }
 
 function neededCoverageSides(item) {
@@ -93,7 +105,11 @@ function directionalHorizonMature(item, directionalCoverage = {}) {
   if (!bucket) return true;
   const sides = neededCoverageSides(item);
   if (!sides.length) return true;
-  return sides.every((side) => laterDayAvailable(bucket[`${side}_max_day`], caseDay));
+  return sides.every((side) => coverageSpansReviewDay(
+    bucket[`${side}_min_day`],
+    bucket[`${side}_max_day`],
+    caseDay,
+  ));
 }
 
 function needsMaturity(item) {
