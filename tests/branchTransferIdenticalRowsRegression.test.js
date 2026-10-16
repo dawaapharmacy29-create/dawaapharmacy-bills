@@ -3,18 +3,18 @@ import assert from 'node:assert/strict';
 import { reconcileBranchTransfers } from '../src/lib/branchTransferControl.js';
 import { preserveRepeatedRowsWithinSource } from '../src/lib/branchTransferRawEvidencePreparation.js';
 
-test('real regression: identical repeated sale rows in one B-Connect file are summed, not deduped away', () => {
+test('real regression 38346/70865: two identical 0.5 sale rows are summed to 1 and match purchase 1', () => {
   const saleRows = [
     {
-      source_file: 'بيع الشامي(1).xlsx', source_fingerprint: 'sale-file', row_number: 900,
-      invoice: '38346', code: '70865', product_name: 'TEST PRODUCT', qty: 0.5,
-      unit: 'علبة', expiration_raw: '2027/12', date: new Date(2026, 9, 10, 12, 0),
+      source_file: 'بيع الشامي(1).xlsx', source_fingerprint: 'sale-file', row_number: 1022,
+      invoice: '38346', code: '70865', product_name: 'ARGENTO CLEAR FACIAL CLEANSER 200ML 1+1', qty: 0.5,
+      unit: 'علبة', expiration_raw: '2027/12', date: new Date(2026, 9, 5, 23, 36),
       branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم',
     },
     {
-      source_file: 'بيع الشامي(1).xlsx', source_fingerprint: 'sale-file', row_number: 901,
-      invoice: '38346', code: '70865', product_name: 'TEST PRODUCT', qty: 0.5,
-      unit: 'علبة', expiration_raw: '2027/12', date: new Date(2026, 9, 10, 12, 0),
+      source_file: 'بيع الشامي(1).xlsx', source_fingerprint: 'sale-file', row_number: 1023,
+      invoice: '38346', code: '70865', product_name: 'ARGENTO CLEAR FACIAL CLEANSER 200ML 1+1', qty: 0.5,
+      unit: 'علبة', expiration_raw: '2027/12', date: new Date(2026, 9, 5, 23, 36),
       branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم',
     },
   ];
@@ -25,8 +25,8 @@ test('real regression: identical repeated sale rows in one B-Connect file are su
   assert.equal(prepared[0].evidence_row_count, 2);
 
   const purchases = [{
-    invoice: 'P38346', code: '70865', product_name: 'TEST PRODUCT', qty: 1,
-    date: new Date(2026, 9, 10, 12, 15), user: 'د مشتري',
+    invoice: '19515', code: '70865', product_name: 'ARGENTO CLEAR FACIAL CLEANSER 200ML 1+1', qty: 1,
+    date: new Date(2026, 9, 5, 23, 20), user: 'د وائل',
     branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي',
   }];
 
@@ -36,6 +36,7 @@ test('real regression: identical repeated sale rows in one B-Connect file are su
   assert.equal(matched.type, 'matched');
   assert.equal(matched.sale_qty, 1);
   assert.equal(matched.purchase_qty, 1);
+  assert.equal(Math.round(matched.time_gap_minutes), 16);
 });
 
 test('does not collapse identical-looking rows when they came from separate source files', () => {
