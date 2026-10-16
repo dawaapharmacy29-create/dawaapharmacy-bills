@@ -1,5 +1,6 @@
 import { parseTransferWorkbook } from './branchTransferShadowParser.js';
 import { resolveTransferBranch } from './branchTransferControl.js';
+import { enrichSaleRowsWithInvoiceHeaders } from './branchTransferEvidencePreparation.js';
 
 export const AUTO_SOURCE_CONFIG = {
   shokrySale: { label: 'بيع شكري → الشامي', side: 'sale', branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي' },
@@ -187,6 +188,16 @@ function rowFingerprint(item, sourceKey) {
   ].join('::');
 }
 
+function enrichBuiltSources(sources) {
+  if (sources.shokrySale?.items?.length && sources.shokrySaleHeaders?.items?.length) {
+    sources.shokrySale.items = enrichSaleRowsWithInvoiceHeaders(sources.shokrySale.items, sources.shokrySaleHeaders.items);
+  }
+  if (sources.shamySale?.items?.length && sources.shamySaleHeaders?.items?.length) {
+    sources.shamySale.items = enrichSaleRowsWithInvoiceHeaders(sources.shamySale.items, sources.shamySaleHeaders.items);
+  }
+  return sources;
+}
+
 export function buildSourcesFromInspections(inspections = []) {
   const sources = {};
   const seenFiles = new Set();
@@ -230,5 +241,5 @@ export function buildSourcesFromInspections(inspections = []) {
     sources[entry.sourceKey] = bucket;
   });
 
-  return { sources, ambiguous, duplicates, errors };
+  return { sources: enrichBuiltSources(sources), ambiguous, duplicates, errors };
 }
