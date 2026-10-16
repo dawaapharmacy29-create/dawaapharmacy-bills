@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { gateTransferReviewCases, isClosedTransferDecisionStatus, latestTransferEvidenceDay } from '../src/lib/branchTransferReviewGate.js';
+import {
+  buildDirectionalEvidenceCoverage,
+  gateTransferReviewCases,
+  isClosedTransferDecisionStatus,
+  latestTransferEvidenceDay,
+} from '../src/lib/branchTransferReviewGate.js';
 
 function item(overrides = {}) {
   return {
@@ -74,6 +79,88 @@ test('newest-day quantity and missing-side cases wait for later evidence instead
   assert.equal(latestDay, '2026-10-16');
   assert.deepEqual(result.reviewable.map((entry) => entry.id), ['older']);
   assert.equal(result.summary.awaiting_later_evidence, 1);
+});
+
+test('a sale missing purchase stays quiet until purchase evidence for that direction reaches a later day', () => {
+  const missing = item({
+    id: 'missing-purchase',
+    type: 'sale_without_purchase',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-14T18:00:00')],
+  });
+  const sameDayPurchaseCoverage = item({
+    id: 'purchase-coverage-same-day',
+    type: 'matched',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-14T17:00:00')],
+    purchase_lines: [line('2026-10-14T19:00:00')],
+  });
+  const unrelatedNewer = item({
+    id: 'other-direction-newer',
+    type: 'matched',
+    from: 'shamy',
+    to: 'shokry',
+    sale_lines: [line('2026-10-16T10:00:00')],
+    purchase_lines: [line('2026-10-16T10:10:00')],
+  });
+  const result = gateTransferReviewCases(
+    [missing, sameDayPurchaseCoverage, unrelatedNewer],
+    { shokrySale: true, shamyPurchase: true, shamySale: true, shokryPurchase: true },
+  );
+  assert.equal(result.reviewable.some((entry) => entry.id === 'missing-purchase'), false);
+  assert.equal(result.summary.awaiting_directional_coverage, 1);
+});
+
+test('the same missing purchase becomes reviewable once purchase evidence reaches the next day', () => {
+  const missing = item({
+    id: 'missing-purchase',
+    type: 'sale_without_purchase',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-14T18:00:00')],
+  });
+  const nextDayCoverage = item({
+    id: 'purchase-coverage-next-day',
+    type: 'matched',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-15T09:00:00')],
+    purchase_lines: [line('2026-10-15T09:10:00')],
+  });
+  const coverage = buildDirectionalEvidenceCoverage([missing, nextDayCoverage]);
+  const result = gateTransferReviewCases(
+    [missing, nextDayCoverage],
+    { shokrySale: true, shamyPurchase: true },
+    { latestEvidenceDay: '2026-10-15', directionalCoverage: coverage },
+  );
+  assert.equal(result.reviewable.some((entry) => entry.id === 'missing-purchase'), true);
+});
+
+test('quantity differences wait until both sale and purchase evidence have moved beyond the case day', () => {
+  const mismatch = item({
+    id: 'qty-gap',
+    type: 'quantity_mismatch',
+    from: 'shokry',
+    to: 'shamy',
+    sale_lines: [line('2026-10-14T18:00:00')],
+    purchase_lines: [line('2026-10-14T18:10:00')],
+  });
+  const purchaseAheadOnly = item({
+    id: 'purchase-ahead',
+    type: 'purchase_without_sale',
+    from: 'shokry',
+    to: 'shamy',
+    purchase_lines: [line('2026-10-15T08:00:00')],
+  });
+  const result = gateTransferReviewCases(
+    [mismatch, purchaseAheadOnly],
+    { shokrySale: true, shamyPurchase: true },
+    { latestEvidenceDay: '2026-10-15' },
+  );
+  assert.equal(result.reviewable.some((entry) => entry.id === 'qty-gap'), false);
+  assert.equal(result.summary.awaiting_directional_coverage >= 1, true);
 });
 
 test('code conflicts are never hidden just because they are on the newest day', () => {
