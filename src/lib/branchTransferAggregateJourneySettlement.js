@@ -55,8 +55,36 @@ function mergeLines(items, field) {
   return items.flatMap((item) => item?.[field] || []);
 }
 
+function pureMissingSide(item, side) {
+  const sale = Number(item?.sale_qty || 0);
+  const purchase = Number(item?.purchase_qty || 0);
+  if (side === 'purchase') return item?.type === 'purchase_without_sale' && sale <= EPSILON && purchase > EPSILON;
+  return item?.type === 'sale_without_purchase' && purchase <= EPSILON && sale > EPSILON;
+}
+
+function conservativeSettlementCluster(cluster) {
+  const anchors = cluster.filter((entry) => entry.item?.type === 'quantity_mismatch'
+    && Number(entry.item?.sale_qty || 0) > EPSILON
+    && Number(entry.item?.purchase_qty || 0) > EPSILON);
+  if (anchors.length !== 1) return null;
+
+  const anchor = anchors[0];
+  const sale = Number(anchor.item?.sale_qty || 0);
+  const purchase = Number(anchor.item?.purchase_qty || 0);
+  if (nearlyEqual(sale, purchase)) return null;
+  const neededSide = sale > purchase ? 'purchase' : 'sale';
+  const extras = cluster.filter((entry) => entry !== anchor);
+  if (!extras.length || !extras.every((entry) => pureMissingSide(entry.item, neededSide))) return null;
+
+  const saleQty = cluster.reduce((sum, entry) => sum + Number(entry.item?.sale_qty || 0), 0);
+  const purchaseQty = cluster.reduce((sum, entry) => sum + Number(entry.item?.purchase_qty || 0), 0);
+  if (!nearlyEqual(saleQty, purchaseQty) || saleQty <= EPSILON) return null;
+
+  return { anchor, extras, saleQty, purchaseQty, neededSide };
+}
+
 function buildSettledCase(items) {
-  const first = items[0];
+  const first = items.find((item) => item?.type === 'quantity_mismatch') || items[0];
   const saleQty = items.reduce((sum, item) => sum + Number(item?.sale_qty || 0), 0);
   const purchaseQty = items.reduce((sum, item) => sum + Number(item?.purchase_qty || 0), 0);
   const saleLines = mergeLines(items, 'sale_lines');
@@ -87,7 +115,7 @@ function buildSettledCase(items) {
     aggregate_journey_settled: true,
     aggregate_settlement_scope: crossesDay ? 'same-or-next-day' : 'same-day',
     aggregate_component_case_ids: items.map((item) => item?.id).filter(Boolean),
-    match_reason: `إجمالي رحلة الصنف متوازن بعد جمع كل تسجيلات نفس الكود في ${crossesDay ? 'نفس اليوم واليوم التالي' : 'نفس اليوم'}؛ لا يوجد فرق كمية فعلي يحتاج قرارًا.`,
+    match_reason: `إجمالي رحلة الصنف متوازن بعد جمع فرق واحد واضح مع تسجيلات الطرف الناقص في ${crossesDay ? 'نفس اليوم واليوم التالي' : 'نفس اليوم'}؛ لا يوجد فرق كمية فعلي يحتاج قرارًا.`,
     next_action: 'لا يوجد إجراء مطلوب؛ الكمية متوازنة على مستوى رحلة الصنف.',
   };
 }
@@ -118,9 +146,8 @@ export function settleAggregateProductJourneys(cases = []) {
       }
 
       if (cluster.length >= 2) {
-        const saleQty = cluster.reduce((sum, entry) => sum + Number(entry.item?.sale_qty || 0), 0);
-        const purchaseQty = cluster.reduce((sum, entry) => sum + Number(entry.item?.purchase_qty || 0), 0);
-        if (nearlyEqual(saleQty, purchaseQty) && saleQty > EPSILON) {
+        const safe = conservativeSettlementCluster(cluster);
+        if (safe) {
           cluster.forEach((entry) => consumed.add(entry.index));
           settled.push(buildSettledCase(cluster.map((entry) => entry.item)));
           cursor = i;
