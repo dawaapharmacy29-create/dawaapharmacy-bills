@@ -17,6 +17,7 @@ import { prepareTransferRawEvidence } from './branchTransferRawEvidencePreparati
 import { completeResidualBalancedJourneys } from './branchTransferResidualJourneyCompletion.js';
 import { applyPackagingIntelligence } from './branchTransferPackagingIntelligence.js';
 import { enforcePackagingProfileConsistency } from './branchTransferPackagingSafety.js';
+import { applyCanonicalQuantity } from './branchTransferCanonicalQuantity.js';
 
 const INTERNAL_WAREHOUSES = [
   {
@@ -139,6 +140,7 @@ export function reconcileBranchTransfers(rawSales = [], rawPurchases = [], optio
   const smartCases = reconcileSmartTransfers(sales, purchases).map(stabilizeReviewCase);
   const packagingAwareCases = applyPackagingIntelligence(smartCases, options.packagingRules || {});
   const packagingSafeCases = enforcePackagingProfileConsistency(packagingAwareCases);
-  const completedJourneys = completeResidualBalancedJourneys(packagingSafeCases);
+  const canonicalCases = applyCanonicalQuantity(packagingSafeCases);
+  const completedJourneys = completeResidualBalancedJourneys(canonicalCases);
   return completedJourneys.map(enrichTransferDecisionIntelligence);
 }
