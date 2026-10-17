@@ -86,7 +86,12 @@ export function enrichSaleRowsWithInvoiceHeaders(lines = [], headers = []) {
     const headerDate = header?.date;
     return {
       ...line,
+      // Keep the original line user untouched for audit, but make the invoice-header
+      // doctor the canonical sale actor because the Sales Bills report is the
+      // authoritative invoice-level source for who created/sold the invoice.
       user: text(line?.user) || headerUser,
+      sale_actor: headerUser || text(line?.user),
+      sale_actor_source: headerUser ? 'sales_invoice_header' : (text(line?.user) ? 'sale_line' : ''),
       date: validDateValue(line?.date) ? line.date : headerDate,
       invoice_header_user: headerUser,
       invoice_header_date: headerDate || '',
