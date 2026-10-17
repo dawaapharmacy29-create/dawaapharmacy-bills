@@ -59,3 +59,37 @@ test('end-to-end: an approved packaging rule survives future uploads and outrank
   assert.equal(afterLegacy.matched_by_packaging_profile, true);
   assert.equal(afterLegacy.matched_by_unit_rule, undefined);
 });
+
+test('end-to-end: confirmed three-strip profile balances split sale invoices against one box purchase', () => {
+  const sales = [
+    {
+      branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم',
+      product_name: 'SOLUPRED 5 MG 30 TAB', code: '55750', qty: 1, unit: 'شريط',
+      invoice: 'SPLIT-1', date: '2026-10-15 12:00:00', source_format: 'flat_transfer_rows',
+    },
+    {
+      branch: 'دواء فرع الشامي', counterparty: 'دواء فرع ابو العزم',
+      product_name: 'SOLUPRED 5 MG 30 TAB', code: '55750', qty: 2, unit: 'شريط',
+      invoice: 'SPLIT-2', date: '2026-10-15 12:20:00', source_format: 'flat_transfer_rows',
+    },
+  ];
+  const purchases = [
+    {
+      branch: 'دواء فرع ابو العزم', counterparty: 'دواء فرع الشامي',
+      product_name: 'SOLUPRED 5 MG 30 TAB', code: '55750', qty: 1, unit: '',
+      invoice: 'BOX-1', date: '2026-10-15 12:10:00', source_format: 'bconnect_purchase_report',
+    },
+  ];
+  const packagingRules = {
+    '55750': { code: '55750', strips_per_box: 3, active: true, approvals: 1 },
+  };
+
+  const cases = reconcileBranchTransfers(sales, purchases, { packagingRules });
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].type, 'matched');
+  assert.deepEqual(new Set(cases[0].sale_invoices), new Set(['SPLIT-1', 'SPLIT-2']));
+  assert.deepEqual(cases[0].purchase_invoices, ['BOX-1']);
+  assert.equal(cases[0].canonical_quantity_comparable, true);
+  assert.equal(cases[0].canonical_sale_qty, 1);
+  assert.equal(cases[0].canonical_purchase_qty, 1);
+});
