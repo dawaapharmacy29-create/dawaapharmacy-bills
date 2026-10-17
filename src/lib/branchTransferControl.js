@@ -131,12 +131,12 @@ export {
   summarizeDecisionIntelligence,
 };
 
-export function reconcileBranchTransfers(rawSales = [], rawPurchases = []) {
+export function reconcileBranchTransfers(rawSales = [], rawPurchases = [], options = {}) {
   const prepared = prepareTransferRawEvidence(rawSales, rawPurchases);
   const sales = prepared.sales.map(canonicalizeInternalWarehouses);
   const purchases = prepared.purchases.map(canonicalizeInternalWarehouses);
   const smartCases = reconcileSmartTransfers(sales, purchases).map(stabilizeReviewCase);
-  const packagingAwareCases = applyPackagingIntelligence(smartCases);
+  const packagingAwareCases = applyPackagingIntelligence(smartCases, options.packagingRules || {});
   const completedJourneys = completeResidualBalancedJourneys(packagingAwareCases);
   return completedJourneys.map(enrichTransferDecisionIntelligence);
 }
