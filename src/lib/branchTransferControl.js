@@ -144,5 +144,6 @@ export function reconcileBranchTransfers(rawSales = [], rawPurchases = [], optio
   const packagingSafeCases = enforcePackagingProfileConsistency(packagingAwareCases);
   const canonicalCases = applyCanonicalQuantity(packagingSafeCases);
   const completedJourneys = completeResidualBalancedJourneys(canonicalCases);
-  return completedJourneys.map(enrichTransferDecisionIntelligence);
+  const finalizedCanonicalCases = applyCanonicalQuantity(completedJourneys);
+  return finalizedCanonicalCases.map(enrichTransferDecisionIntelligence);
 }
