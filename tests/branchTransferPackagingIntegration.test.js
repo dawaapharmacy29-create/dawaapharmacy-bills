@@ -23,8 +23,10 @@ test('end-to-end: strip sale and fractional B-Connect box purchase are interpret
   assert.equal(cases.length, 1);
   assert.equal(cases[0].type, 'unit_conversion_review');
   assert.match(cases[0].sale_qty_label, /^1 شريط/);
-  assert.match(cases[0].purchase_qty_label, /^0\.34 علبة مكافئة/);
+  assert.match(cases[0].purchase_qty_label, /^0\.34 وحدة شراء — نوع العبوة غير مؤكد/);
   assert.equal(cases[0].packaging_profile.strips_per_box, 3);
+  assert.equal(cases[0].purchase_canonical_quantity.canonical_unit, null);
+  assert.equal(cases[0].purchase_canonical_quantity.conversion_confidence, 'medium');
 });
 
 test('end-to-end: an approved packaging rule survives future uploads and outranks a legacy generic unit rule', () => {
