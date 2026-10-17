@@ -8,6 +8,25 @@ function unique(values = []) {
   return [...new Set(values.map(clean).filter(Boolean))];
 }
 
+function arabicBranchLabel(value = '') {
+  const text = clean(value).toLowerCase();
+  if (!text) return '';
+  if (text.includes('شامي') || text.includes('shamy') || text.includes('shami')) return 'الشامي';
+  if (text.includes('شكري') || text.includes('العزم') || text.includes('shokry') || text.includes('shoukry') || text.includes('shukry') || text.includes('abu al azm') || text.includes('abo el azm')) return 'شكري';
+  return clean(value);
+}
+
+function branchFromSide(selected, side) {
+  const lines = side === 'sale' ? (selected?.sale_lines || []) : (selected?.purchase_lines || []);
+  const branch = lines.map((line) => line?.branch).find(Boolean);
+  if (branch) return arabicBranchLabel(branch);
+
+  if (side === 'sale') {
+    return arabicBranchLabel(selected?.from || selected?.branch || '');
+  }
+  return arabicBranchLabel(selected?.to || selected?.counterparty || '');
+}
+
 async function copy(value) {
   const text = clean(value);
   if (!text) return;
@@ -21,7 +40,7 @@ function CopyChip({ label, value }) {
   </button>;
 }
 
-function EvidenceCard({ title, tone, side, fallbackQty }) {
+function EvidenceCard({ title, branchName, tone, side, fallbackQty }) {
   const evidence = side?.invoiceEvidence || [];
   const shown = evidence.slice(0, 2);
   const extra = Math.max(0, evidence.length - shown.length);
@@ -29,7 +48,10 @@ function EvidenceCard({ title, tone, side, fallbackQty }) {
 
   return <div className={`rounded-2xl border p-3 text-right ${toneClass}`}>
     <div className="flex items-center justify-between gap-2">
-      <div className="text-[10px] font-black text-slate-500">{title}</div>
+      <div>
+        <div className="text-[10px] font-black text-slate-500">{title}</div>
+        {branchName && <div className="mt-0.5 text-[11px] font-black text-slate-800">فرع {branchName}</div>}
+      </div>
       <div className="text-sm font-black text-slate-950">{shown[0]?.qtyLabel || fallbackQty || 'لا توجد حركة'}</div>
     </div>
     {!shown.length ? <div className="mt-2 text-[10px] font-bold text-slate-400">لا توجد فاتورة في هذا الطرف</div> : <div className="mt-2 space-y-2">
@@ -53,6 +75,8 @@ export default function OperationalEvidenceStrip({ selected, timeline }) {
   const sameCode = allCodes.length === 1;
   const saleQty = selected?.sale_qty_display?.primary || selected?.sale_qty_label || selected?.sale_qty || 'لا توجد حركة';
   const purchaseQty = selected?.purchase_qty_display?.primary || selected?.purchase_qty_label || selected?.purchase_qty || 'لا توجد حركة';
+  const saleBranch = branchFromSide(selected, 'sale');
+  const purchaseBranch = branchFromSide(selected, 'purchase');
 
   return <div className="mx-auto mt-4 w-full max-w-4xl rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 text-right">
     <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 pb-2">
@@ -63,8 +87,8 @@ export default function OperationalEvidenceStrip({ selected, timeline }) {
       </>}
     </div>
     <div className="mt-2 grid gap-2 md:grid-cols-2">
-      <EvidenceCard title="البيع" tone="sale" side={timeline?.sale} fallbackQty={saleQty} />
-      <EvidenceCard title="الشراء" tone="purchase" side={timeline?.purchase} fallbackQty={purchaseQty} />
+      <EvidenceCard title="البيع" branchName={saleBranch} tone="sale" side={timeline?.sale} fallbackQty={saleQty} />
+      <EvidenceCard title="الشراء" branchName={purchaseBranch} tone="purchase" side={timeline?.purchase} fallbackQty={purchaseQty} />
     </div>
   </div>;
 }
