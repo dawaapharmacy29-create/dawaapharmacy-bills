@@ -43,7 +43,10 @@ function chooseHeaderCandidate(line, inputCandidates = []) {
       const gap = candidateTimeGap(line, item);
       return gap != null && gap <= HEADER_TIME_TOLERANCE_MS;
     });
-    if (aligned.length === 1) return { header: aligned[0], conflict: false, reason: 'time_aligned' };
+    if (aligned.length === 1) {
+      const gap = candidateTimeGap(line, aligned[0]);
+      return { header: aligned[0], conflict: false, reason: gap === 0 ? 'exact_time' : 'time_aligned' };
+    }
     if (aligned.length > 1) candidates = aligned;
     else if (candidates.length === 1 && dateMs(candidates[0]?.date) != null) {
       return {
@@ -127,7 +130,7 @@ export function enrichSaleRowsWithInvoiceHeaders(lines = [], headers = []) {
     const lineUser = text(line?.user);
     const gapMs = candidateTimeGap(line, header);
     const confidence = headerUser
-      ? (selected.reason === 'time_aligned' ? 'verified_invoice_time' : 'invoice_header')
+      ? (['exact_time', 'time_aligned'].includes(selected.reason) ? 'verified_invoice_time' : 'invoice_header')
       : (lineUser ? 'line_only' : 'none');
 
     return {
