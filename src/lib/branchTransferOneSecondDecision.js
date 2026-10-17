@@ -4,8 +4,8 @@ function firstCase(incident) {
 
 function branchLabel(value = '') {
   const text = String(value || '').toLowerCase();
-  if (text.includes('شامي')) return 'الشامي';
-  if (text.includes('شكري') || text.includes('العزم')) return 'شكري';
+  if (text.includes('شامي') || text.includes('shamy') || text.includes('shami')) return 'الشامي';
+  if (text.includes('شكري') || text.includes('العزم') || text.includes('shokry') || text.includes('shoukry') || text.includes('shukry') || text.includes('abu al azm') || text.includes('abo el azm')) return 'شكري';
   return value || 'الفرع';
 }
 
