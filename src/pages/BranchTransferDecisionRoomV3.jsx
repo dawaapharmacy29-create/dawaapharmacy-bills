@@ -122,6 +122,32 @@ function Qty({ label, value, hint }) {
   return <div className="rounded-xl bg-slate-50 p-3 text-center"><div className="text-[10px] font-black text-slate-400">{label}</div><div className="mt-1 text-2xl font-black text-slate-950">{value}</div>{hint && <div className="mt-1 text-[10px] font-bold text-slate-400">{hint}</div>}</div>;
 }
 
+function InvoiceEvidenceCard({ title, branch, side, metadata }) {
+  const invoices = metadata?.invoiceEvidence || [];
+  const first = invoices[0] || null;
+  const actorLabel = side === 'sale' ? 'باع/سجل الفاتورة' : 'اشترى/سجل الفاتورة';
+  const border = side === 'sale' ? 'border-sky-200 bg-sky-50/60' : 'border-emerald-200 bg-emerald-50/60';
+  const badge = side === 'sale' ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800';
+
+  return <div className={`rounded-2xl border p-3.5 ${border}`}>
+    <div className="flex items-center justify-between gap-2">
+      <div className="font-black text-slate-950">{title} — {branch}</div>
+      <span className={`rounded-full px-2 py-1 text-[9px] font-black ${badge}`}>{invoices.length ? `${invoices.length} فاتورة` : 'لا توجد فاتورة'}</span>
+    </div>
+    {!metadata?.available || !first ? <div className="mt-3 text-xs font-bold text-slate-500">الحركة غير موجودة في الملفات الحالية.</div> : <>
+      <div className="mt-3 grid gap-1.5 text-xs font-bold text-slate-700">
+        <div><span className="text-slate-400">رقم الفاتورة:</span> <b className="text-slate-950">{first.invoice}</b></div>
+        <div><span className="text-slate-400">{actorLabel}:</span> <b className="text-slate-950">{first.actor}</b></div>
+        <div><span className="text-slate-400">التاريخ:</span> <b className="text-slate-950">{first.dateLabel}</b></div>
+        <div><span className="text-slate-400">الكمية داخل الرحلة:</span> <b className="text-slate-950">{first.qty}</b></div>
+      </div>
+      {first.actorConflict && <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[10px] font-black text-amber-900">فيه أكثر من مستخدم على نفس الفاتورة؛ راجع الدليل قبل الاعتماد.</div>}
+      {first.timeConflict && <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[10px] font-black text-amber-900">توقيتات نفس الفاتورة غير متطابقة؛ لم يتم تبسيطها كتوقيت واحد موثوق.</div>}
+      {invoices.length > 1 && <div className="mt-2 text-[10px] font-black text-slate-500">+ {invoices.length - 1} فاتورة أخرى داخل «تفاصيل الدليل».</div>}
+    </>}
+  </div>;
+}
+
 export default function BranchTransferDecisionRoomV3() {
   const [sources, setSources] = useState({});
   const [ledger, setLedger] = useState(loadLedger);
@@ -267,12 +293,14 @@ export default function BranchTransferDecisionRoomV3() {
 
         <div className="grid grid-cols-3 gap-2"><Qty label="بيع" value={saleQty} hint={branchName(selectedIncident.from)} /><Qty label="شراء" value={purchaseQty} hint={branchName(selectedIncident.to)} /><Qty label="المتبقي" value={remaining} hint={selected?.residual_progress_status === 'partial' ? 'بعد الاستكمالات' : 'بعد التحليل'} /></div>
 
+        <div className="grid gap-2 lg:grid-cols-2"><InvoiceEvidenceCard title="البيع" branch={branchName(selectedIncident.from)} side="sale" metadata={timeline?.sale} /><InvoiceEvidenceCard title="الشراء" branch={branchName(selectedIncident.to)} side="purchase" metadata={timeline?.purchase} /></div>
+
         {selected?.residual_progress_status === 'partial' && <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-bold leading-6 text-sky-900"><div className="flex items-center gap-2 font-black"><History className="h-4 w-4" /> جزء من الفرق اتسجل بعد الحركة الأصلية</div><div className="mt-1">{selected.residual_review_reason}</div></div>}
 
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">{unitSuggestion ? <Button onClick={approveUnit} className="bg-teal-700 font-black hover:bg-teal-800">اعتماد تحويل العبوة</Button> : <Button onClick={() => recordDecision('verified', `تم الحل: ${decision.headline}`)} className="bg-teal-700 font-black hover:bg-teal-800"><CheckCircle2 className="ml-1 h-4 w-4" /> تم الحل</Button>}<Button variant="outline" onClick={() => recordDecision('in_progress', decision.headline)} className="font-black">متابعة</Button><Button variant="ghost" onClick={() => recordDecision('dismissed', 'ليست مشكلة بعد المراجعة')} className="font-black text-slate-500">ليست مشكلة</Button></div>
 
         <button onClick={() => setDetailsOpen((v) => !v)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-600"><span>تفاصيل الدليل</span>{detailsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button>
-        {detailsOpen && <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة الرحلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.journey_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة المشكلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.issue_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">استكمالات لاحقة</div><div className="mt-1 text-xl font-black">{selected.residual_progress_candidate_count || selected.residual_candidate_count || 0}</div></div></div>{timeline?.sale?.available && <div className="rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600"><b className="text-slate-900">البيع:</b> {timeline.sale.userLabel} · {timeline.sale.timeLabel}</div>}{timeline?.purchase?.available && <div className="rounded-xl bg-slate-50 p-3 text-xs font-bold text-slate-600"><b className="text-slate-900">الشراء:</b> {timeline.purchase.userLabel} · {timeline.purchase.timeLabel}</div>}{saleReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(saleReturn, { movement: 'البيع' })}</div>}{purchaseReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(purchaseReturn, { movement: 'الشراء' })}</div>}{selected.residual_review_reason && <div className="text-xs font-bold leading-6 text-slate-600">{selected.residual_review_reason}</div>}{selected.match_reason && <div className="text-xs font-bold leading-6 text-slate-500">{selected.match_reason}</div>}</div>}
+        {detailsOpen && <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة الرحلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.journey_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة المشكلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.issue_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">استكمالات لاحقة</div><div className="mt-1 text-xl font-black">{selected.residual_progress_candidate_count || selected.residual_candidate_count || 0}</div></div></div>{timeline?.sale?.invoiceEvidence?.map((entry) => <div key={`sale-${entry.invoice}`} className="rounded-xl bg-sky-50 p-3 text-xs font-bold text-slate-700"><b className="text-slate-950">بيع فاتورة {entry.invoice}:</b> {entry.actor} · {entry.dateLabel} · كمية {entry.qty}{entry.sourceFiles?.length ? ` · ${entry.sourceFiles.join('، ')}` : ''}</div>)}{timeline?.purchase?.invoiceEvidence?.map((entry) => <div key={`purchase-${entry.invoice}`} className="rounded-xl bg-emerald-50 p-3 text-xs font-bold text-slate-700"><b className="text-slate-950">شراء فاتورة {entry.invoice}:</b> {entry.actor} · {entry.dateLabel} · كمية {entry.qty}{entry.sourceFiles?.length ? ` · ${entry.sourceFiles.join('، ')}` : ''}</div>)}{saleReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(saleReturn, { movement: 'البيع' })}</div>}{purchaseReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(purchaseReturn, { movement: 'الشراء' })}</div>}{selected.residual_review_reason && <div className="text-xs font-bold leading-6 text-slate-600">{selected.residual_review_reason}</div>}{selected.match_reason && <div className="text-xs font-bold leading-6 text-slate-500">{selected.match_reason}</div>}</div>}
       </div>}</Card>
     </div>
   </div></div>;
