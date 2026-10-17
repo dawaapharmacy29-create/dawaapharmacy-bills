@@ -73,3 +73,20 @@ test('unitless B-Connect purchase evidence never claims a box before packaging i
   assert.equal(value.invoiceEvidence[0].qtyLabel, '1 وحدة · العبوة غير محددة');
   assert.doesNotMatch(value.invoiceEvidence[0].qtyLabel, /علبة/);
 });
+
+test('invoice evidence keeps mixed units separate instead of showing their numeric sum', () => {
+  const value = buildSideOperationMetadata(incident([
+    {
+      sale_lines: [
+        { user: 'د اختبار', invoice: 'S10', qty: 10, unit: 'وحدة', timestamp_ms: 1000 },
+        { user: 'د اختبار', invoice: 'S10', qty: 1, unit: 'علبة', timestamp_ms: 1000 },
+      ],
+    },
+  ]), 'sale');
+
+  assert.equal(value.invoiceEvidence.length, 1);
+  assert.equal(value.invoiceEvidence[0].mixedUnits, true);
+  assert.equal(value.invoiceEvidence[0].qtyDisplay.kind, 'mixed');
+  assert.equal(value.invoiceEvidence[0].qtyLabel, '10 وحدة + 1 علبة');
+  assert.doesNotMatch(value.invoiceEvidence[0].qtyLabel, /^11\b/);
+});
