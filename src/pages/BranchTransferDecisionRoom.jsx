@@ -1,1 +1,1 @@
-export { default } from './BranchTransferDecisionRoomV7';
+export { default } from './BranchTransferDecisionRoomV8';
