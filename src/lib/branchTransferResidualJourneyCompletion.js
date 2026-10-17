@@ -87,14 +87,40 @@ function possibleExplicitUnitConversion(anchor) {
   return rounded >= 2 && rounded <= 12 && Math.abs(ratio - rounded) <= Math.max(0.06, rounded * 0.03);
 }
 
+function trustedCanonicalSide(item, side) {
+  const quantity = item?.[`${side}_quantity`];
+  if (!quantity || quantity.canonical_unit !== 'box') return false;
+  if (!['high', 'confirmed'].includes(quantity.conversion_confidence)) return false;
+  return Number.isFinite(Number(quantity.canonical_qty));
+}
+
+function trustedCanonicalComparable(item) {
+  return Boolean(
+    item?.canonical_quantity_comparable
+    && trustedCanonicalSide(item, 'sale')
+    && trustedCanonicalSide(item, 'purchase')
+    && !item?.packaging_conflict,
+  );
+}
+
+function settlementQty(item, side, basis = 'raw') {
+  const raw = Number(side === 'purchase' ? item?.purchase_qty : item?.sale_qty) || 0;
+  if (raw <= EPSILON) return 0;
+  if (basis !== 'canonical_box') return raw;
+  if (!trustedCanonicalSide(item, side)) return NaN;
+  return Number(item?.[`${side}_quantity`]?.canonical_qty);
+}
+
 function neededResidual(anchor) {
-  const sale = Number(anchor?.sale_qty || 0);
-  const purchase = Number(anchor?.purchase_qty || 0);
+  const basis = trustedCanonicalComparable(anchor) ? 'canonical_box' : 'raw';
+  const sale = settlementQty(anchor, 'sale', basis);
+  const purchase = settlementQty(anchor, 'purchase', basis);
+  if (!Number.isFinite(sale) || !Number.isFinite(purchase)) return null;
   const diff = sale - purchase;
   if (Math.abs(diff) <= EPSILON) return null;
   return diff > 0
-    ? { side: 'purchase', qty: diff }
-    : { side: 'sale', qty: Math.abs(diff) };
+    ? { side: 'purchase', qty: diff, basis }
+    : { side: 'sale', qty: Math.abs(diff), basis };
 }
 
 function isPureMissingSide(item, side) {
@@ -108,8 +134,8 @@ function isPureMissingSide(item, side) {
     && item?.type === 'sale_without_purchase';
 }
 
-function candidateQty(item, side) {
-  return Number(side === 'purchase' ? item?.purchase_qty : item?.sale_qty) || 0;
+function candidateQty(item, side, basis = 'raw') {
+  return settlementQty(item, side, basis);
 }
 
 function mergeLines(items, field) {
@@ -123,12 +149,14 @@ function mergedTimeGap(saleLines, purchaseLines) {
   return Math.abs(Math.min(...saleTimes) - Math.min(...purchaseTimes)) / 60000;
 }
 
-function candidateEvidence(anchorEnd, candidate, side) {
+function candidateEvidence(anchorEnd, candidate, side, basis = 'raw') {
   const timestamp = caseStart(candidate.item);
+  const qty = candidateQty(candidate.item, side, basis);
   return {
     case_id: candidate.item?.id || null,
     invoice_numbers: unique([...(candidate.item?.sale_invoices || []), ...(candidate.item?.purchase_invoices || [])]),
-    qty: Number(candidateQty(candidate.item, side).toFixed(3)),
+    qty: Number(Number(qty || 0).toFixed(3)),
+    quantity_basis: basis,
     users: unique([...(candidate.item?.sale_users || []), ...(candidate.item?.purchase_users || [])]),
     timestamp_ms: timestamp,
     gap_minutes: Number((minuteGap(anchorEnd, timestamp) || 0).toFixed(1)),
@@ -136,7 +164,7 @@ function candidateEvidence(anchorEnd, candidate, side) {
   };
 }
 
-function exactSubsets(candidates, side, target) {
+function exactSubsets(candidates, side, target, basis = 'raw') {
   if (!candidates.length || candidates.length > MAX_SUBSET_CANDIDATES) return [];
   const solutions = [];
 
@@ -149,8 +177,8 @@ function exactSubsets(candidates, side, target) {
     if (index >= candidates.length || total > target + EPSILON) return;
 
     for (let i = index; i < candidates.length; i += 1) {
-      const qty = candidateQty(candidates[i].item, side);
-      if (qty <= EPSILON || total + qty > target + EPSILON) continue;
+      const qty = candidateQty(candidates[i].item, side, basis);
+      if (!Number.isFinite(qty) || qty <= EPSILON || total + qty > target + EPSILON) continue;
       chosen.push(candidates[i]);
       walk(i + 1, total + qty, chosen);
       chosen.pop();
@@ -168,14 +196,17 @@ function buildCompletedCase(items, { needed, settlementItems, anchorEnd }) {
   const purchaseLines = mergeLines(items, 'purchase_lines');
   const saleQty = items.reduce((sum, item) => sum + Number(item?.sale_qty || 0), 0);
   const purchaseQty = items.reduce((sum, item) => sum + Number(item?.purchase_qty || 0), 0);
+  const settledSaleQty = items.reduce((sum, item) => sum + settlementQty(item, 'sale', needed.basis), 0);
+  const settledPurchaseQty = items.reduce((sum, item) => sum + settlementQty(item, 'purchase', needed.basis), 0);
   const saleInvoices = unique(items.flatMap((item) => item?.sale_invoices || []));
   const purchaseInvoices = unique(items.flatMap((item) => item?.purchase_invoices || []));
   const gap = mergedTimeGap(saleLines, purchaseLines);
   const settlementNextDay = settlementItems.some((entry) => calendarDayNumber(caseStart(entry.item)) > calendarDayNumber(anchorEnd));
   const settlementCount = settlementItems.length;
+  const basisLabel = needed.basis === 'canonical_box' ? 'بعد توحيد الوحدة إلى علبة' : 'على الكمية المسجلة';
   const reasons = unique([
     ...items.map((item) => item?.match_reason),
-    `اكتملت الكمية من ${settlementCount} حركة لاحقة لنفس الكود ${settlementNextDay ? 'في نفس اليوم أو اليوم التالي' : 'في نفس اليوم'}`,
+    `اكتملت الكمية من ${settlementCount} حركة لاحقة لنفس الكود ${settlementNextDay ? 'في نفس اليوم أو اليوم التالي' : 'في نفس اليوم'} ${basisLabel}`,
   ]);
   return {
     ...anchor,
@@ -196,19 +227,27 @@ function buildCompletedCase(items, { needed, settlementItems, anchorEnd }) {
     time_gap_minutes: gap == null ? null : Number(gap.toFixed(1)),
     episode_balanced: true,
     residual_journey_completed: true,
-    residual_completion_policy: 'exact-code + exact-cumulative-residual + same-direction + later-same-or-next-day + unique-settlement',
+    residual_completion_policy: needed.basis === 'canonical_box'
+      ? 'exact-code + trusted-canonical-box + exact-cumulative-residual + same-direction + later-same-or-next-day + unique-settlement'
+      : 'exact-code + exact-cumulative-residual + same-direction + later-same-or-next-day + unique-settlement',
+    residual_quantity_basis: needed.basis,
     residual_component_case_ids: items.map((item) => item?.id).filter(Boolean),
     residual_settlement_count: settlementCount,
     residual_settlement_side: needed.side,
     residual_settlement_qty: Number(needed.qty.toFixed(3)),
     residual_settlement_next_day: settlementNextDay,
-    residual_settlement_candidates: settlementItems.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side)),
+    residual_settlement_candidates: settlementItems.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side, needed.basis)),
+    ...(needed.basis === 'canonical_box' ? {
+      canonical_quantity_comparable: true,
+      canonical_sale_qty: Number(settledSaleQty.toFixed(4)),
+      canonical_purchase_qty: Number(settledPurchaseQty.toFixed(4)),
+    } : {}),
     next_action: 'لا يوجد إجراء مطلوب؛ اكتملت الكمية بعد فهم رحلة التحويل الموزعة على أكثر من تسجيل.',
   };
 }
 
 function partialProgressEvidence(anchor, needed, candidates, anchorEnd) {
-  const progressQty = candidates.reduce((sum, candidate) => sum + candidateQty(candidate.item, needed.side), 0);
+  const progressQty = candidates.reduce((sum, candidate) => sum + candidateQty(candidate.item, needed.side, needed.basis), 0);
   if (progressQty <= EPSILON || progressQty >= needed.qty - EPSILON) return null;
   return {
     residual_progress_status: 'partial',
@@ -217,8 +256,9 @@ function partialProgressEvidence(anchor, needed, candidates, anchorEnd) {
     residual_progress_side: needed.side,
     residual_progress_qty: Number(progressQty.toFixed(3)),
     residual_remaining_qty: Number((needed.qty - progressQty).toFixed(3)),
+    residual_quantity_basis: needed.basis,
     residual_progress_candidate_count: candidates.length,
-    residual_progress_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side)),
+    residual_progress_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side, needed.basis)),
     residual_review_reason: `ظهر لاحقًا ${Number(progressQty.toFixed(3))} من أصل فرق ${Number(needed.qty.toFixed(3))} لنفس الكود؛ المتبقي ${Number((needed.qty - progressQty).toFixed(3))} يحتاج مراجعة.`,
     next_action: `راجع فقط المتبقي ${Number((needed.qty - progressQty).toFixed(3))} بعد احتساب الحركات اللاحقة لنفس الكود.`,
   };
@@ -231,27 +271,30 @@ export function completeResidualBalancedJourneys(cases = []) {
 
   cases.forEach((anchor, anchorIndex) => {
     if (consumed.has(anchorIndex) || anchor?.type !== 'quantity_mismatch') return;
-    if (possibleExplicitUnitConversion(anchor)) {
+    const needed = neededResidual(anchor);
+    if (!needed) return;
+    if (needed.basis === 'raw' && possibleExplicitUnitConversion(anchor)) {
       reviewEvidence.set(anchorIndex, {
         residual_review_reason: 'الوحدات تشير لاحتمال تحويل عبوة واضح؛ تم منع إغلاق فرق الكمية بالحركات اللاحقة حتى اعتماد علاقة العبوة أولًا.',
         residual_unit_conversion_guard: true,
       });
       return;
     }
-    const needed = neededResidual(anchor);
-    if (!needed) return;
     const anchorEnd = caseEnd(anchor);
     if (!Number.isFinite(anchorEnd)) return;
 
     const candidates = cases
       .map((item, index) => ({ item, index }))
-      .filter(({ item, index }) => index !== anchorIndex
-        && !consumed.has(index)
-        && sameJourneyIdentity(anchor, item)
-        && isPureMissingSide(item, needed.side)
-        && candidateQty(item, needed.side) <= needed.qty + EPSILON
-        && Number.isFinite(caseStart(item))
-        && laterSameOrNextDay(anchorEnd, caseStart(item)))
+      .filter(({ item, index }) => {
+        if (index === anchorIndex || consumed.has(index)) return false;
+        if (!sameJourneyIdentity(anchor, item) || !isPureMissingSide(item, needed.side)) return false;
+        const qty = candidateQty(item, needed.side, needed.basis);
+        return Number.isFinite(qty)
+          && qty > EPSILON
+          && qty <= needed.qty + EPSILON
+          && Number.isFinite(caseStart(item))
+          && laterSameOrNextDay(anchorEnd, caseStart(item));
+      })
       .sort((a, b) => caseStart(a.item) - caseStart(b.item));
 
     if (!candidates.length) return;
@@ -260,20 +303,22 @@ export function completeResidualBalancedJourneys(cases = []) {
       reviewEvidence.set(anchorIndex, {
         residual_needed_side: needed.side,
         residual_needed_qty: Number(needed.qty.toFixed(3)),
+        residual_quantity_basis: needed.basis,
         residual_candidate_count: candidates.length,
-        residual_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side)),
+        residual_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side, needed.basis)),
         residual_review_reason: 'يوجد عدد كبير من الحركات اللاحقة لنفس الكود؛ تم ترك الحالة للمراجعة بدل اختيار تسوية تلقائية.',
       });
       return;
     }
 
-    const solutions = exactSubsets(candidates, needed.side, needed.qty);
+    const solutions = exactSubsets(candidates, needed.side, needed.qty, needed.basis);
     if (solutions.length > 1) {
       reviewEvidence.set(anchorIndex, {
         residual_needed_side: needed.side,
         residual_needed_qty: Number(needed.qty.toFixed(3)),
+        residual_quantity_basis: needed.basis,
         residual_candidate_count: candidates.length,
-        residual_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side)),
+        residual_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side, needed.basis)),
         residual_exact_solution_count: solutions.length,
         residual_review_reason: 'يوجد أكثر من مجموعة حركات لاحقة يمكنها إكمال نفس الفرق؛ لم يتم اختيار أي مجموعة تلقائيًا.',
       });
@@ -283,14 +328,16 @@ export function completeResidualBalancedJourneys(cases = []) {
     if (solutions.length === 1) {
       const settlementItems = solutions[0];
       const merged = buildCompletedCase([anchor, ...settlementItems.map((entry) => entry.item)], { needed, settlementItems, anchorEnd });
-      if (!nearlyEqual(merged.sale_qty, merged.purchase_qty)) return;
+      const mergedSale = needed.basis === 'canonical_box' ? merged.canonical_sale_qty : merged.sale_qty;
+      const mergedPurchase = needed.basis === 'canonical_box' ? merged.canonical_purchase_qty : merged.purchase_qty;
+      if (!nearlyEqual(mergedSale, mergedPurchase)) return;
       consumed.add(anchorIndex);
       settlementItems.forEach((entry) => consumed.add(entry.index));
       completed.push(merged);
       return;
     }
 
-    const totalCandidateQty = candidates.reduce((sum, candidate) => sum + candidateQty(candidate.item, needed.side), 0);
+    const totalCandidateQty = candidates.reduce((sum, candidate) => sum + candidateQty(candidate.item, needed.side, needed.basis), 0);
     if (totalCandidateQty < needed.qty - EPSILON) {
       const progress = partialProgressEvidence(anchor, needed, candidates, anchorEnd);
       if (progress) reviewEvidence.set(anchorIndex, progress);
@@ -300,8 +347,9 @@ export function completeResidualBalancedJourneys(cases = []) {
     reviewEvidence.set(anchorIndex, {
       residual_needed_side: needed.side,
       residual_needed_qty: Number(needed.qty.toFixed(3)),
+      residual_quantity_basis: needed.basis,
       residual_candidate_count: candidates.length,
-      residual_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side)),
+      residual_candidates: candidates.map((candidate) => candidateEvidence(anchorEnd, candidate, needed.side, needed.basis)),
       residual_review_reason: 'توجد حركات لاحقة لنفس الكود، لكن تجميعها لا يعطي تسوية وحيدة مساوية للفرق؛ تحتاج مراجعة بشرية.',
     });
   });
