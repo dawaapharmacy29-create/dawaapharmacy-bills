@@ -99,7 +99,46 @@ function integerRatio(value) {
   return Math.abs(value - nearest) <= tolerance ? nearest : null;
 }
 
-function evidenceForCase(item) {
+export function explicitStripCountFromName(value) {
+  const name = normalize(value);
+  if (!name) return null;
+  const patterns = [
+    /(\d{1,2})\s*(?:strip|strips|شريط|شرائط)\b/i,
+    /(?:strip|strips|شريط|شرائط)\s*(\d{1,2})\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = name.match(pattern);
+    if (!match) continue;
+    const count = Number(match[1]);
+    if (Number.isInteger(count) && count >= 2 && count <= 12) return count;
+  }
+  return null;
+}
+
+function caseNames(item) {
+  return [...new Set([
+    item?.product_name,
+    item?.sale_product_name,
+    item?.purchase_product_name,
+    ...(item?.sale_lines || []).map((line) => line?.product_name),
+    ...(item?.purchase_lines || []).map((line) => line?.product_name),
+  ].map(text).filter(Boolean))];
+}
+
+function explicitNameEvidenceForCase(item) {
+  const code = exactCode(item);
+  if (!code) return null;
+  const counts = [...new Set(caseNames(item).map(explicitStripCountFromName).filter((value) => Number.isInteger(value)))];
+  if (!counts.length) return null;
+  return {
+    code,
+    counts,
+    case_id: item?.id || null,
+    names: caseNames(item),
+  };
+}
+
+function observedRatioEvidenceForCase(item) {
   if (!item || !exactCode(item) || item.sale_qty <= 0 || item.purchase_qty <= 0) return null;
   if (saleFamily(item) !== 'strip' || !purchaseUsesBconnectBoxEquivalent(item)) return null;
   const ratio = Number(item.sale_qty) / Number(item.purchase_qty);
@@ -115,8 +154,8 @@ function evidenceForCase(item) {
   };
 }
 
-export function buildPackagingProfiles(cases = []) {
-  const evidence = cases.map(evidenceForCase).filter(Boolean);
+function buildObservedProfiles(cases = []) {
+  const evidence = cases.map(observedRatioEvidenceForCase).filter(Boolean);
   const byCode = new Map();
   evidence.forEach((entry) => {
     const bucket = byCode.get(entry.code) || [];
@@ -158,7 +197,97 @@ export function buildPackagingProfiles(cases = []) {
       supporting_count: support,
       support_share: round(share, 3),
       evidence: entries,
-      label: `1 علبة = ${stripsPerBox} ${stripsPerBox === 1 ? 'شريط' : 'شرائط'}`,
+      label: `1 علبة = ${stripsPerBox} شرائط`,
+    };
+  });
+  return profiles;
+}
+
+function buildExplicitNameProfiles(cases = []) {
+  const evidence = cases.map(explicitNameEvidenceForCase).filter(Boolean);
+  const byCode = new Map();
+  evidence.forEach((entry) => {
+    const bucket = byCode.get(entry.code) || [];
+    bucket.push(entry);
+    byCode.set(entry.code, bucket);
+  });
+  const profiles = {};
+  byCode.forEach((entries, code) => {
+    const counts = [...new Set(entries.flatMap((entry) => entry.counts))];
+    if (counts.length !== 1) {
+      profiles[code] = {
+        code,
+        status: 'conflicted',
+        confidence: 'low',
+        source: 'product_name_explicit',
+        strips_per_box: null,
+        evidence_count: entries.length,
+        alternatives: counts.map((value) => ({ strips_per_box: value })),
+        name_evidence: entries,
+      };
+      return;
+    }
+    profiles[code] = {
+      code,
+      status: 'usable',
+      confidence: 'high',
+      source: 'product_name_explicit',
+      strips_per_box: counts[0],
+      evidence_count: entries.length,
+      supporting_count: entries.length,
+      name_evidence: entries,
+      label: `1 علبة = ${counts[0]} شرائط`,
+    };
+  });
+  return profiles;
+}
+
+export function buildPackagingProfiles(cases = []) {
+  const observed = buildObservedProfiles(cases);
+  const explicit = buildExplicitNameProfiles(cases);
+  const codes = new Set([...Object.keys(observed), ...Object.keys(explicit)]);
+  const profiles = {};
+  codes.forEach((code) => {
+    const o = observed[code];
+    const e = explicit[code];
+    if (!e) {
+      profiles[code] = o;
+      return;
+    }
+    if (!o) {
+      profiles[code] = e;
+      return;
+    }
+    if (e.status === 'conflicted' || o.status === 'conflicted') {
+      profiles[code] = {
+        code,
+        status: 'conflicted',
+        confidence: 'low',
+        source: 'evidence_conflict',
+        strips_per_box: null,
+        observed_profile: o,
+        explicit_profile: e,
+      };
+      return;
+    }
+    if (Number(e.strips_per_box) !== Number(o.strips_per_box)) {
+      profiles[code] = {
+        code,
+        status: 'conflicted',
+        confidence: 'low',
+        source: 'evidence_conflict',
+        strips_per_box: null,
+        observed_profile: o,
+        explicit_profile: e,
+      };
+      return;
+    }
+    profiles[code] = {
+      ...o,
+      confidence: 'high',
+      source: 'product_name_and_observed',
+      explicit_profile: e,
+      label: `1 علبة = ${e.strips_per_box} شرائط`,
     };
   });
   return profiles;
@@ -181,17 +310,31 @@ function normalizeLearnedRule(rule, code) {
 }
 
 function mergedProfiles(cases, learnedRules = {}) {
-  const observed = buildPackagingProfiles(cases);
-  const merged = { ...observed };
+  const current = buildPackagingProfiles(cases);
+  const merged = { ...current };
   Object.entries(learnedRules || {}).forEach(([code, rawRule]) => {
     const learned = normalizeLearnedRule(rawRule, code);
     if (!learned) return;
-    // An explicit human-confirmed rule wins over noisy current-period ratios,
-    // but the current evidence remains attached for audit.
+    const currentProfile = current[code] || null;
+    // If the current product name explicitly says a different pack size, do not
+    // hide it behind an older learned rule; surface a conflict for review.
+    const explicit = currentProfile?.explicit_profile || (currentProfile?.source === 'product_name_explicit' ? currentProfile : null);
+    if (explicit?.status === 'usable' && Number(explicit.strips_per_box) !== Number(learned.strips_per_box)) {
+      merged[code] = {
+        code,
+        status: 'conflicted',
+        confidence: 'low',
+        source: 'confirmed_rule_name_conflict',
+        strips_per_box: null,
+        confirmed_rule: learned,
+        current_profile: currentProfile,
+      };
+      return;
+    }
     merged[code] = {
-      ...(observed[code] || {}),
+      ...(currentProfile || {}),
       ...learned,
-      observed_profile: observed[code] || null,
+      observed_profile: currentProfile || null,
     };
   });
   return merged;
@@ -202,19 +345,41 @@ function quantityUnitLabel(qty, unit) {
   return `${value} ${humanTransferUnit(unit)}`;
 }
 
-export function caseQuantityLabels(item = {}) {
+function approxLabel(value) {
+  const rounded = round(value, 2);
+  const nearest = Math.round(rounded);
+  return Math.abs(rounded - nearest) <= 0.08 ? String(nearest) : String(rounded);
+}
+
+export function caseQuantityLabels(item = {}, profile = null) {
   const saleUnits = [...new Set((item.sale_lines || []).map((line) => text(line?.unit)).filter(Boolean))];
   const purchaseUnits = [...new Set((item.purchase_lines || []).map((line) => text(line?.unit)).filter(Boolean))];
-  const saleLabel = saleUnits.length === 1
-    ? quantityUnitLabel(item.sale_qty, saleUnits[0])
-    : saleUnits.length > 1
-      ? `${round(item.sale_qty, 4)} وحدات مختلطة (${saleUnits.map(humanTransferUnit).join(' + ')})`
-      : `${round(item.sale_qty, 4)} وحدة بيع`;
+  const packSize = profile?.status === 'usable' ? Number(profile.strips_per_box) : null;
+  const saleFamilyValue = saleUnits.length === 1 ? transferUnitFamily(saleUnits[0]) : null;
+
+  let saleLabel;
+  if (saleUnits.length === 1) {
+    saleLabel = quantityUnitLabel(item.sale_qty, saleUnits[0]);
+    if (packSize && saleFamilyValue === 'strip') saleLabel += ` · ≈${round(Number(item.sale_qty) / packSize, 2)} علبة`;
+    else if (packSize && saleFamilyValue === 'box') saleLabel += ` · ≈${approxLabel(Number(item.sale_qty) * packSize)} شريط`;
+  } else if (saleUnits.length > 1) {
+    saleLabel = `${round(item.sale_qty, 4)} وحدات مختلطة (${saleUnits.map(humanTransferUnit).join(' + ')})`;
+  } else {
+    saleLabel = `${round(item.sale_qty, 4)} وحدة بيع`;
+  }
+
   let purchaseLabel;
-  if (purchaseUnits.length === 1) purchaseLabel = quantityUnitLabel(item.purchase_qty, purchaseUnits[0]);
-  else if (purchaseUnits.length > 1) purchaseLabel = `${round(item.purchase_qty, 4)} وحدات مختلطة (${purchaseUnits.map(humanTransferUnit).join(' + ')})`;
-  else if (purchaseUsesBconnectBoxEquivalent(item)) purchaseLabel = `${round(item.purchase_qty, 4)} علبة مكافئة`;
-  else purchaseLabel = `${round(item.purchase_qty, 4)} وحدة شراء`;
+  if (purchaseUnits.length === 1) {
+    purchaseLabel = quantityUnitLabel(item.purchase_qty, purchaseUnits[0]);
+    if (packSize && transferUnitFamily(purchaseUnits[0]) === 'box') purchaseLabel += ` · ≈${approxLabel(Number(item.purchase_qty) * packSize)} شريط`;
+  } else if (purchaseUnits.length > 1) {
+    purchaseLabel = `${round(item.purchase_qty, 4)} وحدات مختلطة (${purchaseUnits.map(humanTransferUnit).join(' + ')})`;
+  } else if (purchaseUsesBconnectBoxEquivalent(item)) {
+    purchaseLabel = `${round(item.purchase_qty, 4)} علبة مكافئة`;
+    if (packSize) purchaseLabel += ` · ≈${approxLabel(Number(item.purchase_qty) * packSize)} شريط`;
+  } else {
+    purchaseLabel = `${round(item.purchase_qty, 4)} وحدة شراء`;
+  }
   return { sale: saleLabel, purchase: purchaseLabel };
 }
 
@@ -266,7 +431,7 @@ export function applyPackagingIntelligence(cases = [], learnedRules = {}) {
   return cases.map((item) => {
     const code = exactCode(item);
     const profile = code ? profiles[code] : null;
-    const labels = caseQuantityLabels(item);
+    const labels = caseQuantityLabels(item, profile);
     const base = {
       ...item,
       sale_qty_label: labels.sale,
@@ -282,11 +447,13 @@ export function applyPackagingIntelligence(cases = [], learnedRules = {}) {
     const expectedPurchase = Number(item.sale_qty) / Number(profile.strips_per_box);
     const normalizedMatch = nearlyEqual(item.purchase_qty, expectedPurchase);
     const normalizedSaleBoxes = round(expectedPurchase, 4);
-    const evidencePhrase = profile.source === 'confirmed_rule'
-      ? 'قاعدة عبوة سبق اعتمادها'
-      : `${profile.supporting_count || profile.evidence_count} حركة بنفس الكود`;
-    const packagingReason = `${profile.label} حسب ${evidencePhrase}. البيع ${labels.sale} = ${normalizedSaleBoxes} علبة مكافئة، والشراء ${labels.purchase}.`;
-    const autoTrusted = profile.confidence === 'high' || profile.confidence === 'confirmed';
+    let evidencePhrase;
+    if (profile.source === 'confirmed_rule') evidencePhrase = 'قاعدة عبوة سبق اعتمادها';
+    else if (profile.source === 'product_name_explicit') evidencePhrase = 'عدد الشرائط مكتوب صراحة في اسم الصنف';
+    else if (profile.source === 'product_name_and_observed') evidencePhrase = 'اسم الصنف والحركات المتكررة متفقان';
+    else evidencePhrase = `${profile.supporting_count || profile.evidence_count} حركة بنفس الكود`;
+    const packagingReason = `${profile.label} حسب ${evidencePhrase}. البيع ${labels.sale}، والشراء ${labels.purchase}.`;
+    const autoTrusted = ['high', 'confirmed'].includes(profile.confidence);
 
     if (autoTrusted) {
       if (normalizedMatch) {
