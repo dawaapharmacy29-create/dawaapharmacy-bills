@@ -1,4 +1,4 @@
-import { buildOneSecondDecision } from './branchTransferOneSecondDecision';
+import { buildOneSecondDecision } from './branchTransferOneSecondDecision.js';
 
 function weight(incident) {
   const decision = buildOneSecondDecision(incident);
