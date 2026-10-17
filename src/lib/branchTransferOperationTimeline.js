@@ -1,4 +1,4 @@
-import { humanTransferUnit } from './branchTransferPackagingIntelligence.js';
+import { buildQuantityPresentation } from './branchTransferQuantityPresentation.js';
 
 function cleanText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -61,21 +61,6 @@ function rounded(value) {
   return Number(Number(value || 0).toFixed(6));
 }
 
-function purchaseLinesAreUnitlessBconnect(lines = []) {
-  if (!lines.length) return false;
-  const hasExplicitUnit = lines.some((line) => cleanText(line?.unit));
-  if (hasExplicitUnit) return false;
-  return lines.every((line) => cleanText(line?.raw?.source_format || line?.source_format) === 'bconnect_purchase_report');
-}
-
-function invoiceQuantityLabel(qty, units = [], side = 'sale', invoiceLines = []) {
-  if (Number(qty) === 0) return 'لا توجد حركة';
-  if (units.length === 1) return `${qty} ${humanTransferUnit(units[0])}`;
-  if (units.length > 1) return `${qty} وحدات مختلطة (${units.map(humanTransferUnit).join(' + ')})`;
-  if (side === 'purchase' && purchaseLinesAreUnitlessBconnect(invoiceLines)) return `${qty} وحدة · العبوة غير محددة`;
-  return `${qty} وحدة`;
-}
-
 export function formatArabicOperationDate(timestamp) {
   const ms = validTimestamp(timestamp);
   if (ms == null) return null;
@@ -107,7 +92,8 @@ export function buildInvoiceEvidence(lines = [], side = 'sale') {
     const sourceFiles = unique(invoiceLines.flatMap((line) => [line?.source_file, line?.invoice_header_source]));
     const units = unique(invoiceLines.map((line) => line?.unit));
     const qty = rounded(invoiceLines.reduce((sum, line) => sum + number(line?.qty), 0));
-    const qtyLabel = invoiceQuantityLabel(qty, units, side, invoiceLines);
+    const qtyDisplay = buildQuantityPresentation(invoiceLines, side, { fallbackQty: qty });
+    const qtyLabel = qtyDisplay.label;
     const actor = actors.length === 1 ? actors[0] : actors.length > 1 ? `أكثر من مستخدم: ${actors.join('، ')}` : 'غير متاح في الملف';
     const timestamp = timestamps[0] ?? null;
     const actorConflict = actors.length > 1;
@@ -132,7 +118,9 @@ export function buildInvoiceEvidence(lines = [], side = 'sale') {
       dateLabel,
       qty,
       qtyLabel,
+      qtyDisplay,
       units,
+      mixedUnits: qtyDisplay.kind === 'mixed',
       lineCount: invoiceLines.length,
       sourceFiles,
       summaryLabel: `فاتورة ${invoice} · ${actor} · ${dateLabel} · ${qtyLabel}`,
