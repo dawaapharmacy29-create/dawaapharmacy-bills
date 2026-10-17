@@ -68,6 +68,11 @@ function exactCode(item) {
   return codes.length === 1 ? codes[0] : null;
 }
 
+export function packagingRuleKey(value) {
+  if (typeof value === 'string' || typeof value === 'number') return text(value);
+  return exactCode(value) || '';
+}
+
 function uniqueFamilies(lines = []) {
   return [...new Set(lines.map((line) => transferUnitFamily(line?.unit)).filter(Boolean))];
 }
@@ -86,9 +91,8 @@ function purchaseUsesBconnectBoxEquivalent(item) {
 }
 
 function integerRatio(value) {
-  // We intentionally learn only meaningful pack conversions (2..12 strips/box).
-  // A raw 1:1 number is ambiguous when the purchase export has no unit and must
-  // never teach the system that one strip equals one box.
+  // A raw 1:1 number is ambiguous when the purchase export has no unit. Never
+  // teach the system that one strip equals one box from that pattern alone.
   if (!Number.isFinite(value) || value < 2 || value > 12) return null;
   const nearest = Math.round(value);
   const tolerance = Math.max(0.08, nearest * 0.045);
@@ -135,6 +139,7 @@ export function buildPackagingProfiles(cases = []) {
         code,
         status: 'conflicted',
         confidence: 'low',
+        source: 'observed',
         strips_per_box: null,
         evidence_count: entries.length,
         evidence: entries,
@@ -147,6 +152,7 @@ export function buildPackagingProfiles(cases = []) {
       code,
       status: 'usable',
       confidence,
+      source: 'observed',
       strips_per_box: stripsPerBox,
       evidence_count: entries.length,
       supporting_count: support,
@@ -156,6 +162,39 @@ export function buildPackagingProfiles(cases = []) {
     };
   });
   return profiles;
+}
+
+function normalizeLearnedRule(rule, code) {
+  const stripsPerBox = Number(rule?.strips_per_box);
+  if (!rule?.active || !Number.isInteger(stripsPerBox) || stripsPerBox < 2 || stripsPerBox > 12) return null;
+  return {
+    ...rule,
+    code,
+    status: 'usable',
+    confidence: 'confirmed',
+    source: 'confirmed_rule',
+    strips_per_box: stripsPerBox,
+    supporting_count: Number(rule.approvals || 1),
+    evidence_count: Number(rule.evidence_count || rule.approvals || 1),
+    label: `1 علبة = ${stripsPerBox} شرائط`,
+  };
+}
+
+function mergedProfiles(cases, learnedRules = {}) {
+  const observed = buildPackagingProfiles(cases);
+  const merged = { ...observed };
+  Object.entries(learnedRules || {}).forEach(([code, rawRule]) => {
+    const learned = normalizeLearnedRule(rawRule, code);
+    if (!learned) return;
+    // An explicit human-confirmed rule wins over noisy current-period ratios,
+    // but the current evidence remains attached for audit.
+    merged[code] = {
+      ...(observed[code] || {}),
+      ...learned,
+      observed_profile: observed[code] || null,
+    };
+  });
+  return merged;
 }
 
 function quantityUnitLabel(qty, unit) {
@@ -179,8 +218,51 @@ export function caseQuantityLabels(item = {}) {
   return { sale: saleLabel, purchase: purchaseLabel };
 }
 
-export function applyPackagingIntelligence(cases = []) {
-  const profiles = buildPackagingProfiles(cases);
+export function packagingRuleSuggestion(item) {
+  const profile = item?.packaging_profile;
+  if (!profile || profile.status !== 'usable' || !Number.isInteger(Number(profile.strips_per_box))) return null;
+  const code = exactCode(item);
+  if (!code) return null;
+  return {
+    code,
+    strips_per_box: Number(profile.strips_per_box),
+    label: `1 علبة = ${Number(profile.strips_per_box)} شرائط`,
+    evidence_count: Number(profile.evidence_count || 1),
+  };
+}
+
+export function learnPackagingRule(item, existingRules = {}, metadata = {}) {
+  const suggestion = packagingRuleSuggestion(item);
+  if (!suggestion) return existingRules;
+  const key = packagingRuleKey(suggestion.code);
+  const previous = existingRules[key];
+  const now = new Date().toISOString();
+  return {
+    ...existingRules,
+    [key]: {
+      code: suggestion.code,
+      strips_per_box: suggestion.strips_per_box,
+      active: true,
+      approvals: Number(previous?.approvals || 0) + 1,
+      evidence_count: Math.max(Number(previous?.evidence_count || 0), suggestion.evidence_count),
+      created_at: previous?.created_at || now,
+      updated_at: now,
+      approved_from_case: item?.id || null,
+      approved_by: metadata.approved_by || null,
+    },
+  };
+}
+
+export function removePackagingRule(rules = {}, code) {
+  const key = packagingRuleKey(code);
+  if (!key || !rules[key]) return rules;
+  const next = { ...rules };
+  delete next[key];
+  return next;
+}
+
+export function applyPackagingIntelligence(cases = [], learnedRules = {}) {
+  const profiles = mergedProfiles(cases, learnedRules);
   return cases.map((item) => {
     const code = exactCode(item);
     const profile = code ? profiles[code] : null;
@@ -200,9 +282,13 @@ export function applyPackagingIntelligence(cases = []) {
     const expectedPurchase = Number(item.sale_qty) / Number(profile.strips_per_box);
     const normalizedMatch = nearlyEqual(item.purchase_qty, expectedPurchase);
     const normalizedSaleBoxes = round(expectedPurchase, 4);
-    const packagingReason = `${profile.label} حسب ${profile.supporting_count || profile.evidence_count} حركة بنفس الكود. البيع ${labels.sale} = ${normalizedSaleBoxes} علبة مكافئة، والشراء ${labels.purchase}.`;
+    const evidencePhrase = profile.source === 'confirmed_rule'
+      ? 'قاعدة عبوة سبق اعتمادها'
+      : `${profile.supporting_count || profile.evidence_count} حركة بنفس الكود`;
+    const packagingReason = `${profile.label} حسب ${evidencePhrase}. البيع ${labels.sale} = ${normalizedSaleBoxes} علبة مكافئة، والشراء ${labels.purchase}.`;
+    const autoTrusted = profile.confidence === 'high' || profile.confidence === 'confirmed';
 
-    if (profile.confidence === 'high') {
+    if (autoTrusted) {
       if (normalizedMatch) {
         return {
           ...base,
@@ -210,10 +296,11 @@ export function applyPackagingIntelligence(cases = []) {
           type: 'matched',
           severity: 0,
           matched_by_packaging_profile: true,
+          packaging_rule_source: profile.source,
           packaging_normalized_sale_boxes: normalizedSaleBoxes,
           expected_purchase_qty: round(expectedPurchase, 4),
           packaging_reason: packagingReason,
-          next_action: 'مطابق بعد توحيد الشريط والعلبة على ملف العبوة المتعلم من الحركات السابقة.',
+          next_action: 'مطابق بعد توحيد الشريط والعلبة على ملف العبوة الموثوق.',
         };
       }
       return {
@@ -222,6 +309,7 @@ export function applyPackagingIntelligence(cases = []) {
         type: 'quantity_mismatch',
         severity: Math.max(Number(item.severity || 0), 70),
         packaging_normalized_mismatch: true,
+        packaging_rule_source: profile.source,
         packaging_normalized_sale_boxes: normalizedSaleBoxes,
         expected_purchase_qty: round(expectedPurchase, 4),
         packaging_reason: packagingReason,
