@@ -18,7 +18,7 @@ function transferCase({ profile = null, saleQty = 3, purchaseQty = 1, purchaseUn
   };
 }
 
-test('unitless B-Connect purchase stays explicitly unknown when packaging evidence is only probable', () => {
+test('unitless B-Connect purchase stays explicitly unknown with a compact display when packaging evidence is only probable', () => {
   const item = transferCase({
     profile: {
       status: 'usable', confidence: 'medium', source: 'observed', strips_per_box: 3,
@@ -35,11 +35,11 @@ test('unitless B-Connect purchase stays explicitly unknown when packaging eviden
   assert.equal(result.purchase_quantity.canonical_unit, null);
   assert.equal(result.purchase_quantity.conversion_confidence, 'unknown');
   assert.equal(result.canonical_quantity_comparable, false);
-  assert.match(result.purchase_qty_label, /وحدة شراء — نوع العبوة غير مؤكد/);
-  assert.doesNotMatch(result.purchase_qty_label, /^1 علبة/);
+  assert.equal(result.purchase_qty_label, '1 وحدة · العبوة غير محددة');
+  assert.doesNotMatch(result.purchase_qty_label, /علبة/);
 });
 
-test('trusted packaging profile can normalize strip sale and unitless B-Connect purchase to boxes', () => {
+test('trusted packaging profile can normalize strip sale and unitless B-Connect purchase to compact box labels', () => {
   const item = transferCase({
     profile: {
       status: 'usable', confidence: 'high', source: 'product_name_and_observed', strips_per_box: 3,
@@ -55,8 +55,8 @@ test('trusted packaging profile can normalize strip sale and unitless B-Connect 
   assert.equal(result.canonical_quantity_comparable, true);
   assert.equal(result.canonical_sale_qty, 1);
   assert.equal(result.canonical_purchase_qty, 1);
-  assert.match(result.sale_qty_label, /^3 شريط · =1 علبة حسب ملف العبوة/);
-  assert.match(result.purchase_qty_label, /^1 علبة مكافئة حسب ملف العبوة الموثوق/);
+  assert.equal(result.sale_qty_label, '3 شريط = 1 علبة');
+  assert.equal(result.purchase_qty_label, '1 علبة');
 });
 
 test('explicit purchase box unit is canonical even without an inferred packaging profile', () => {
@@ -82,5 +82,11 @@ test('packaging conflicts never turn a unitless purchase into a box fact', () =>
   assert.equal(result.packaging_conflict, true);
   assert.equal(result.purchase_quantity.canonical_unit, null);
   assert.equal(result.canonical_quantity_comparable, false);
-  assert.match(result.purchase_qty_label, /نوع العبوة غير مؤكد/);
+  assert.equal(result.purchase_qty_label, '1 وحدة · العبوة غير محددة');
+});
+
+test('zero side is shown as no movement instead of a noisy zero-unit phrase', () => {
+  const [result] = applyCanonicalQuantity([transferCase({ saleQty: 0, purchaseQty: 1 })]);
+  assert.equal(result.sale_qty_label, 'لا توجد حركة');
+  assert.equal(result.purchase_qty_label, '1 وحدة · العبوة غير محددة');
 });
