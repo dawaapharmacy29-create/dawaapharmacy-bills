@@ -31,6 +31,15 @@ function invoicePrefix(invoices = []) {
   return '';
 }
 
+function lineActor(line, side) {
+  if (side === 'sale') return cleanText(line?.sale_actor || line?.invoice_header_user || line?.user);
+  return cleanText(line?.user);
+}
+
+function lineTimestamp(line) {
+  return validTimestamp(line?.timestamp_ms);
+}
+
 export function formatArabicOperationDate(timestamp) {
   const ms = validTimestamp(timestamp);
   if (ms == null) return null;
@@ -45,6 +54,34 @@ export function formatArabicOperationDate(timestamp) {
   return `${dayDate} · ${formatClock(date)}`;
 }
 
+export function buildInvoiceEvidence(lines = [], side = 'sale') {
+  const byInvoice = new Map();
+  lines.forEach((line) => {
+    const invoice = cleanText(line?.invoice) || 'بدون رقم';
+    const current = byInvoice.get(invoice) || [];
+    current.push(line);
+    byInvoice.set(invoice, current);
+  });
+
+  return [...byInvoice.entries()].map(([invoice, invoiceLines]) => {
+    const actors = unique(invoiceLines.map((line) => lineActor(line, side)));
+    const timestamps = [...new Set(invoiceLines.map(lineTimestamp).filter((value) => value != null))].sort((a, b) => a - b);
+    const actor = actors.length === 1 ? actors[0] : actors.length > 1 ? `أكثر من مستخدم: ${actors.join('، ')}` : 'غير متاح في الملف';
+    const timestamp = timestamps[0] ?? null;
+    return {
+      invoice,
+      actor,
+      actors,
+      timestamp,
+      dateLabel: timestamp != null ? formatArabicOperationDate(timestamp) : 'التاريخ غير متاح في الملف',
+      sourceFiles: unique(invoiceLines.map((line) => line?.source_file)),
+      actorSource: side === 'sale'
+        ? (invoiceLines.some((line) => cleanText(line?.invoice_header_user || line?.sale_actor)) ? 'sales_invoice_header' : 'sale_line')
+        : 'purchase_invoice_header',
+    };
+  }).sort((a, b) => (a.timestamp ?? Number.MAX_SAFE_INTEGER) - (b.timestamp ?? Number.MAX_SAFE_INTEGER));
+}
+
 export function buildSideOperationMetadata(incident, side) {
   const lines = collectSideLines(incident, side);
   if (!lines.length) {
@@ -56,13 +93,15 @@ export function buildSideOperationMetadata(incident, side) {
       timeLabel: 'غير متاح في الملف',
       invoices: [],
       invoiceLabel: 'غير متاح في الملف',
+      invoiceEvidence: [],
     };
   }
 
-  const users = unique(lines.map((line) => line?.user));
-  const timestamps = [...new Set(lines.map((line) => validTimestamp(line?.timestamp_ms)).filter((value) => value != null))].sort((a, b) => a - b);
+  const users = unique(lines.map((line) => lineActor(line, side)));
+  const timestamps = [...new Set(lines.map(lineTimestamp).filter((value) => value != null))].sort((a, b) => a - b);
   const invoices = unique(lines.map((line) => line?.invoice));
   const prefix = invoicePrefix(invoices);
+  const invoiceEvidence = buildInvoiceEvidence(lines, side);
 
   let userLabel = 'غير متاح في الملف';
   if (users.length === 1) userLabel = users[0];
@@ -96,6 +135,7 @@ export function buildSideOperationMetadata(incident, side) {
     timeLabel,
     invoices,
     invoiceLabel: invoices.length === 1 ? `فاتورة ${invoices[0]}` : invoices.length > 1 ? `فواتير ${invoices.join('، ')}` : 'غير متاح في الملف',
+    invoiceEvidence,
   };
 }
 
