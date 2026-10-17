@@ -36,6 +36,9 @@ test('unitless B-Connect purchase stays explicitly unknown with a compact displa
   assert.equal(result.purchase_quantity.conversion_confidence, 'unknown');
   assert.equal(result.canonical_quantity_comparable, false);
   assert.equal(result.purchase_qty_label, '1 وحدة · العبوة غير محددة');
+  assert.equal(result.purchase_qty_display.primary, '1 وحدة');
+  assert.equal(result.purchase_qty_display.secondary, 'العبوة غير محددة');
+  assert.equal(result.remaining_qty_display.precise, false);
   assert.doesNotMatch(result.purchase_qty_label, /علبة/);
 });
 
@@ -57,6 +60,8 @@ test('trusted packaging profile can normalize strip sale and unitless B-Connect 
   assert.equal(result.canonical_purchase_qty, 1);
   assert.equal(result.sale_qty_label, '3 شريط = 1 علبة');
   assert.equal(result.purchase_qty_label, '1 علبة');
+  assert.equal(result.remaining_qty_display.primary, '0 علبة');
+  assert.equal(result.remaining_qty_display.precise, true);
 });
 
 test('explicit purchase box unit is canonical even without an inferred packaging profile', () => {
@@ -89,4 +94,30 @@ test('zero side is shown as no movement instead of a noisy zero-unit phrase', ()
   const [result] = applyCanonicalQuantity([transferCase({ saleQty: 0, purchaseQty: 1 })]);
   assert.equal(result.sale_qty_label, 'لا توجد حركة');
   assert.equal(result.purchase_qty_label, '1 وحدة · العبوة غير محددة');
+});
+
+test('mixed units are never collapsed into one misleading numeric total', () => {
+  const item = {
+    id: 'mixed-case',
+    type: 'quantity_mismatch',
+    sale_qty: 11,
+    purchase_qty: 0,
+    sale_lines: [
+      { qty: 10, unit: 'وحدة', source_format: 'flat_transfer_rows' },
+      { qty: 1, unit: 'علبة', source_format: 'flat_transfer_rows' },
+    ],
+    purchase_lines: [],
+    packaging_profile: null,
+  };
+
+  const [result] = applyCanonicalQuantity([item]);
+  assert.equal(result.mixed_units_detected, true);
+  assert.equal(result.sale_qty_display.kind, 'mixed');
+  assert.equal(result.sale_qty_display.primary, '10 وحدة + 1 علبة');
+  assert.equal(result.sale_qty_label, '10 وحدة + 1 علبة');
+  assert.equal(result.quantity_comparison_safe, false);
+  assert.equal(result.canonical_quantity_comparable, false);
+  assert.equal(result.remaining_qty_display.primary, 'غير قابل للحساب بدقة');
+  assert.equal(result.remaining_qty_display.precise, false);
+  assert.doesNotMatch(result.sale_qty_label, /^11\b/);
 });
