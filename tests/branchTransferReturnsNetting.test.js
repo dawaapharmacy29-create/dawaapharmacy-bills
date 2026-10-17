@@ -87,6 +87,35 @@ test('realistic MIDODRINE journey becomes matched after purchase 3 minus return 
   assert.equal(cases[0].purchase_lines[0].raw.return_qty, 1);
 });
 
+test('confirmed packaging compares three strips with purchase net one box after gross two minus return one', () => {
+  const saleRows = [
+    ['فاتورة','نوع','كود','عميل','عددأصناف','صافى الفاتورة','خصم نسبة','خصم قيمة','مصاريف','م','ك.صنف','صنف','صلاحية','كمية','وحدة','مرتجع','سعر بيع','خصم صنف','خصم صنف%','تاريخ'],
+    [48001,'آجل',170,'فرع ابو العزم',1,100,0,0,0,1,55750,'SOLUPRED 5 MG 30 TAB','01/2028',3,'شريط',0,50,0,0,'2026-10-01 15:46'],
+  ];
+  const sales = parseTransferRows(saleRows, { branch: 'دواء فرع الشامي' }).items;
+  const purchases = parseTransferRows([
+    purchaseHeader({ invoice: 48002, date: '2026-10-01 15:56' }),
+    purchaseDetail({ qty: 2, returned: 1, code: 55750, name: 'SOLUPRED 5 MG 30 TAB' }),
+    purchaseTotal(),
+  ], { branch: 'دواء فرع ابو العزم' }).items;
+
+  const packagingRules = {
+    '55750': { code: '55750', strips_per_box: 3, active: true, approvals: 1 },
+  };
+  const cases = reconcileBranchTransfers(sales, purchases, { packagingRules });
+
+  assert.equal(cases.length, 1);
+  assert.equal(cases[0].type, 'matched');
+  assert.equal(cases[0].sale_qty, 3);
+  assert.equal(cases[0].purchase_qty, 1);
+  assert.equal(cases[0].canonical_quantity_comparable, true);
+  assert.equal(cases[0].canonical_sale_qty, 1);
+  assert.equal(cases[0].canonical_purchase_qty, 1);
+  assert.equal(cases[0].purchase_lines[0].raw.gross_qty, 2);
+  assert.equal(cases[0].purchase_lines[0].raw.return_qty, 1);
+  assert.equal(cases[0].purchase_lines[0].raw.net_qty, 1);
+});
+
 test('fully returned purchase line remains auditable but contributes zero movement', () => {
   const parsed = parseTransferRows([
     purchaseHeader({ invoice: 17635 }),
