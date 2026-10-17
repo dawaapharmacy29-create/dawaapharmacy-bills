@@ -36,8 +36,27 @@ function lineActor(line, side) {
   return cleanText(line?.user);
 }
 
+function lineActorSource(line, side) {
+  if (side === 'sale') return cleanText(line?.sale_actor_source || (line?.invoice_header_user ? 'sales_invoice_header' : line?.user ? 'sale_line' : ''));
+  return cleanText(line?.user ? 'purchase_invoice_header' : '');
+}
+
+function lineActorConfidence(line, side) {
+  if (side === 'sale') return cleanText(line?.sale_actor_confidence || (line?.invoice_header_user ? 'invoice_header' : line?.user ? 'line_only' : 'none'));
+  return line?.user ? 'invoice_header' : 'none';
+}
+
 function lineTimestamp(line) {
   return validTimestamp(line?.timestamp_ms);
+}
+
+function number(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function rounded(value) {
+  return Number(Number(value || 0).toFixed(6));
 }
 
 export function formatArabicOperationDate(timestamp) {
@@ -65,19 +84,39 @@ export function buildInvoiceEvidence(lines = [], side = 'sale') {
 
   return [...byInvoice.entries()].map(([invoice, invoiceLines]) => {
     const actors = unique(invoiceLines.map((line) => lineActor(line, side)));
+    const actorSources = unique(invoiceLines.map((line) => lineActorSource(line, side)));
+    const actorConfidences = unique(invoiceLines.map((line) => lineActorConfidence(line, side)));
     const timestamps = [...new Set(invoiceLines.map(lineTimestamp).filter((value) => value != null))].sort((a, b) => a - b);
+    const sourceFiles = unique(invoiceLines.flatMap((line) => [line?.source_file, line?.invoice_header_source]));
+    const units = unique(invoiceLines.map((line) => line?.unit));
+    const qty = rounded(invoiceLines.reduce((sum, line) => sum + number(line?.qty), 0));
     const actor = actors.length === 1 ? actors[0] : actors.length > 1 ? `أكثر من مستخدم: ${actors.join('، ')}` : 'غير متاح في الملف';
     const timestamp = timestamps[0] ?? null;
+    const actorConflict = actors.length > 1;
+    const timeConflict = timestamps.length > 1 && (timestamps[timestamps.length - 1] - timestamps[0]) > 2 * 60 * 1000;
+    const actorSource = actorSources.length === 1 ? actorSources[0] : actorSources.length > 1 ? 'mixed' : '';
+    const actorConfidence = actorConfidences.includes('verified_invoice_time')
+      ? 'verified_invoice_time'
+      : actorConfidences.includes('invoice_header') ? 'invoice_header'
+        : actorConfidences.includes('line_only') ? 'line_only' : 'none';
+    const dateLabel = timestamp != null ? formatArabicOperationDate(timestamp) : 'التاريخ غير متاح في الملف';
+
     return {
       invoice,
       actor,
       actors,
+      actorConflict,
+      actorSource,
+      actorConfidence,
       timestamp,
-      dateLabel: timestamp != null ? formatArabicOperationDate(timestamp) : 'التاريخ غير متاح في الملف',
-      sourceFiles: unique(invoiceLines.map((line) => line?.source_file)),
-      actorSource: side === 'sale'
-        ? (invoiceLines.some((line) => cleanText(line?.invoice_header_user || line?.sale_actor)) ? 'sales_invoice_header' : 'sale_line')
-        : 'purchase_invoice_header',
+      timestamps,
+      timeConflict,
+      dateLabel,
+      qty,
+      units,
+      lineCount: invoiceLines.length,
+      sourceFiles,
+      summaryLabel: `فاتورة ${invoice} · ${actor} · ${dateLabel}`,
     };
   }).sort((a, b) => (a.timestamp ?? Number.MAX_SAFE_INTEGER) - (b.timestamp ?? Number.MAX_SAFE_INTEGER));
 }
@@ -94,6 +133,7 @@ export function buildSideOperationMetadata(incident, side) {
       invoices: [],
       invoiceLabel: 'غير متاح في الملف',
       invoiceEvidence: [],
+      primaryEvidence: null,
     };
   }
 
@@ -136,6 +176,7 @@ export function buildSideOperationMetadata(incident, side) {
     invoices,
     invoiceLabel: invoices.length === 1 ? `فاتورة ${invoices[0]}` : invoices.length > 1 ? `فواتير ${invoices.join('، ')}` : 'غير متاح في الملف',
     invoiceEvidence,
+    primaryEvidence: invoiceEvidence.length === 1 ? invoiceEvidence[0] : null,
   };
 }
 
