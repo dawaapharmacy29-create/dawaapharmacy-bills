@@ -58,3 +58,18 @@ test('calculates readable gap only when both sides have timestamps', () => {
   assert.equal(Math.round(value.gapMinutes), 7);
   assert.equal(value.gapLabel, '7 دقيقة بين الطرفين');
 });
+
+test('unitless B-Connect purchase evidence never claims a box before packaging is trusted', () => {
+  const value = buildSideOperationMetadata(incident([
+    {
+      purchase_lines: [{
+        user: 'د عمر', invoice: '19893', qty: 1, unit: '', timestamp_ms: new Date(2026, 9, 12, 20, 21).getTime(),
+        raw: { source_format: 'bconnect_purchase_report' },
+      }],
+    },
+  ]), 'purchase');
+
+  assert.equal(value.invoiceEvidence.length, 1);
+  assert.equal(value.invoiceEvidence[0].qtyLabel, '1 وحدة · العبوة غير محددة');
+  assert.doesNotMatch(value.invoiceEvidence[0].qtyLabel, /علبة/);
+});

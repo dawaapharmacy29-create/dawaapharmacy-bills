@@ -61,15 +61,18 @@ function rounded(value) {
   return Number(Number(value || 0).toFixed(6));
 }
 
-function purchaseLinesAreBconnectBoxEquivalent(lines = []) {
+function purchaseLinesAreUnitlessBconnect(lines = []) {
   if (!lines.length) return false;
+  const hasExplicitUnit = lines.some((line) => cleanText(line?.unit));
+  if (hasExplicitUnit) return false;
   return lines.every((line) => cleanText(line?.raw?.source_format || line?.source_format) === 'bconnect_purchase_report');
 }
 
 function invoiceQuantityLabel(qty, units = [], side = 'sale', invoiceLines = []) {
+  if (Number(qty) === 0) return 'لا توجد حركة';
   if (units.length === 1) return `${qty} ${humanTransferUnit(units[0])}`;
   if (units.length > 1) return `${qty} وحدات مختلطة (${units.map(humanTransferUnit).join(' + ')})`;
-  if (side === 'purchase' && purchaseLinesAreBconnectBoxEquivalent(invoiceLines)) return `${qty} علبة مكافئة`;
+  if (side === 'purchase' && purchaseLinesAreUnitlessBconnect(invoiceLines)) return `${qty} وحدة · العبوة غير محددة`;
   return `${qty} وحدة`;
 }
 

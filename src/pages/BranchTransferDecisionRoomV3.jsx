@@ -108,7 +108,7 @@ function decisionFor(incident, item) {
   if (item?.packaging_normalized_mismatch) {
     const boxDiff = Number(Math.abs(Number(item.packaging_normalized_sale_boxes || 0) - purchase).toFixed(3));
     return {
-      headline: `راجع فرق ${boxDiff} علبة مكافئة`,
+      headline: `راجع فرق ${boxDiff} علبة`,
       reason: item.packaging_reason || 'تم توحيد الشريط والعلبة أولًا ثم حساب الفرق الحقيقي.',
       tone: 'amber',
     };
@@ -137,8 +137,64 @@ function toneClass(tone) {
   return 'border-slate-200 bg-slate-50 text-slate-950';
 }
 
-function Qty({ label, value, hint }) {
-  return <div className="rounded-xl bg-slate-50 p-3 text-center"><div className="text-[10px] font-black text-slate-400">{label}</div><div className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">{value}</div>{hint && <div className="mt-1 text-[10px] font-bold text-slate-400">{hint}</div>}</div>;
+function quantityParts(value) {
+  const normalized = clean(value);
+  if (!normalized) return { primary: '—', detail: '', empty: true };
+  if (normalized === 'لا توجد حركة') return { primary: normalized, detail: '', empty: true };
+  const [primary, ...detail] = normalized.split(' · ');
+  return { primary, detail: detail.join(' · '), empty: false };
+}
+
+function quantityTone(tone) {
+  if (tone === 'sale') return 'border-sky-200 bg-sky-50/70';
+  if (tone === 'purchase') return 'border-emerald-200 bg-emerald-50/70';
+  if (tone === 'remaining') return 'border-amber-200 bg-amber-50/70';
+  return 'border-slate-200 bg-slate-50';
+}
+
+function Qty({ label, value, hint, tone = 'neutral' }) {
+  const parts = quantityParts(value);
+  return <div className={`min-h-[112px] rounded-2xl border p-3.5 ${quantityTone(tone)}`}>
+    <div className="flex items-center justify-between gap-2">
+      <div className="text-[10px] font-black tracking-wide text-slate-400">{label}</div>
+      {hint && <span className="rounded-full bg-white/90 px-2 py-1 text-[9px] font-black text-slate-500 shadow-sm">{hint}</span>}
+    </div>
+    <div className={`mt-3 font-black leading-tight ${parts.empty ? 'text-sm text-slate-400' : 'text-xl text-slate-950 sm:text-2xl'}`}>{parts.primary}</div>
+    {parts.detail && <div className="mt-2 inline-flex rounded-lg bg-white/80 px-2 py-1 text-[10px] font-black text-slate-500">{parts.detail}</div>}
+  </div>;
+}
+
+function packagingConfidenceLabel(profile) {
+  if (profile?.confidence === 'confirmed') return 'مؤكدة';
+  if (profile?.confidence === 'high') return 'عالية';
+  if (profile?.confidence === 'medium') return 'محتملة';
+  return 'مبدئية';
+}
+
+function packagingSourceLabel(profile) {
+  if (profile?.source === 'confirmed_rule') return 'قاعدة معتمدة';
+  if (profile?.source === 'product_name_and_observed') return 'الاسم + الحركات السابقة';
+  if (profile?.source === 'product_name_explicit') return 'اسم العبوة';
+  if (profile?.source === 'observed') return 'الحركات السابقة';
+  return 'تحليل العبوة';
+}
+
+function PackagingInsight({ item }) {
+  const profile = item?.packaging_profile;
+  if (!profile?.strips_per_box) return null;
+  const confirmed = profile.source === 'confirmed_rule';
+  return <div className={`rounded-2xl border p-4 ${confirmed ? 'border-emerald-200 bg-emerald-50/70' : 'border-sky-200 bg-sky-50/70'}`}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-2 font-black text-slate-950"><Sparkles className="h-4 w-4 text-teal-600" /> فهم العبوة</div>
+      <div className="flex flex-wrap gap-1.5">
+        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-700 shadow-sm">{profile.label}</span>
+        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-600 shadow-sm">الثقة: {packagingConfidenceLabel(profile)}</span>
+        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-600 shadow-sm">المصدر: {packagingSourceLabel(profile)}</span>
+      </div>
+    </div>
+    <div className="mt-2 text-xs font-bold leading-6 text-slate-600">{item.packaging_reason || 'تم ربط الكمية بوحدة العبوة قبل مقارنة البيع بالشراء.'}</div>
+    {confirmed && <div className="mt-2 text-[10px] font-black text-emerald-700">✓ قاعدة محفوظة ومعتمدة لهذا الكود وتُستخدم تلقائيًا في الملفات الجديدة.</div>}
+  </div>;
 }
 
 function InvoiceEvidenceCard({ title, branch, side, metadata }) {
@@ -147,18 +203,23 @@ function InvoiceEvidenceCard({ title, branch, side, metadata }) {
   const actorLabel = side === 'sale' ? 'باع/سجل الفاتورة' : 'اشترى/سجل الفاتورة';
   const border = side === 'sale' ? 'border-sky-200 bg-sky-50/60' : 'border-emerald-200 bg-emerald-50/60';
   const badge = side === 'sale' ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800';
+  const quantity = quantityParts(first?.qtyLabel || first?.qty);
 
-  return <div className={`rounded-2xl border p-3.5 ${border}`}>
+  return <div className={`rounded-2xl border p-4 ${border}`}>
     <div className="flex items-center justify-between gap-2">
       <div className="font-black text-slate-950">{title} — {branch}</div>
       <span className={`rounded-full px-2 py-1 text-[9px] font-black ${badge}`}>{invoices.length ? `${invoices.length} فاتورة` : 'لا توجد فاتورة'}</span>
     </div>
-    {!metadata?.available || !first ? <div className="mt-3 text-xs font-bold text-slate-500">الحركة غير موجودة في الملفات الحالية.</div> : <>
+    {!metadata?.available || !first ? <div className="mt-3 rounded-xl bg-white/70 p-3 text-xs font-bold text-slate-500">لا توجد حركة مسجلة في الملفات الحالية.</div> : <>
+      <div className="mt-3 rounded-xl bg-white/80 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><div className="text-[9px] font-black text-slate-400">الكمية داخل الرحلة</div><div className="mt-1 text-lg font-black text-slate-950">{quantity.primary}</div>{quantity.detail && <div className="mt-1 text-[10px] font-black text-slate-500">{quantity.detail}</div>}</div>
+          <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-[10px] font-black text-slate-600">فاتورة {first.invoice}</span>
+        </div>
+      </div>
       <div className="mt-3 grid gap-1.5 text-xs font-bold text-slate-700">
-        <div><span className="text-slate-400">رقم الفاتورة:</span> <b className="text-slate-950">{first.invoice}</b></div>
         <div><span className="text-slate-400">{actorLabel}:</span> <b className="text-slate-950">{first.actor}</b></div>
         <div><span className="text-slate-400">التاريخ:</span> <b className="text-slate-950">{first.dateLabel}</b></div>
-        <div><span className="text-slate-400">الكمية داخل الرحلة:</span> <b className="text-slate-950">{first.qtyLabel || first.qty}</b></div>
       </div>
       {first.actorConflict && <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[10px] font-black text-amber-900">فيه أكثر من مستخدم على نفس الفاتورة؛ راجع الدليل قبل الاعتماد.</div>}
       {first.timeConflict && <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[10px] font-black text-amber-900">توقيتات نفس الفاتورة غير متطابقة؛ لم يتم تبسيطها كتوقيت واحد موثوق.</div>}
@@ -218,7 +279,7 @@ export default function BranchTransferDecisionRoomV3() {
   const purchaseQty = Number(selected?.purchase_qty || 0);
   const rawRemaining = selected?.residual_progress_status === 'partial' ? selected.residual_remaining_qty : Number(Math.abs(saleQty - purchaseQty).toFixed(3));
   const remaining = selected?.packaging_normalized_mismatch
-    ? `${Number(Math.abs(Number(selected.packaging_normalized_sale_boxes || 0) - purchaseQty).toFixed(3))} علبة مكافئة`
+    ? `${Number(Math.abs(Number(selected.packaging_normalized_sale_boxes || 0) - purchaseQty).toFixed(3))} علبة`
     : rawRemaining;
   const packagingSuggestion = selected?.packaging_profile_candidate ? packagingRuleSuggestion(selected) : null;
   const unitSuggestion = selected?.type === 'unit_conversion_review' && !packagingSuggestion ? suggestUnitRule(selected) : null;
@@ -320,15 +381,15 @@ export default function BranchTransferDecisionRoomV3() {
     <Card className="p-3 shadow-sm"><div className="grid gap-2 md:grid-cols-[150px_160px_190px_minmax(240px,1fr)]"><select value={queue} onChange={(e) => { setQueue(e.target.value); setDay('all'); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black">{queueFilters.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={issue} onChange={(e) => { setIssue(e.target.value); setDay('all'); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black">{issueFilters.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={day} onChange={(e) => setDay(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black"><option value="all">الفترة كلها</option>{dayOptions.map((entry) => <option key={entry.key} value={entry.key}>{entry.label} · {entry.count}</option>)}</select><div className="relative"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="اسم الصنف أو الكود أو الفاتورة" className="w-full rounded-xl border border-slate-200 py-2 pr-9 pl-3 text-xs font-bold outline-none focus:border-teal-400" /></div></div></Card>
 
     <div className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <Card className="max-h-[72vh] overflow-y-auto p-2 shadow-sm"><div className="px-2 py-2 text-xs font-black text-slate-500">{visible.length} قرار في الفلتر الحالي</div><div className="space-y-1.5">{visible.map((incident) => { const item = incident.cases?.[0]; const itemCode = unique([...(item?.sale_codes || []), ...(item?.purchase_codes || [])])[0] || '—'; const selectedRow = selectedIncident?.id === incident.id; const short = decisionFor(incident, item); return <button key={incident.id} onClick={() => setSelectedId(item?.id || '')} className={`w-full rounded-2xl border p-3 text-right ${selectedRow ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}><div className="flex items-start justify-between gap-2"><span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">{incidentTitle(incident)}</span><span className="text-[9px] font-black text-slate-400">{formatIncidentDayLabel(incidentDayKey(incident))}</span></div><div className="mt-2 truncate text-sm font-black text-slate-950">{item?.product_name || 'صنف'}</div><div className="mt-1 text-[11px] font-black text-slate-500">كود {itemCode} · {queueLabel(incident)}</div>{(item?.sale_qty_label || item?.purchase_qty_label) && <div className="mt-1 text-[10px] font-bold text-slate-500">{item?.sale_qty_label || 'لا بيع'} ↔ {item?.purchase_qty_label || 'لا شراء'}</div>}<div className="mt-2 text-xs font-black text-teal-800">{short.headline}</div></button>; })}{!visible.length && <div className="rounded-2xl bg-emerald-50 p-8 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-emerald-600" /><div className="mt-2 text-sm font-black text-emerald-900">مفيش قرار مطلوب هنا</div><div className="mt-1 text-xs font-bold text-emerald-700">الحالات المتوازنة أو المقفولة لا تظهر في قائمة المشاكل.</div></div>}</div></Card>
+      <Card className="max-h-[72vh] overflow-y-auto p-2 shadow-sm"><div className="px-2 py-2 text-xs font-black text-slate-500">{visible.length} قرار في الفلتر الحالي</div><div className="space-y-1.5">{visible.map((incident) => { const item = incident.cases?.[0]; const itemCode = unique([...(item?.sale_codes || []), ...(item?.purchase_codes || [])])[0] || '—'; const selectedRow = selectedIncident?.id === incident.id; const short = decisionFor(incident, item); return <button key={incident.id} onClick={() => setSelectedId(item?.id || '')} className={`w-full rounded-2xl border p-3 text-right ${selectedRow ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}><div className="flex items-start justify-between gap-2"><span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">{incidentTitle(incident)}</span><span className="text-[9px] font-black text-slate-400">{formatIncidentDayLabel(incidentDayKey(incident))}</span></div><div className="mt-2 truncate text-sm font-black text-slate-950">{item?.product_name || 'صنف'}</div><div className="mt-1 text-[11px] font-black text-slate-500">كود {itemCode} · {queueLabel(incident)}</div>{(item?.sale_qty_label || item?.purchase_qty_label) && <div className="mt-2 flex flex-wrap items-center gap-1 text-[10px] font-bold text-slate-500"><span className="rounded-md bg-sky-50 px-1.5 py-1">{quantityParts(item?.sale_qty_label || 'لا توجد حركة').primary}</span><span className="text-slate-300">↔</span><span className="rounded-md bg-emerald-50 px-1.5 py-1">{quantityParts(item?.purchase_qty_label || 'لا توجد حركة').primary}</span></div>}<div className="mt-2 text-xs font-black text-teal-800">{short.headline}</div></button>; })}{!visible.length && <div className="rounded-2xl bg-emerald-50 p-8 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-emerald-600" /><div className="mt-2 text-sm font-black text-emerald-900">مفيش قرار مطلوب هنا</div><div className="mt-1 text-xs font-bold text-emerald-700">الحالات المتوازنة أو المقفولة لا تظهر في قائمة المشاكل.</div></div>}</div></Card>
 
       <Card className="p-4 shadow-sm sm:p-5">{!selectedIncident || !selected ? <div className="flex min-h-[430px] items-center justify-center text-sm font-bold text-slate-400">اختر قرارًا من القائمة.</div> : <div className="space-y-4"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4"><div><div className="text-[10px] font-black text-slate-400">{incidentTitle(selectedIncident)} · {queueLabel(selectedIncident)}</div><h2 className="mt-1 text-xl font-black text-slate-950">{selected.product_name || selectedIncident.product_names?.[0]}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><button onClick={copyCode} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-black"><Copy className="h-3.5 w-3.5 text-teal-600" /> كود {code || 'غير متاح'}</button>{selectedIncident.invoice && <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-black">فاتورة {selectedIncident.invoice}</span>}</div></div><div className="text-[10px] font-black text-slate-400">{formatIncidentDayLabel(incidentDayKey(selectedIncident))}</div></div>
 
         <div className={`rounded-2xl border p-5 ${toneClass(decision.tone)}`}><div className="text-[10px] font-black opacity-60">القرار المطلوب الآن</div><div className="mt-1 text-2xl font-black sm:text-3xl">{decision.headline}</div><div className="mt-2 text-xs font-bold leading-6 opacity-75">{decision.reason}</div></div>
 
-        <div className="grid grid-cols-3 gap-2"><Qty label="بيع" value={selected.sale_qty_label || saleQty} hint={branchName(selectedIncident.from)} /><Qty label="شراء" value={selected.purchase_qty_label || purchaseQty} hint={branchName(selectedIncident.to)} /><Qty label="المتبقي" value={remaining} hint={selected?.packaging_normalized_mismatch ? 'بعد توحيد الشريط والعلبة' : selected?.residual_progress_status === 'partial' ? 'بعد الاستكمالات' : 'بعد التحليل'} /></div>
+        <div className="grid gap-2 sm:grid-cols-3"><Qty label="بيع" value={selected.sale_qty_label || saleQty} hint={branchName(selectedIncident.from)} tone="sale" /><Qty label="شراء" value={selected.purchase_qty_label || purchaseQty} hint={branchName(selectedIncident.to)} tone="purchase" /><Qty label="المتبقي" value={remaining} hint={selected?.packaging_normalized_mismatch ? 'بعد توحيد العبوة' : selected?.residual_progress_status === 'partial' ? 'بعد الاستكمالات' : 'بعد التحليل'} tone="remaining" /></div>
 
-        {selected?.packaging_profile?.strips_per_box && <div className={`rounded-xl border p-3 text-xs font-bold leading-6 ${selected.packaging_profile.source === 'confirmed_rule' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-sky-200 bg-sky-50 text-sky-900'}`}><div className="font-black">فهم العبوة: {selected.packaging_profile.label}</div><div className="mt-1">{selected.packaging_reason || `العقل ربط الكمية الفعلية بالوحدة بدل مقارنة الأرقام المجردة.`}</div>{selected.packaging_profile.source === 'confirmed_rule' && <div className="mt-1 text-[10px] font-black opacity-70">قاعدة محفوظة سبق اعتمادها لهذا الكود وتُستخدم في الملفات الجديدة تلقائيًا.</div>}</div>}
+        <PackagingInsight item={selected} />
 
         <div className="grid gap-2 lg:grid-cols-2"><InvoiceEvidenceCard title="البيع" branch={branchName(selectedIncident.from)} side="sale" metadata={timeline?.sale} /><InvoiceEvidenceCard title="الشراء" branch={branchName(selectedIncident.to)} side="purchase" metadata={timeline?.purchase} /></div>
 
