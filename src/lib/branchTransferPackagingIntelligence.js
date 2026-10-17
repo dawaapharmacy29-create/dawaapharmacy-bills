@@ -86,7 +86,10 @@ function purchaseUsesBconnectBoxEquivalent(item) {
 }
 
 function integerRatio(value) {
-  if (!Number.isFinite(value) || value < 1 || value > 12) return null;
+  // We intentionally learn only meaningful pack conversions (2..12 strips/box).
+  // A raw 1:1 number is ambiguous when the purchase export has no unit and must
+  // never teach the system that one strip equals one box.
+  if (!Number.isFinite(value) || value < 2 || value > 12) return null;
   const nearest = Math.round(value);
   const tolerance = Math.max(0.08, nearest * 0.045);
   return Math.abs(value - nearest) <= tolerance ? nearest : null;
