@@ -1,3 +1,5 @@
+import { humanTransferUnit } from './branchTransferPackagingIntelligence.js';
+
 function cleanText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
@@ -59,6 +61,18 @@ function rounded(value) {
   return Number(Number(value || 0).toFixed(6));
 }
 
+function purchaseLinesAreBconnectBoxEquivalent(lines = []) {
+  if (!lines.length) return false;
+  return lines.every((line) => cleanText(line?.raw?.source_format || line?.source_format) === 'bconnect_purchase_report');
+}
+
+function invoiceQuantityLabel(qty, units = [], side = 'sale', invoiceLines = []) {
+  if (units.length === 1) return `${qty} ${humanTransferUnit(units[0])}`;
+  if (units.length > 1) return `${qty} وحدات مختلطة (${units.map(humanTransferUnit).join(' + ')})`;
+  if (side === 'purchase' && purchaseLinesAreBconnectBoxEquivalent(invoiceLines)) return `${qty} علبة مكافئة`;
+  return `${qty} وحدة`;
+}
+
 export function formatArabicOperationDate(timestamp) {
   const ms = validTimestamp(timestamp);
   if (ms == null) return null;
@@ -90,6 +104,7 @@ export function buildInvoiceEvidence(lines = [], side = 'sale') {
     const sourceFiles = unique(invoiceLines.flatMap((line) => [line?.source_file, line?.invoice_header_source]));
     const units = unique(invoiceLines.map((line) => line?.unit));
     const qty = rounded(invoiceLines.reduce((sum, line) => sum + number(line?.qty), 0));
+    const qtyLabel = invoiceQuantityLabel(qty, units, side, invoiceLines);
     const actor = actors.length === 1 ? actors[0] : actors.length > 1 ? `أكثر من مستخدم: ${actors.join('، ')}` : 'غير متاح في الملف';
     const timestamp = timestamps[0] ?? null;
     const actorConflict = actors.length > 1;
@@ -113,10 +128,11 @@ export function buildInvoiceEvidence(lines = [], side = 'sale') {
       timeConflict,
       dateLabel,
       qty,
+      qtyLabel,
       units,
       lineCount: invoiceLines.length,
       sourceFiles,
-      summaryLabel: `فاتورة ${invoice} · ${actor} · ${dateLabel}`,
+      summaryLabel: `فاتورة ${invoice} · ${actor} · ${dateLabel} · ${qtyLabel}`,
     };
   }).sort((a, b) => (a.timestamp ?? Number.MAX_SAFE_INTEGER) - (b.timestamp ?? Number.MAX_SAFE_INTEGER));
 }

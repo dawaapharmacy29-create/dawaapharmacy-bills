@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { inspectTransferFile, buildSourcesFromInspections } from '@/lib/branchTransferAutoImport';
 import { reconcileBranchTransfers, explainTransferCase, transferBranchLabel } from '@/lib/branchTransferControl';
 import { applyLearnedUnitRules, learnUnitRule, suggestUnitRule, humanUnitRuleLabel } from '@/lib/branchTransferUnitRules';
+import { learnPackagingRule, packagingRuleSuggestion } from '@/lib/branchTransferPackagingIntelligence';
 import { buildTransferIncidents } from '@/lib/branchTransferIncidentIntelligence';
 import { completeResidualBalancedJourneys } from '@/lib/branchTransferResidualJourneyCompletion';
 import { settleAggregateProductJourneys, summarizeAggregateSettlement } from '@/lib/branchTransferAggregateJourneySettlement';
@@ -37,9 +38,14 @@ function nowIso() { return new Date().toISOString(); }
 function loadLedger() {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-    return { decisions: value.decisions || {}, events: Array.isArray(value.events) ? value.events : [], unitRules: value.unitRules || {} };
+    return {
+      decisions: value.decisions || {},
+      events: Array.isArray(value.events) ? value.events : [],
+      unitRules: value.unitRules || {},
+      packagingRules: value.packagingRules || {},
+    };
   } catch {
-    return { decisions: {}, events: [], unitRules: {} };
+    return { decisions: {}, events: [], unitRules: {}, packagingRules: {} };
   }
 }
 
@@ -94,6 +100,19 @@ function decisionFor(incident, item) {
   const sale = Number(item?.sale_qty || 0);
   const purchase = Number(item?.purchase_qty || 0);
   const diff = Number(Math.abs(sale - purchase).toFixed(3));
+  if (item?.packaging_profile_candidate && item?.packaging_profile?.label) return {
+    headline: `أكد ${item.packaging_profile.label}`,
+    reason: item.packaging_reason || 'العقل شايف إن الفرق سببه طريقة تسجيل الشريط مقابل العلبة، لكنه محتاج تأكيد واحد قبل حفظ قاعدة دائمة.',
+    tone: 'sky',
+  };
+  if (item?.packaging_normalized_mismatch) {
+    const boxDiff = Number(Math.abs(Number(item.packaging_normalized_sale_boxes || 0) - purchase).toFixed(3));
+    return {
+      headline: `راجع فرق ${boxDiff} علبة مكافئة`,
+      reason: item.packaging_reason || 'تم توحيد الشريط والعلبة أولًا ثم حساب الفرق الحقيقي.',
+      tone: 'amber',
+    };
+  }
   if (item?.residual_progress_status === 'partial') return {
     headline: `راجع فقط المتبقي ${item.residual_remaining_qty}`,
     reason: `العقل احتسب ${item.residual_progress_qty} تم تسجيلها لاحقًا من أصل فرق ${item.residual_needed_qty}.`,
@@ -119,7 +138,7 @@ function toneClass(tone) {
 }
 
 function Qty({ label, value, hint }) {
-  return <div className="rounded-xl bg-slate-50 p-3 text-center"><div className="text-[10px] font-black text-slate-400">{label}</div><div className="mt-1 text-2xl font-black text-slate-950">{value}</div>{hint && <div className="mt-1 text-[10px] font-bold text-slate-400">{hint}</div>}</div>;
+  return <div className="rounded-xl bg-slate-50 p-3 text-center"><div className="text-[10px] font-black text-slate-400">{label}</div><div className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">{value}</div>{hint && <div className="mt-1 text-[10px] font-bold text-slate-400">{hint}</div>}</div>;
 }
 
 function InvoiceEvidenceCard({ title, branch, side, metadata }) {
@@ -139,7 +158,7 @@ function InvoiceEvidenceCard({ title, branch, side, metadata }) {
         <div><span className="text-slate-400">رقم الفاتورة:</span> <b className="text-slate-950">{first.invoice}</b></div>
         <div><span className="text-slate-400">{actorLabel}:</span> <b className="text-slate-950">{first.actor}</b></div>
         <div><span className="text-slate-400">التاريخ:</span> <b className="text-slate-950">{first.dateLabel}</b></div>
-        <div><span className="text-slate-400">الكمية داخل الرحلة:</span> <b className="text-slate-950">{first.qty}</b></div>
+        <div><span className="text-slate-400">الكمية داخل الرحلة:</span> <b className="text-slate-950">{first.qtyLabel || first.qty}</b></div>
       </div>
       {first.actorConflict && <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[10px] font-black text-amber-900">فيه أكثر من مستخدم على نفس الفاتورة؛ راجع الدليل قبل الاعتماد.</div>}
       {first.timeConflict && <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-2 text-[10px] font-black text-amber-900">توقيتات نفس الفاتورة غير متطابقة؛ لم يتم تبسيطها كتوقيت واحد موثوق.</div>}
@@ -169,7 +188,7 @@ export default function BranchTransferDecisionRoomV3() {
   const purchases = useMemo(() => Object.entries(sources).flatMap(([key, source]) => sourceConfig[key]?.side === 'purchase' ? (source.items || []) : []), [sources]);
   const sourcePresence = useMemo(() => Object.fromEntries(Object.keys(sourceConfig).map((key) => [key, Boolean(sources[key]?.items?.length)])), [sources]);
 
-  const rawCases = useMemo(() => reconcileBranchTransfers(sales, purchases), [sales, purchases]);
+  const rawCases = useMemo(() => reconcileBranchTransfers(sales, purchases, { packagingRules: ledger.packagingRules || {} }), [sales, purchases, ledger.packagingRules]);
   const unitAwareCases = useMemo(() => applyLearnedUnitRules(rawCases, ledger.unitRules), [rawCases, ledger.unitRules]);
   const residualCases = useMemo(() => completeResidualBalancedJourneys(unitAwareCases), [unitAwareCases]);
   const settledCases = useMemo(() => settleAggregateProductJourneys(residualCases), [residualCases]);
@@ -197,8 +216,12 @@ export default function BranchTransferDecisionRoomV3() {
   const code = selected ? unique([...(selected.sale_codes || []), ...(selected.purchase_codes || [])])[0] || '' : '';
   const saleQty = Number(selected?.sale_qty || 0);
   const purchaseQty = Number(selected?.purchase_qty || 0);
-  const remaining = selected?.residual_progress_status === 'partial' ? selected.residual_remaining_qty : Number(Math.abs(saleQty - purchaseQty).toFixed(3));
-  const unitSuggestion = selected?.type === 'unit_conversion_review' ? suggestUnitRule(selected) : null;
+  const rawRemaining = selected?.residual_progress_status === 'partial' ? selected.residual_remaining_qty : Number(Math.abs(saleQty - purchaseQty).toFixed(3));
+  const remaining = selected?.packaging_normalized_mismatch
+    ? `${Number(Math.abs(Number(selected.packaging_normalized_sale_boxes || 0) - purchaseQty).toFixed(3))} علبة مكافئة`
+    : rawRemaining;
+  const packagingSuggestion = selected?.packaging_profile_candidate ? packagingRuleSuggestion(selected) : null;
+  const unitSuggestion = selected?.type === 'unit_conversion_review' && !packagingSuggestion ? suggestUnitRule(selected) : null;
   const timeline = useMemo(() => selectedIncident ? buildOperationTimeline(selectedIncident) : null, [selectedIncident]);
   const saleReturn = selected ? summarizeTransferReturnEvidence(selected.sale_lines || [], saleQty) : null;
   const purchaseReturn = selected ? summarizeTransferReturnEvidence(selected.purchase_lines || [], purchaseQty) : null;
@@ -252,6 +275,18 @@ export default function BranchTransferDecisionRoomV3() {
     setSelectedId('');
   };
 
+  const approvePackaging = () => {
+    if (!selected || !packagingSuggestion) return;
+    const at = nowIso();
+    setLedger((old) => ({
+      ...old,
+      packagingRules: learnPackagingRule(selected, old.packagingRules || {}),
+      decisions: { ...old.decisions, [selected.id]: { status: 'verified', action: `اعتماد ملف العبوة: ${packagingSuggestion.label}`, updated_at: at } },
+      events: [{ case_id: selected.id, action: 'packaging_rule_learned', status: 'verified', at, product_name: selected.product_name, packaging: packagingSuggestion.label }, ...old.events].slice(0, 1000),
+    }));
+    setSelectedId('');
+  };
+
   const approveUnit = () => {
     if (!selected || !unitSuggestion) return;
     const at = nowIso();
@@ -278,29 +313,31 @@ export default function BranchTransferDecisionRoomV3() {
 
     <Card className="border-0 bg-slate-950 p-4 text-white shadow-lg sm:p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="flex items-center gap-2 text-[11px] font-black text-teal-300"><Sparkles className="h-4 w-4" /> غرفة القرار</div><h1 className="mt-1 text-xl font-black sm:text-2xl">تحويلات الفروع</h1><div className="mt-1 text-xs font-bold text-slate-400">المحلول يختفي. المعروض هنا فقط ما زال يحتاج قرارًا.</div></div><Button size="sm" variant="secondary" onClick={() => setUploadOpen((v) => !v)} className="font-black"><Files className="ml-1 h-4 w-4" /> الملفات {uploadOpen ? <ChevronUp className="mr-1 h-4 w-4" /> : <ChevronDown className="mr-1 h-4 w-4" />}</Button></div></Card>
 
-    {uploadOpen && <Card className="p-3 shadow-sm"><label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-teal-300 bg-teal-50/60 p-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-white p-2 shadow-sm"><FileSpreadsheet className="h-5 w-5 text-teal-700" /></div><div><div className="font-black text-slate-950">ارفع كل ملفات البيع والشراء للفترة</div><div className="text-[11px] font-bold text-slate-500">العقل يجمع الفواتير والمرتجعات والتسجيلات المتأخرة قبل إنشاء أي قرار.</div></div></div><span className="rounded-full bg-teal-700 px-3 py-1.5 text-xs font-black text-white">{isInspecting ? 'جاري التحليل...' : 'اختيار'}</span><input className="hidden" type="file" multiple accept=".xlsx,.xls,.csv" disabled={isInspecting} onChange={(e) => handleFiles(Array.from(e.target.files || []))} /></label>{message && <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{message}</div>}{autoReport.ambiguous.length > 0 && <div className="mt-2 space-y-2">{autoReport.ambiguous.map((entry) => <div key={entry.fileName} className="rounded-xl border bg-white p-3"><div className="text-xs font-black">{entry.fileName}</div><div className="mt-2 flex flex-wrap gap-1.5">{Object.entries(sourceConfig).map(([key, config]) => <Button key={key} size="sm" variant="outline" onClick={() => assignAmbiguous(entry, key)} className="text-[10px] font-black">{config.label}</Button>)}</div></div>)}</div>}</Card>}
+    {uploadOpen && <Card className="p-3 shadow-sm"><label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-dashed border-teal-300 bg-teal-50/60 p-4"><div className="flex items-center gap-3"><div className="rounded-xl bg-white p-2 shadow-sm"><FileSpreadsheet className="h-5 w-5 text-teal-700" /></div><div><div className="font-black text-slate-950">ارفع كل ملفات البيع والشراء للفترة</div><div className="text-[11px] font-bold text-slate-500">العقل يجمع الفواتير والمرتجعات والتسجيلات المتأخرة ووحدات البيع قبل إنشاء أي قرار.</div></div></div><span className="rounded-full bg-teal-700 px-3 py-1.5 text-xs font-black text-white">{isInspecting ? 'جاري التحليل...' : 'اختيار'}</span><input className="hidden" type="file" multiple accept=".xlsx,.xls,.csv" disabled={isInspecting} onChange={(e) => handleFiles(Array.from(e.target.files || []))} /></label>{message && <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900">{message}</div>}{autoReport.ambiguous.length > 0 && <div className="mt-2 space-y-2">{autoReport.ambiguous.map((entry) => <div key={entry.fileName} className="rounded-xl border bg-white p-3"><div className="text-xs font-black">{entry.fileName}</div><div className="mt-2 flex flex-wrap gap-1.5">{Object.entries(sourceConfig).map(([key, config]) => <Button key={key} size="sm" variant="outline" onClick={() => assignAmbiguous(entry, key)} className="text-[10px] font-black">{config.label}</Button>)}</div></div>)}</div>}</Card>}
 
-    {(sales.length || purchases.length) > 0 && <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 shadow-sm"><b className="text-slate-950">{activeDecisions} قرار فعلي</b><span className="mx-2 text-slate-300">•</span>العقل قفل تلقائيًا <b className="text-emerald-700">{autoSolved}</b> حالة كانت ستظهر كمشكلة<span className="mx-2 text-slate-300">•</span>مراجعات مقفولة سابقًا <b>{gate.summary.already_reviewed}</b>{gate.summary.incomplete_source > 0 && <><span className="mx-2 text-slate-300">•</span><span className="text-amber-700">{gate.summary.incomplete_source} مستبعدة لأن الملف المقابل غير محمل</span></>}</div>}
+    {(sales.length || purchases.length) > 0 && <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-600 shadow-sm"><b className="text-slate-950">{activeDecisions} قرار فعلي</b><span className="mx-2 text-slate-300">•</span>العقل قفل تلقائيًا <b className="text-emerald-700">{autoSolved}</b> حالة كانت ستظهر كمشكلة<span className="mx-2 text-slate-300">•</span>قواعد عبوة محفوظة <b className="text-teal-700">{Object.keys(ledger.packagingRules || {}).length}</b><span className="mx-2 text-slate-300">•</span>مراجعات مقفولة سابقًا <b>{gate.summary.already_reviewed}</b>{gate.summary.incomplete_source > 0 && <><span className="mx-2 text-slate-300">•</span><span className="text-amber-700">{gate.summary.incomplete_source} مستبعدة لأن الملف المقابل غير محمل</span></>}</div>}
 
     <Card className="p-3 shadow-sm"><div className="grid gap-2 md:grid-cols-[150px_160px_190px_minmax(240px,1fr)]"><select value={queue} onChange={(e) => { setQueue(e.target.value); setDay('all'); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black">{queueFilters.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={issue} onChange={(e) => { setIssue(e.target.value); setDay('all'); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black">{issueFilters.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={day} onChange={(e) => setDay(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black"><option value="all">الفترة كلها</option>{dayOptions.map((entry) => <option key={entry.key} value={entry.key}>{entry.label} · {entry.count}</option>)}</select><div className="relative"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="اسم الصنف أو الكود أو الفاتورة" className="w-full rounded-xl border border-slate-200 py-2 pr-9 pl-3 text-xs font-bold outline-none focus:border-teal-400" /></div></div></Card>
 
     <div className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <Card className="max-h-[72vh] overflow-y-auto p-2 shadow-sm"><div className="px-2 py-2 text-xs font-black text-slate-500">{visible.length} قرار في الفلتر الحالي</div><div className="space-y-1.5">{visible.map((incident) => { const item = incident.cases?.[0]; const itemCode = unique([...(item?.sale_codes || []), ...(item?.purchase_codes || [])])[0] || '—'; const selectedRow = selectedIncident?.id === incident.id; const short = decisionFor(incident, item); return <button key={incident.id} onClick={() => setSelectedId(item?.id || '')} className={`w-full rounded-2xl border p-3 text-right ${selectedRow ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}><div className="flex items-start justify-between gap-2"><span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">{incidentTitle(incident)}</span><span className="text-[9px] font-black text-slate-400">{formatIncidentDayLabel(incidentDayKey(incident))}</span></div><div className="mt-2 truncate text-sm font-black text-slate-950">{item?.product_name || 'صنف'}</div><div className="mt-1 text-[11px] font-black text-slate-500">كود {itemCode} · {queueLabel(incident)}</div><div className="mt-2 text-xs font-black text-teal-800">{short.headline}</div></button>; })}{!visible.length && <div className="rounded-2xl bg-emerald-50 p-8 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-emerald-600" /><div className="mt-2 text-sm font-black text-emerald-900">مفيش قرار مطلوب هنا</div><div className="mt-1 text-xs font-bold text-emerald-700">الحالات المتوازنة أو المقفولة لا تظهر في قائمة المشاكل.</div></div>}</div></Card>
+      <Card className="max-h-[72vh] overflow-y-auto p-2 shadow-sm"><div className="px-2 py-2 text-xs font-black text-slate-500">{visible.length} قرار في الفلتر الحالي</div><div className="space-y-1.5">{visible.map((incident) => { const item = incident.cases?.[0]; const itemCode = unique([...(item?.sale_codes || []), ...(item?.purchase_codes || [])])[0] || '—'; const selectedRow = selectedIncident?.id === incident.id; const short = decisionFor(incident, item); return <button key={incident.id} onClick={() => setSelectedId(item?.id || '')} className={`w-full rounded-2xl border p-3 text-right ${selectedRow ? 'border-teal-400 bg-teal-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}><div className="flex items-start justify-between gap-2"><span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-black text-slate-500">{incidentTitle(incident)}</span><span className="text-[9px] font-black text-slate-400">{formatIncidentDayLabel(incidentDayKey(incident))}</span></div><div className="mt-2 truncate text-sm font-black text-slate-950">{item?.product_name || 'صنف'}</div><div className="mt-1 text-[11px] font-black text-slate-500">كود {itemCode} · {queueLabel(incident)}</div>{(item?.sale_qty_label || item?.purchase_qty_label) && <div className="mt-1 text-[10px] font-bold text-slate-500">{item?.sale_qty_label || 'لا بيع'} ↔ {item?.purchase_qty_label || 'لا شراء'}</div>}<div className="mt-2 text-xs font-black text-teal-800">{short.headline}</div></button>; })}{!visible.length && <div className="rounded-2xl bg-emerald-50 p-8 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-emerald-600" /><div className="mt-2 text-sm font-black text-emerald-900">مفيش قرار مطلوب هنا</div><div className="mt-1 text-xs font-bold text-emerald-700">الحالات المتوازنة أو المقفولة لا تظهر في قائمة المشاكل.</div></div>}</div></Card>
 
       <Card className="p-4 shadow-sm sm:p-5">{!selectedIncident || !selected ? <div className="flex min-h-[430px] items-center justify-center text-sm font-bold text-slate-400">اختر قرارًا من القائمة.</div> : <div className="space-y-4"><div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4"><div><div className="text-[10px] font-black text-slate-400">{incidentTitle(selectedIncident)} · {queueLabel(selectedIncident)}</div><h2 className="mt-1 text-xl font-black text-slate-950">{selected.product_name || selectedIncident.product_names?.[0]}</h2><div className="mt-2 flex flex-wrap items-center gap-2"><button onClick={copyCode} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-black"><Copy className="h-3.5 w-3.5 text-teal-600" /> كود {code || 'غير متاح'}</button>{selectedIncident.invoice && <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-black">فاتورة {selectedIncident.invoice}</span>}</div></div><div className="text-[10px] font-black text-slate-400">{formatIncidentDayLabel(incidentDayKey(selectedIncident))}</div></div>
 
         <div className={`rounded-2xl border p-5 ${toneClass(decision.tone)}`}><div className="text-[10px] font-black opacity-60">القرار المطلوب الآن</div><div className="mt-1 text-2xl font-black sm:text-3xl">{decision.headline}</div><div className="mt-2 text-xs font-bold leading-6 opacity-75">{decision.reason}</div></div>
 
-        <div className="grid grid-cols-3 gap-2"><Qty label="بيع" value={saleQty} hint={branchName(selectedIncident.from)} /><Qty label="شراء" value={purchaseQty} hint={branchName(selectedIncident.to)} /><Qty label="المتبقي" value={remaining} hint={selected?.residual_progress_status === 'partial' ? 'بعد الاستكمالات' : 'بعد التحليل'} /></div>
+        <div className="grid grid-cols-3 gap-2"><Qty label="بيع" value={selected.sale_qty_label || saleQty} hint={branchName(selectedIncident.from)} /><Qty label="شراء" value={selected.purchase_qty_label || purchaseQty} hint={branchName(selectedIncident.to)} /><Qty label="المتبقي" value={remaining} hint={selected?.packaging_normalized_mismatch ? 'بعد توحيد الشريط والعلبة' : selected?.residual_progress_status === 'partial' ? 'بعد الاستكمالات' : 'بعد التحليل'} /></div>
+
+        {selected?.packaging_profile?.strips_per_box && <div className={`rounded-xl border p-3 text-xs font-bold leading-6 ${selected.packaging_profile.source === 'confirmed_rule' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-sky-200 bg-sky-50 text-sky-900'}`}><div className="font-black">فهم العبوة: {selected.packaging_profile.label}</div><div className="mt-1">{selected.packaging_reason || `العقل ربط الكمية الفعلية بالوحدة بدل مقارنة الأرقام المجردة.`}</div>{selected.packaging_profile.source === 'confirmed_rule' && <div className="mt-1 text-[10px] font-black opacity-70">قاعدة محفوظة سبق اعتمادها لهذا الكود وتُستخدم في الملفات الجديدة تلقائيًا.</div>}</div>}
 
         <div className="grid gap-2 lg:grid-cols-2"><InvoiceEvidenceCard title="البيع" branch={branchName(selectedIncident.from)} side="sale" metadata={timeline?.sale} /><InvoiceEvidenceCard title="الشراء" branch={branchName(selectedIncident.to)} side="purchase" metadata={timeline?.purchase} /></div>
 
         {selected?.residual_progress_status === 'partial' && <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-bold leading-6 text-sky-900"><div className="flex items-center gap-2 font-black"><History className="h-4 w-4" /> جزء من الفرق اتسجل بعد الحركة الأصلية</div><div className="mt-1">{selected.residual_review_reason}</div></div>}
 
-        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">{unitSuggestion ? <Button onClick={approveUnit} className="bg-teal-700 font-black hover:bg-teal-800">اعتماد تحويل العبوة</Button> : <Button onClick={() => recordDecision('verified', `تم الحل: ${decision.headline}`)} className="bg-teal-700 font-black hover:bg-teal-800"><CheckCircle2 className="ml-1 h-4 w-4" /> تم الحل</Button>}<Button variant="outline" onClick={() => recordDecision('in_progress', decision.headline)} className="font-black">متابعة</Button><Button variant="ghost" onClick={() => recordDecision('dismissed', 'ليست مشكلة بعد المراجعة')} className="font-black text-slate-500">ليست مشكلة</Button></div>
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">{packagingSuggestion ? <Button onClick={approvePackaging} className="bg-teal-700 font-black hover:bg-teal-800">اعتماد {packagingSuggestion.label}</Button> : unitSuggestion ? <Button onClick={approveUnit} className="bg-teal-700 font-black hover:bg-teal-800">اعتماد تحويل العبوة</Button> : <Button onClick={() => recordDecision('verified', `تم الحل: ${decision.headline}`)} className="bg-teal-700 font-black hover:bg-teal-800"><CheckCircle2 className="ml-1 h-4 w-4" /> تم الحل</Button>}<Button variant="outline" onClick={() => recordDecision('in_progress', decision.headline)} className="font-black">متابعة</Button><Button variant="ghost" onClick={() => recordDecision('dismissed', 'ليست مشكلة بعد المراجعة')} className="font-black text-slate-500">ليست مشكلة</Button></div>
 
         <button onClick={() => setDetailsOpen((v) => !v)} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-600"><span>تفاصيل الدليل</span>{detailsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</button>
-        {detailsOpen && <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة الرحلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.journey_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة المشكلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.issue_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">استكمالات لاحقة</div><div className="mt-1 text-xl font-black">{selected.residual_progress_candidate_count || selected.residual_candidate_count || 0}</div></div></div>{timeline?.sale?.invoiceEvidence?.map((entry) => <div key={`sale-${entry.invoice}`} className="rounded-xl bg-sky-50 p-3 text-xs font-bold text-slate-700"><b className="text-slate-950">بيع فاتورة {entry.invoice}:</b> {entry.actor} · {entry.dateLabel} · كمية {entry.qty}{entry.sourceFiles?.length ? ` · ${entry.sourceFiles.join('، ')}` : ''}</div>)}{timeline?.purchase?.invoiceEvidence?.map((entry) => <div key={`purchase-${entry.invoice}`} className="rounded-xl bg-emerald-50 p-3 text-xs font-bold text-slate-700"><b className="text-slate-950">شراء فاتورة {entry.invoice}:</b> {entry.actor} · {entry.dateLabel} · كمية {entry.qty}{entry.sourceFiles?.length ? ` · ${entry.sourceFiles.join('، ')}` : ''}</div>)}{saleReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(saleReturn, { movement: 'البيع' })}</div>}{purchaseReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(purchaseReturn, { movement: 'الشراء' })}</div>}{selected.residual_review_reason && <div className="text-xs font-bold leading-6 text-slate-600">{selected.residual_review_reason}</div>}{selected.match_reason && <div className="text-xs font-bold leading-6 text-slate-500">{selected.match_reason}</div>}</div>}
+        {detailsOpen && <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4"><div className="grid gap-2 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة الرحلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.journey_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">ثقة المشكلة</div><div className="mt-1 text-xl font-black">{selected.decision_intelligence?.issue_confidence?.score || 0}%</div></div><div className="rounded-xl bg-slate-50 p-3"><div className="text-[9px] font-black text-slate-400">استكمالات لاحقة</div><div className="mt-1 text-xl font-black">{selected.residual_progress_candidate_count || selected.residual_candidate_count || 0}</div></div></div>{timeline?.sale?.invoiceEvidence?.map((entry) => <div key={`sale-${entry.invoice}`} className="rounded-xl bg-sky-50 p-3 text-xs font-bold text-slate-700"><b className="text-slate-950">بيع فاتورة {entry.invoice}:</b> {entry.actor} · {entry.dateLabel} · {entry.qtyLabel || `كمية ${entry.qty}`}{entry.sourceFiles?.length ? ` · ${entry.sourceFiles.join('، ')}` : ''}</div>)}{timeline?.purchase?.invoiceEvidence?.map((entry) => <div key={`purchase-${entry.invoice}`} className="rounded-xl bg-emerald-50 p-3 text-xs font-bold text-slate-700"><b className="text-slate-950">شراء فاتورة {entry.invoice}:</b> {entry.actor} · {entry.dateLabel} · {entry.qtyLabel || `كمية ${entry.qty}`}{entry.sourceFiles?.length ? ` · ${entry.sourceFiles.join('، ')}` : ''}</div>)}{selected.packaging_reason && <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs font-bold text-sky-900">{selected.packaging_reason}</div>}{saleReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(saleReturn, { movement: 'البيع' })}</div>}{purchaseReturn?.has_return && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-900">{formatTransferReturnEvidence(purchaseReturn, { movement: 'الشراء' })}</div>}{selected.residual_review_reason && <div className="text-xs font-bold leading-6 text-slate-600">{selected.residual_review_reason}</div>}{selected.match_reason && <div className="text-xs font-bold leading-6 text-slate-500">{selected.match_reason}</div>}</div>}
       </div>}</Card>
     </div>
   </div></div>;
