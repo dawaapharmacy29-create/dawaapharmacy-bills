@@ -67,6 +67,40 @@ test('repeated patterns are counted and exposed in the summary', () => {
   assert.equal(result.summary.repeated, 2);
 });
 
+test('consistent prior decisions are surfaced without replacing current evidence', () => {
+  const ledger = {
+    events: [
+      { product_code: '500', status: 'verified', action: 'تم الحل: شراء غير موجود' },
+      { product_code: '500', status: 'verified', action: 'تم الحل: شراء غير موجود' },
+      { product_code: '500', status: 'verified', action: 'تم الحل: شراء غير موجود' },
+    ],
+  };
+  const result = buildDecisionTriage([incident({ id: 'a', code: '500' })], ledger);
+  const triage = result.incidents[0].triage;
+  assert.equal(triage.previous_decision_count, 3);
+  assert.equal(triage.previous_consensus_count, 3);
+  assert.equal(triage.previous_consensus_ratio, 100);
+  assert.equal(triage.previous_consistent, true);
+  assert.equal(result.summary.historically_consistent, 1);
+  assert.match(triage.recommendation.reason, /3 من 3 مرة سابقًا/);
+});
+
+test('conflicting prior decisions do not create false historical confidence', () => {
+  const ledger = {
+    events: [
+      { product_code: '600', status: 'verified', action: 'تم الحل: الحالة صحيحة' },
+      { product_code: '600', status: 'dismissed', action: 'ليست مشكلة بعد المراجعة' },
+      { product_code: '600', status: 'in_progress', action: 'متابعة' },
+    ],
+  };
+  const result = buildDecisionTriage([incident({ id: 'a', code: '600' })], ledger);
+  const triage = result.incidents[0].triage;
+  assert.equal(triage.previous_decision_count, 3);
+  assert.equal(triage.previous_consistent, false);
+  assert.equal(result.summary.historically_consistent, 0);
+  assert.doesNotMatch(triage.recommendation.reason, /نفس نوع القرار تكرر/);
+});
+
 test('triage matcher and comparator prioritize actionable decisions', () => {
   const result = buildDecisionTriage([
     incident({ id: 'slow', issue: 62, journey: 60, kind: 'quantity_mismatch', type: 'quantity_mismatch' }),
