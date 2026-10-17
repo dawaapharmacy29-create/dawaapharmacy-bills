@@ -1,4 +1,5 @@
 import { humanTransferUnit, transferUnitFamily } from './branchTransferPackagingIntelligence.js';
+import { buildQuantityPresentation, buildRemainingPresentation } from './branchTransferQuantityPresentation.js';
 
 function text(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -152,30 +153,31 @@ function canonicalPurchase(item, profile) {
   };
 }
 
-function safeSaleLabel(item, sale, profile) {
-  const qty = round(item.sale_qty || 0, 4);
-  if (qty === 0) return 'لا توجد حركة';
+function salePresentation(item, profile) {
+  const base = buildQuantityPresentation(item.sale_lines || [], 'sale', { fallbackQty: item.sale_qty });
+  if (base.kind === 'none' || base.kind === 'mixed') return base;
   const family = singleFamily(item.sale_lines);
   const packSize = Number(profile?.strips_per_box);
-  const base = `${qty} ${sale.raw_unit_label}`;
   if (family === 'strip' && candidateProfile(profile)) {
     const canonical = round(Number(item.sale_qty || 0) / packSize, 2);
-    const qualifier = trustedProfile(profile) ? '=' : '≈';
-    return `${base} ${qualifier} ${canonical} علبة`;
+    const trusted = trustedProfile(profile);
+    const secondary = `${trusted ? '=' : '≈'} ${canonical} علبة${trusted ? '' : ' · تقدير يحتاج تأكيد'}`;
+    return { ...base, secondary, label: `${base.primary} ${secondary}`, packagingInterpretation: trusted ? 'trusted' : 'candidate' };
   }
   return base;
 }
 
-function safePurchaseLabel(item, purchase, profile) {
-  const qty = round(item.purchase_qty || 0, 4);
-  if (qty === 0) return 'لا توجد حركة';
-  const family = singleFamily(item.purchase_lines);
-  if (family) return `${qty} ${purchase.raw_unit_label}`;
-  if (isUnitlessBconnectPurchase(item)) {
-    if (trustedProfile(profile)) return `${qty} علبة`;
-    return `${qty} وحدة · العبوة غير محددة`;
+function purchasePresentation(item, profile) {
+  const base = buildQuantityPresentation(item.purchase_lines || [], 'purchase', {
+    fallbackQty: item.purchase_qty,
+    unitlessBconnect: isUnitlessBconnectPurchase(item),
+  });
+  if (base.kind === 'none' || base.kind === 'mixed') return base;
+  if (isUnitlessBconnectPurchase(item) && trustedProfile(profile)) {
+    const primary = `${round(item.purchase_qty || 0, 4)} علبة`;
+    return { ...base, kind: 'single', primary, secondary: '', label: primary, unitFamily: 'box', safeToSubtract: true, packagingInterpretation: 'trusted' };
   }
-  return `${qty} ${purchase.raw_unit_label}`;
+  return base;
 }
 
 function recordingBehavior(item = {}) {
@@ -199,18 +201,36 @@ export function applyCanonicalQuantity(cases = []) {
     const profile = item.packaging_profile || null;
     const sale = canonicalSale(item, profile);
     const purchase = canonicalPurchase(item, profile);
-    const canonicalComparable = sale.canonical_unit === 'box' && purchase.canonical_unit === 'box';
+    const saleDisplay = salePresentation(item, profile);
+    const purchaseDisplay = purchasePresentation(item, profile);
+    const mixedUnits = saleDisplay.kind === 'mixed' || purchaseDisplay.kind === 'mixed';
+    const canonicalComparable = !mixedUnits && sale.canonical_unit === 'box' && purchase.canonical_unit === 'box';
+    const canonicalSaleQty = canonicalComparable ? sale.canonical_qty : null;
+    const canonicalPurchaseQty = canonicalComparable ? purchase.canonical_qty : null;
+    const remainingDisplay = buildRemainingPresentation({
+      sale: saleDisplay,
+      purchase: purchaseDisplay,
+      canonicalComparable,
+      canonicalSaleQty,
+      canonicalPurchaseQty,
+    });
+
     return {
       ...item,
       sale_quantity: sale,
       purchase_quantity: purchase,
+      sale_qty_display: saleDisplay,
+      purchase_qty_display: purchaseDisplay,
+      remaining_qty_display: remainingDisplay,
+      mixed_units_detected: mixedUnits,
+      quantity_comparison_safe: remainingDisplay.precise,
       canonical_quantity_comparable: canonicalComparable,
-      canonical_sale_qty: canonicalComparable ? sale.canonical_qty : null,
-      canonical_purchase_qty: canonicalComparable ? purchase.canonical_qty : null,
+      canonical_sale_qty: canonicalSaleQty,
+      canonical_purchase_qty: canonicalPurchaseQty,
       packaging_conflict: profile?.status === 'conflicted' || Boolean(item.packaging_rule_drift),
       branch_recording_behavior: recordingBehavior(item),
-      sale_qty_label: safeSaleLabel(item, sale, profile),
-      purchase_qty_label: safePurchaseLabel(item, purchase, profile),
+      sale_qty_label: saleDisplay.label,
+      purchase_qty_label: purchaseDisplay.label,
     };
   });
 }
