@@ -154,25 +154,26 @@ function canonicalPurchase(item, profile) {
 
 function safeSaleLabel(item, sale, profile) {
   const qty = round(item.sale_qty || 0, 4);
+  if (qty === 0) return 'لا توجد حركة';
   const family = singleFamily(item.sale_lines);
   const packSize = Number(profile?.strips_per_box);
   const base = `${qty} ${sale.raw_unit_label}`;
   if (family === 'strip' && candidateProfile(profile)) {
     const canonical = round(Number(item.sale_qty || 0) / packSize, 2);
     const qualifier = trustedProfile(profile) ? '=' : '≈';
-    return `${base} · ${qualifier}${canonical} علبة حسب ملف العبوة`;
+    return `${base} ${qualifier} ${canonical} علبة`;
   }
   return base;
 }
 
 function safePurchaseLabel(item, purchase, profile) {
   const qty = round(item.purchase_qty || 0, 4);
+  if (qty === 0) return 'لا توجد حركة';
   const family = singleFamily(item.purchase_lines);
   if (family) return `${qty} ${purchase.raw_unit_label}`;
   if (isUnitlessBconnectPurchase(item)) {
-    if (trustedProfile(profile)) return `${qty} علبة مكافئة حسب ملف العبوة الموثوق`;
-    if (candidateProfile(profile)) return `${qty} وحدة شراء — نوع العبوة غير مؤكد · قد تمثل علبة حسب العلاقة المقترحة`;
-    return `${qty} وحدة شراء — نوع العبوة غير مؤكد`;
+    if (trustedProfile(profile)) return `${qty} علبة`;
+    return `${qty} وحدة · العبوة غير محددة`;
   }
   return `${qty} ${purchase.raw_unit_label}`;
 }
