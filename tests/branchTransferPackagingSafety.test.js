@@ -18,12 +18,13 @@ function itemWithProfile(overrides = {}) {
         source: 'observed',
         strips_per_box: 3,
         supporting_count: 2,
+        label: '1 علبة = 3 شرائط',
       },
     },
   };
 }
 
-test('strong repeated current evidence reopens a stale confirmed packaging rule', () => {
+test('strong repeated current evidence reopens a stale confirmed packaging rule for explicit reapproval', () => {
   const item = itemWithProfile();
   const drift = packagingRuleDrift(item);
   assert.equal(drift.learned_strips_per_box, 2);
@@ -32,9 +33,13 @@ test('strong repeated current evidence reopens a stale confirmed packaging rule'
   const [result] = enforcePackagingProfileConsistency([item]);
   assert.equal(result.type, 'unit_conversion_review');
   assert.equal(result.packaging_rule_drift, true);
+  assert.equal(result.packaging_profile_candidate, true);
   assert.equal(result.matched_by_packaging_profile, false);
-  assert.equal(result.packaging_profile.status, 'conflicted');
-  assert.match(result.next_action, /قاعدة العبوة المحفوظة/);
+  assert.equal(result.packaging_normalized_mismatch, false);
+  assert.equal(result.packaging_profile.status, 'usable');
+  assert.equal(result.packaging_profile.strips_per_box, 3);
+  assert.equal(result.packaging_profile.label, '1 علبة = 3 شرائط');
+  assert.match(result.next_action, /اعتمد العلاقة الجديدة/);
 });
 
 test('one weak contradictory observation does not erase a confirmed packaging rule', () => {
