@@ -67,6 +67,15 @@ function implicitUnitConversionEvidence(item) {
   };
 }
 
+function packagingOwnsDecision(item) {
+  if (!item) return false;
+  if (item.matched_by_packaging_profile) return true;
+  if (item.packaging_normalized_mismatch) return true;
+  if (item.packaging_profile_candidate) return true;
+  if (item.packaging_profile?.status === 'conflicted') return true;
+  return item.packaging_profile?.status === 'usable' && Boolean(item.packaging_profile?.strips_per_box);
+}
+
 export function unitRuleKey(item) {
   const product = normalize(item?.product_name);
   const from = text(item?.from || 'unknown');
@@ -126,6 +135,10 @@ export function caseMatchesUnitRule(item, rule) {
 export function applyLearnedUnitRules(cases = [], rules = {}) {
   return cases.map((item) => {
     if (!item.sale_qty || !item.purchase_qty) return item;
+    // Packaging intelligence is more specific than the legacy generic unit rule.
+    // Once we know (or are actively reviewing) strips-per-box for an exact code,
+    // never let an older direction/name rule turn that case green by accident.
+    if (packagingOwnsDecision(item)) return item;
     const rule = rules[unitRuleKey(item)];
     if (caseMatchesUnitRule(item, rule)) {
       return {
