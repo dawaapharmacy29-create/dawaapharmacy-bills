@@ -30,7 +30,8 @@ test('completes an exact-code residual quantity gap from a later split purchase 
   assert.equal(item.sale_qty, 3);
   assert.equal(item.purchase_qty, 3);
   assert.equal(item.residual_journey_completed, true);
-  assert.equal(item.residual_completion_policy, 'exact-code + exact-cumulative-residual + same-direction + later-same-or-next-day + unique-settlement');
+  assert.equal(item.residual_quantity_basis, 'canonical_box');
+  assert.equal(item.residual_completion_policy, 'exact-code + trusted-canonical-box + exact-cumulative-residual + same-direction + later-same-or-next-day + unique-settlement');
   assert.equal(item.residual_settlement_count, 1);
   assert.equal(item.residual_settlement_next_day, false);
   assert.deepEqual(new Set(item.purchase_invoices), new Set(['P1', 'P2']));
