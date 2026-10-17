@@ -15,6 +15,7 @@ import {
 } from './branchTransferDecisionIntelligence.js';
 import { prepareTransferRawEvidence } from './branchTransferRawEvidencePreparation.js';
 import { completeResidualBalancedJourneys } from './branchTransferResidualJourneyCompletion.js';
+import { applyPackagingIntelligence } from './branchTransferPackagingIntelligence.js';
 
 const INTERNAL_WAREHOUSES = [
   {
@@ -135,6 +136,7 @@ export function reconcileBranchTransfers(rawSales = [], rawPurchases = []) {
   const sales = prepared.sales.map(canonicalizeInternalWarehouses);
   const purchases = prepared.purchases.map(canonicalizeInternalWarehouses);
   const smartCases = reconcileSmartTransfers(sales, purchases).map(stabilizeReviewCase);
-  const completedJourneys = completeResidualBalancedJourneys(smartCases);
+  const packagingAwareCases = applyPackagingIntelligence(smartCases);
+  const completedJourneys = completeResidualBalancedJourneys(packagingAwareCases);
   return completedJourneys.map(enrichTransferDecisionIntelligence);
 }
