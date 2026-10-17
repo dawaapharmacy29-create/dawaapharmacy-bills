@@ -23,7 +23,7 @@ test('end-to-end: strip sale and fractional B-Connect box purchase are interpret
   assert.equal(cases.length, 1);
   assert.equal(cases[0].type, 'unit_conversion_review');
   assert.match(cases[0].sale_qty_label, /^1 شريط/);
-  assert.match(cases[0].purchase_qty_label, /^0\.34 وحدة شراء — نوع العبوة غير مؤكد/);
+  assert.equal(cases[0].purchase_qty_label, '0.34 وحدة · العبوة غير محددة');
   assert.equal(cases[0].packaging_profile.strips_per_box, 3);
   assert.equal(cases[0].purchase_quantity.canonical_unit, null);
   assert.equal(cases[0].purchase_quantity.conversion_confidence, 'unknown');
