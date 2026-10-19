@@ -396,3 +396,14 @@ test("accepts a symbolic supplier invoice reference separately from B-Connect's 
   assert.equal(result.invoices[0].serial, "11123");
   assert.equal(result.invoices[0].supplier_invoice_number, "+");
 });
+
+test("detailed supplier/location-looking name cannot overwrite the report branch", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11200, supplier: "مخزن د وائل" }),
+    makeDetailedItem(), makeDetailedSubtotal(11200),
+  ]);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices[0].supplier, "مخزن د وائل");
+  assert.equal(result.invoices[0].branch, "دواء الشامي");
+});
