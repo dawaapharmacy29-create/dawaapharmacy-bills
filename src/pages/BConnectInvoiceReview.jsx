@@ -62,7 +62,7 @@ function DecisionFacts({ view, large = false }) {
   if (view.hasNote && facts.length < 3) facts.push({ text: 'ملاحظة مسجلة', className: 'border-slate-200 bg-slate-50 text-slate-600' });
   return <div className={`flex flex-wrap gap-1.5 font-bold ${large ? 'text-xs' : 'text-[10px]'}`}>
     {facts.map((fact) => <span key={fact.text} className={`rounded-full border px-2.5 py-1 ${fact.className}`}>{fact.text}</span>)}
-    {!facts.length && <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-slate-400">لا فرق مؤثر</span>}
+    {!facts.length && <span className={`rounded-full border px-2.5 py-1 ${view.lane === "investigate" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{view.lane === "investigate" ? "التحقيق بسبب أدلة الربط، وليس فرقًا ماليًا مؤكدًا" : view.lane === "clean" ? "لا اختلافات مؤثرة" : "راجع سبب القرار بالأعلى"}</span>}
   </div>;
 }
 
