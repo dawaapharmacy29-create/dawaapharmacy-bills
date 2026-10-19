@@ -87,13 +87,14 @@ function CompareValue({ label, source, current, moneyValue = false, normalize, d
   const normalizedCurrent = currentKnown ? (normalize ? normalize(current) : current) : null;
   const comparable = comparison ? comparison !== 'unknown' : sourceKnown && currentKnown && normalizedSource !== null && normalizedCurrent !== null;
   const same = comparison ? comparison === 'match' : comparable && String(normalizedSource) === String(normalizedCurrent);
+  const acceptable = comparison === 'acceptable';
   const format = (value, known) => {
     if (!known) return 'غير متاح';
     if (display) return display(value);
     if (moneyValue) return money(value) === '—' ? 'غير متاح' : `${money(value)} ج`;
     return value || 'غير متاح';
   };
-  return <div className={`grid gap-2 rounded-xl border px-3 py-2.5 md:grid-cols-[110px_1fr_1fr] ${!comparable ? 'border-slate-200 bg-slate-50' : same ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
+  return <div className={`grid gap-2 rounded-xl border px-3 py-2.5 md:grid-cols-[110px_1fr_1fr] ${!comparable ? 'border-slate-200 bg-slate-50' : acceptable ? 'border-teal-200 bg-teal-50/40' : same ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
     <div className="text-xs font-black text-slate-700">{label}</div>
     <div><div className="text-[10px] text-slate-400">B-Connect</div><div className="mt-0.5 break-words text-sm font-bold">{format(source, sourceKnown)}</div></div>
     <div><div className="text-[10px] text-slate-400">التطبيق</div><div className="mt-0.5 break-words text-sm font-bold">{format(current, currentKnown)}</div></div>
@@ -227,7 +228,9 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
     setDraft((old) => ({
       ...old,
       invoice_date: source.date ? dateOnly(source.date) : old.invoice_date,
-      total_value: source.invoice_value !== null && source.invoice_value !== undefined ? fieldText(source.invoice_value) : old.total_value,
+      // Do not overwrite an accepted ±5 EGP discrepancy when preparing another correction.
+      total_value: decisionView.toleranceAccepted ? old.total_value :
+        (source.invoice_value !== null && source.invoice_value !== undefined ? fieldText(source.invoice_value) : old.total_value),
       returned_value: source.return_value !== null && source.return_value !== undefined ? fieldText(source.return_value) : old.returned_value,
     }));
     setSaveState({ saving: false, error: '', success: 'تم تجهيز قيم B-Connect. لو مناسبة اضغط حفظ.' });
@@ -323,7 +326,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
               <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
               <div className="mt-1 text-sm font-bold text-slate-700">{decisionView.instruction}</div>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold">
-                {financialMismatch && <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700">فرق {money(Math.abs(decisionView.financialDifference))} ج</span>}
+                {financialMismatch && <span className={`rounded-full px-2 py-1 ${decisionView.toleranceAccepted ? 'bg-teal-100 text-teal-800' : 'bg-rose-100 text-rose-700'}`}>{decisionView.toleranceAccepted ? 'فرق مقبول' : 'فرق'} {money(Math.abs(decisionView.financialDifference))} ج{decisionView.toleranceAccepted ? ' · سماحية ±5 ج' : ''}</span>}
                 {decisionView.supplierMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">مورد</span>}
                 {decisionView.dateMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">تاريخ {decisionView.dateDifferenceDays == null ? '' : `${Math.abs(decisionView.dateDifferenceDays)} يوم`}</span>}
                 {decisionView.evidence?.label && <span className="rounded-full bg-white px-2 py-1 text-slate-700">{decisionView.evidence.label}</span>}
@@ -350,7 +353,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
             {showBranchCompare && <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} comparison={row.checks?.branch} />}
             {showSupplierCompare && <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} comparison={supplierComparison} />}
             {showDateCompare && <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} comparison={row.checks?.invoice_date} />}
-            {showTotalCompare && <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : 'mismatch') : 'unknown'} />}
+            {showTotalCompare && <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : decisionView.toleranceAccepted ? 'acceptable' : 'mismatch') : 'unknown'} />}
             {showReturnCompare && <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />}
             {showAllDetails && <CompareValue label="المستخدم" source={source.user} current={appEnteredBy} normalize={normalizeUserName} />}
             {showAllDetails && row.reasons?.length > 0 && <div className="rounded-xl border bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-600">{row.reasons.join(' — ')}</div>}
