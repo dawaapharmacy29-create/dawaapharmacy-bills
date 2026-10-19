@@ -188,3 +188,21 @@ test("5.01 EGP remains a financial explanation and never enters safe bulk", () =
   assert.equal(view.toleranceAccepted, false);
   assert.equal(view.bulkEligible, false);
 });
+
+
+test("a returned item blocks fast and bulk acceptance even if totals match", () => {
+  const row = baseRow({
+    checks: { system_invoice_number: 'match', branch: 'match', supplier: 'mismatch', invoice_date: 'match' },
+    bconnect: {
+      branch: 'دواء شكري', supplier: 'مورد بي كونكت',
+      invoice_value: 300, return_value: 126, date: '2026-10-11',
+      returned_items_count: 1,
+      items: [{ code: '66807', purchased_quantity: 1, returned_quantity: 1, return_total: 126 }],
+    },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.hasReturn, true);
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+  assert.equal(view.lane, 'correct');
+});
