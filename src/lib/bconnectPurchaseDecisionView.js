@@ -62,10 +62,11 @@ function noteSignal(note) {
   return { code: 'note_present', confidence: 'low', label: 'توجد ملاحظة قد تساعد في تفسير الفرق' };
 }
 
-function confidenceFor({ policy, identityConfirmed, financialMatch, toleratedDifference, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, absDifference, evidence }) {
+function confidenceFor({ policy, identityConfirmed, financialMatch, toleratedDifference, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, returnIssue, absDifference, evidence }) {
   if (policy.code === 'duplicate' || policy.code === 'blocked' || (!identityConfirmed && policy.code !== 'missing')) {
     return { code: 'blocked', label: 'محظور', score: 0 };
   }
+  if (returnIssue) return { code: 'medium', label: 'اختلاف مرتجع — يحتاج مراجعة', score: 65 };
   if (fastAccept) {
     let score = 100;
     if (dateMismatch && dayDifference !== null) score -= Math.min(Math.abs(dayDifference) * 3, 15);
@@ -102,6 +103,8 @@ export function buildBConnectPurchaseDecision(row = {}) {
   const returned = numeric(row?.app?.returned_value);
   const sourceReturn = numeric(row?.bconnect?.return_value);
   const hasReturn = (returned !== null && returned > 0) || (sourceReturn !== null && sourceReturn > 0);
+  const returnIssue = row?.financial?.return_issue === true || row?.checks?.returned_value === 'mismatch';
+  const returnDifference = row?.financial?.return_difference ?? null;
   const financialMatch = row?.financial?.comparable === true && row?.financial?.match === true;
   const toleratedDifference = row?.financial?.comparable === true &&
     row?.financial?.within_tolerance === true && absDifference !== null && absDifference > 0;
@@ -117,12 +120,13 @@ export function buildBConnectPurchaseDecision(row = {}) {
     && row?.status === 'review'
     && financialMatch
     && !hasReturn
+    && !returnIssue
     && (supplierMismatch || dateMismatch);
 
   const exactReturnExplanation = returnExplanation({ difference, appReturn: returned, sourceReturn });
   const noteEvidence = noteSignal(note);
   const evidence = exactReturnExplanation || noteEvidence;
-  const confidence = confidenceFor({ policy, identityConfirmed, financialMatch, toleratedDifference, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, absDifference, evidence });
+  const confidence = confidenceFor({ policy, identityConfirmed, financialMatch, toleratedDifference, fastAccept, dateMismatch, dayDifference, supplierMismatch, hasNote, hasReturn, returnIssue, absDifference, evidence });
 
   const bulkEligible = fastAccept
     && confidence.code === 'very_high'
@@ -153,6 +157,14 @@ export function buildBConnectPurchaseDecision(row = {}) {
     label = 'حقق';
     instruction = policy.label || 'حالة تحتاج تحقيق يدوي';
     tone = 'red';
+    nextAction = 'open_details';
+  } else if (returnIssue) {
+    lane = 'explain';
+    label = 'راجع المرتجع';
+    instruction = returnDifference !== null
+      ? `مرتجع B-Connect والتطبيق مختلفان بفارق ${Math.abs(returnDifference).toFixed(2)} ج؛ راجع سطور الأصناف.`
+      : 'يوجد مرتجع مثبت في المصدر وقيمته غير مؤكدة في التطبيق؛ راجع تفاصيله.';
+    tone = 'amber';
     nextAction = 'open_details';
   } else if (absDifference !== null && absDifference > 0 && (!toleratedDifference || hasReturn || hasNote)) {
     lane = 'explain';
@@ -206,6 +218,8 @@ export function buildBConnectPurchaseDecision(row = {}) {
     returnedValue: returned,
     sourceReturnValue: sourceReturn,
     hasReturn,
+    returnIssue,
+    returnDifference,
     evidence,
     evidenceConfidence: evidence?.confidence || null,
     exactReturnExplanation: exactReturnExplanation?.code === 'return_exact',
