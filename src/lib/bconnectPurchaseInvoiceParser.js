@@ -89,7 +89,11 @@ function parseExcelDate(value) {
     const parsed = (XLSX.SSF ?? XLSX.default?.SSF)?.parse_date_code?.(value);
     if (parsed) {
       const pad = (n) => String(n).padStart(2, "0");
-      return `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)} ${pad(parsed.H)}:${pad(parsed.M)}:${pad(parsed.S)}`;
+      const day = `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)}`;
+      // Whole-day Excel serials do not prove a recorded clock time.
+      // Do not turn an absent time into an invented 12:00 AM.
+      if (Math.abs(value - Math.round(value)) < 1e-9) return day;
+      return `${day} ${pad(parsed.H)}:${pad(parsed.M)}:${pad(parsed.S)}`;
     }
   }
   const raw = text(value);
