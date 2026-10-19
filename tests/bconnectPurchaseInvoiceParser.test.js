@@ -319,6 +319,8 @@ test("parses the detailed B-Connect purchase export as invoices, never as line i
   assert.ok(result.invoices.every((invoice) => invoice.branch === "دواء الشامي"));
   assert.equal(result.invoices[1].invoice_value, 222);
   assert.equal(result.invoices[1].supplier, "مورد ثان");
+  assert.equal(result.invoices[1].user, "د اختبار");
+  assert.equal(result.invoices[1].net, 222);
   assert.equal(result.invoices[1].count, 2);
   assert.equal(result.invoices[0].payment_type, "آجل");
   assert.equal(result.invoices[2].payment_type, "نقدى");
@@ -332,7 +334,7 @@ test("fails closed on missing detailed invoice serial or mismatched closing subt
   ];
   const result = parseBConnectRows(rows);
   assert.equal(result.valid, false);
-  assert.deepEqual(result.meta.invalid_invoice_rows, [2, 4, 5, 7]);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [2, 4, 7]);
 });
 
 test("fails closed on missing item code or incomplete detailed invoice section", () => {
