@@ -108,6 +108,8 @@ export function buildBConnectPurchaseDecision(row = {}) {
   const identityConfirmed = row?.identity === 'confirmed'
     && row?.checks?.branch === 'match'
     && row?.checks?.system_invoice_number === 'match';
+  const toleranceAccepted = toleratedDifference && identityConfirmed &&
+    !hasReturn && !hasNote && row?.status !== 'problem';
 
   const fastAccept = policy.code === 'proposed'
     && policy.selectable === true
@@ -193,6 +195,7 @@ export function buildBConnectPurchaseDecision(row = {}) {
     financialDifference: Number.isFinite(difference) ? difference : null,
     absoluteFinancialDifference: absDifference,
     toleratedDifference,
+    toleranceAccepted,
     toleranceAmount: row?.financial?.tolerance_amount ?? 5,
     supplierMismatch,
     dateMismatch,
