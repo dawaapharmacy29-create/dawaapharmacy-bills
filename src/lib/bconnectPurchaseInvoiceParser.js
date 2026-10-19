@@ -181,7 +181,7 @@ function parseDetailedBConnectRows(rows) {
         invoice_value: invoiceValue, count: null,
         serial: rawSerial, date: invoiceDate,
       } : null;
-      active = { row_number: i + 1, serial: rawSerial, invoice };
+      active = { row_number: i + 1, serial: rawSerial, invoice, itemLines: 0 };
       continue;
     }
 
@@ -193,10 +193,14 @@ function parseDetailedBConnectRows(rows) {
       const subtotalSerial = text(row[9]);
       const itemCount = number(row[7]);
       if (subtotalSerial !== active.serial || itemCount === null ||
-          !Number.isSafeInteger(itemCount) || itemCount < 0) {
+          !Number.isSafeInteger(itemCount) || itemCount < 0 || itemCount !== active.itemLines) {
         invalidInvoiceRows.push(i + 1);
       } else if (active.invoice) {
         active.invoice.count = itemCount;
+        const detailTotal = number(row[3]);
+        active.invoice.detail_total = detailTotal;
+        active.invoice.detail_total_difference = detailTotal === null ? null :
+          Number((detailTotal - active.invoice.invoice_value).toFixed(3));
         invoices.push(active.invoice);
       }
       active = null;
@@ -205,6 +209,7 @@ function parseDetailedBConnectRows(rows) {
 
     if (active) {
       if (!text(row[14]) || !text(row[15])) unrecognizedRows.push(i + 1);
+      else active.itemLines += 1;
       continue;
     }
 
