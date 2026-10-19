@@ -108,7 +108,7 @@ export default function BConnectInvoiceReview() {
     state.rows.forEach((row) => {
       const action = decisions[rowKey(row)]?.action;
       const view = buildBConnectPurchaseDecision(row);
-      if (action === 'accepted' || action === 'reviewed' || (view.lane === 'clean' && !needsReturnInspection(row, decisions, rowKey(row)))) result.done += 1;
+      if (action === 'accepted' || (view.lane === 'clean' && !needsReturnInspection(row, decisions, rowKey(row)))) result.done += 1;
       else if (view.lane === 'approve') result.approve += 1;
       else if (view.lane === 'investigate') result.investigate += 1;
       else if (['correct', 'explain', 'register'].includes(view.lane)) result.needs += 1;
@@ -133,8 +133,10 @@ export default function BConnectInvoiceReview() {
       if (!matchesReviewSearch(row, query) && !String(view.note || '').toLowerCase().includes(query)) return false;
       const returnPending = needsReturnInspection(row, decisions, key);
       if (queueFilter === 'returns') return hasUploadedReturns(row);
-      if (queueFilter === 'done') return action === 'accepted' || action === 'reviewed' || (view.lane === 'clean' && !returnPending);
-      if (action === 'accepted' || action === 'reviewed' || (view.lane === 'clean' && !returnPending)) return false;
+      if (queueFilter === 'done') return action === 'accepted' || (view.lane === 'clean' && !returnPending);
+      // Reviewing a disputed invoice is NOT a correction or acceptance.
+      // Only clean returned invoices can leave the pending queue after inspection.
+      if (action === 'accepted' || (view.lane === 'clean' && !returnPending)) return false;
       if (queueFilter === 'needs') return ['correct', 'explain', 'register'].includes(view.lane);
       if (queueFilter === 'investigate') return view.lane === 'investigate';
       if (queueFilter === 'approve') return view.lane === 'approve' && !safeBulkKeys.has(key) && !returnPending;
