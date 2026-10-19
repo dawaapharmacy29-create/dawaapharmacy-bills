@@ -279,6 +279,7 @@ export default function BConnectInvoiceReview() {
         const authorizedRows = Array.isArray(gate?.rows) ? gate.rows : [];
         const problem = (identity, reason) => ({ number, bconnect: source, app: null, status: 'problem', identity, reasons: [reason], financial: { difference: null } });
         if (!branch) return problem('unverified', 'فرع B-Connect غير معروف؛ لا يمكن تكوين هوية الفاتورة بأمان.');
+        if (source.detail_total_difference !== null && source.detail_total_difference !== undefined && Math.abs(source.detail_total_difference) > 0.02) return problem('detail_total_mismatch', 'إجمالي تفاصيل الأصناف مختلف عن قيمة الفاتورة بفارق ' + Math.abs(source.detail_total_difference).toFixed(2) + ' ج؛ يلزم مراجعة الفاتورة قبل الاعتماد.');
         if (!gate || !Number.isSafeInteger(recordCount) || recordCount < 0) return problem('unverified', 'التحقق الشامل غير مكتمل لهذا الرقم؛ ممنوع الاعتماد.');
         if (!Array.isArray(gate?.rows) || authorizedRows.length > recordCount) return problem('unverified', 'تفاصيل الاستجابة الشاملة غير مكتملة؛ ممنوع الاعتماد.');
         const sameBranchRows = authorizedRows.filter((row) => normalizeBranch(row?.branch) === branch);
