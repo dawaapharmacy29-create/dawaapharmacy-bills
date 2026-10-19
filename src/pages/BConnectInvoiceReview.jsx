@@ -107,7 +107,7 @@ export default function BConnectInvoiceReview() {
     state.rows.forEach((row) => {
       const action = decisions[rowKey(row)]?.action;
       const view = buildBConnectPurchaseDecision(row);
-      if (action === 'accepted' || view.lane === 'clean') result.done += 1;
+      if (action === 'accepted' || action === 'reviewed' || (view.lane === 'clean' && !needsReturnInspection(row, decisions, rowKey(row)))) result.done += 1;
       else if (view.lane === 'approve') result.approve += 1;
       else if (view.lane === 'investigate') result.investigate += 1;
       else if (['correct', 'explain', 'register'].includes(view.lane)) result.needs += 1;
@@ -158,7 +158,7 @@ export default function BConnectInvoiceReview() {
   const markReviewed = (row) => {
     if (!row) return;
     const key = rowKey(row);
-    setDecisions((old) => ({ ...old, [key]: { action: 'reviewed', note: 'تمت المراجعة داخل نافذة B-Connect', source_id: row.app?.id || null } }));
+    setDecisions((old) => ({ ...old, [key]: { action: 'reviewed', note: hasUploadedReturns(row) ? 'تم فحص المرتجع في جلسة المراجعة الحالية فقط' : 'تمت المراجعة داخل نافذة B-Connect', source_id: row.app?.id || null } }));
     selectNext(row);
     setReviewRow(null);
   };
