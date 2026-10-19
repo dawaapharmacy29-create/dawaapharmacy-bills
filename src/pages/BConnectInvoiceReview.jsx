@@ -45,7 +45,7 @@ function DecisionBadge({ view, large = false }) {
   return <span className={`inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white font-black text-slate-700 ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-[11px]'}`}>
     <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
     {meta.label}
-    <span className="font-bold text-slate-400">{view.confidence?.score ?? 0}%</span>
+    <span className="font-bold text-slate-400">{view.confidence?.code === "blocked" ? "أدلة ناقصة" : `${view.confidence?.score ?? 0}%`}</span>
   </span>;
 }
 
@@ -365,6 +365,11 @@ export default function BConnectInvoiceReview() {
       : view.fastAccept ? 'اعتماد وانتقل'
       : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق'
       : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'investigate' ? 'فتح التحقيق' : 'فتح التفاصيل';
+    const primaryReason = selectedRow.status === 'problem' && selectedRow.reasons?.[0]
+      ? selectedRow.reasons[0]
+      : pendingReturn && view.lane === 'clean'
+        ? 'إجمالي الفاتورة مطابق؛ مرتجع المورد محتاج فحص السطور فقط.'
+        : view.instruction;
     const appSupplier = selectedRow.app?.supplier_name || '—';
     const sourceSupplier = selectedRow.bconnect?.supplier || '—';
     const sourceEnteredBy = selectedRow.bconnect?.user || 'غير مسجل';
@@ -375,7 +380,7 @@ export default function BConnectInvoiceReview() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5"><span className="font-mono text-2xl font-black text-slate-950">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
           <div className="mt-1 text-[11px] font-bold text-slate-500">{branch} · المورد والتاريخ والتوقيت بالأسفل</div>
-          <div className="mt-2 text-xs font-semibold text-slate-600">{pendingReturn && view.lane === 'clean' ? 'إجمالي الفاتورة مطابق؛ مرتجع المورد محتاج فحص السطور فقط.' : view.instruction}</div>
+          <div className="mt-2 text-xs font-semibold text-slate-600">{primaryReason}</div>
         </div>
         <div className={`rounded-full px-3 py-1 text-[11px] font-black ${meta.bg} ${meta.text}`}>القرار الآن: {meta.label}</div>
       </div>
