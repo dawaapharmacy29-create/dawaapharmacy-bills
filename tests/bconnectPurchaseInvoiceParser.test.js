@@ -495,3 +495,21 @@ test("flat B-Connect invoices remain compatible and do not invent item details",
   assert.equal(result.invoices.length, 1);
   assert.equal(result.invoices[0].items, undefined);
 });
+
+
+test("Excel invoice timestamp retains a real time fractional value but not a date-only midnight guess", () => {
+  const dateOnly = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 12201, date: 46305 }),
+    makeDetailedItem(), makeDetailedSubtotal(12201),
+  ]);
+  const withClock = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 12202, date: 46305.6111574074 }),
+    makeDetailedItem(), makeDetailedSubtotal(12202),
+  ]);
+  assert.equal(dateOnly.valid, true, dateOnly.warnings.join(" "));
+  assert.equal(withClock.valid, true, withClock.warnings.join(" "));
+  assert.equal(dateOnly.invoices[0].date, "2026-10-10");
+  assert.equal(withClock.invoices[0].date, "2026-10-10 14:40:04");
+});
