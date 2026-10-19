@@ -153,12 +153,16 @@ function parseDetailedBConnectRows(rows) {
     const row = Array.isArray(rows[i]) ? rows[i] : [];
     const cells = row.map(text).filter(Boolean);
     if (!cells.length) continue;
-    const inferredBranch = cells.map(inferBranchFromBConnectLocation).find(Boolean);
+    // Read branch/payment ONLY from report section rows. Supplier names and
+    // medicine names can contain a branch caption and must not mutate scope.
+    const isHeader = isDetailedInvoiceHeader(row);
+    const structuralRow = !active && !isHeader && !isDetailedInvoiceSubtotal(row);
+    const inferredBranch = structuralRow ? cells.map(inferBranchFromBConnectLocation).find(Boolean) : null;
     if (inferredBranch) branch = inferredBranch;
-    const payment = cells.find(isPaymentLabel);
+    const payment = structuralRow ? cells.find(isPaymentLabel) : null;
     if (payment) payment_type = normalizePayment(payment);
 
-    if (isDetailedInvoiceHeader(row)) {
+    if (isHeader) {
       headerCount += 1;
       if (active) invalidInvoiceRows.push(active.row_number);
       const labels = detectHeader(row);
