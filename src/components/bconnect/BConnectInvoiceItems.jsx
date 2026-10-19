@@ -1,105 +1,148 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PackageSearch, RotateCcw } from 'lucide-react';
+import { ChevronDown, FileText, PackageSearch, RotateCcw, Search } from 'lucide-react';
 
 const amount = (value) => {
   if (value === null || value === undefined || value === '') return '—';
-  const n = Number(value);
-  return Number.isFinite(n)
-    ? n.toLocaleString('ar-EG', { maximumFractionDigits: 3 })
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? number.toLocaleString('ar-EG', { maximumFractionDigits: 3 })
     : '—';
 };
+const qty = (value) => amount(value);
+const returned = (item) => Number(item?.returned_quantity || 0) > 0;
 
-function Metric({ label, value, className = '' }) {
-  return <div className={'rounded-xl border border-slate-200 bg-white px-3 py-2 ' + className}>
-    <div className="text-[11px] font-bold text-slate-500">{label}</div>
-    <div className="mt-1 text-sm font-black text-slate-900">{value}</div>
+function Quantity({ label, value, emphasis = '' }) {
+  return <div className="min-w-0">
+    <div className="text-[10px] font-bold text-slate-500">{label}</div>
+    <div className={'mt-0.5 text-sm font-black tabular-nums ' + (emphasis || 'text-slate-800')}>{qty(value)}</div>
   </div>;
 }
 
+function SourceItem({ item }) {
+  const hasReturn = returned(item);
+  const unusualReturn = item.purchased_quantity !== null && item.returned_quantity !== null &&
+    Number(item.returned_quantity) > Number(item.purchased_quantity);
+
+  return <details className={'group rounded-xl border bg-white transition ' +
+    (hasReturn ? 'border-rose-200' : 'border-slate-200')}>
+    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 p-3 marker:hidden [&::-webkit-details-marker]:hidden">
+      <div className="min-w-[150px] flex-[1_1_180px]">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="break-words text-xs font-black text-slate-900">{item.name || 'صنف بدون اسم'}</span>
+          {hasReturn && <span className="rounded-md bg-rose-50 px-1.5 py-0.5 text-[10px] font-black text-rose-700">مرتجع</span>}
+          {unusualReturn && <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-800">راجع الكمية</span>}
+        </div>
+        <div className="mt-1 font-mono text-[11px] text-slate-500">{item.code || 'بدون كود'}</div>
+      </div>
+      <div className="grid min-w-[200px] flex-[1_1_220px] grid-cols-3 gap-2">
+        <Quantity label="شراء" value={item.purchased_quantity} />
+        <Quantity label="مرتجع" value={item.returned_quantity} emphasis={hasReturn ? 'text-rose-700' : ''} />
+        <Quantity label="صافي" value={item.net_quantity} emphasis="text-teal-700" />
+      </div>
+      <div className="flex min-w-[108px] items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-bold text-slate-500">قيمة المرتجع</div>
+          <div className={'mt-0.5 text-xs font-black ' + (hasReturn ? 'text-rose-700' : 'text-slate-700')}>{amount(item.return_total)} ج</div>
+        </div>
+        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-180" />
+      </div>
+    </summary>
+    <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-100 bg-slate-50/70 px-3 py-3 text-xs sm:grid-cols-4">
+      <Quantity label="سعر الشراء" value={item.purchase_unit_price} />
+      <Quantity label="إجمالي الشراء" value={item.purchase_total} />
+      <Quantity label="سعر المرتجع" value={item.return_unit_price} />
+      <Quantity label="بونص" value={item.bonus_quantity} />
+      {item.source_item_reference && <div className="col-span-2 text-[11px] text-slate-500">مرجع الصنف بالمصدر: {item.source_item_reference}</div>}
+      {item.expiration && <div className="col-span-2 text-[11px] text-slate-500">تاريخ الصلاحية: {String(item.expiration).slice(0, 10)}</div>}
+    </div>
+  </details>;
+}
+
 /**
- * Read-only item evidence from the currently uploaded Excel files.
- * Does not write item records or imply that details are stored in the app DB.
+ * Source evidence lives only inside the current review session.
+ * Read-only — no product ledger writes or automatic supplier returns.
  */
 export default function BConnectInvoiceItems({ invoice }) {
   const source = invoice?.bconnect || {};
   const items = Array.isArray(source.items) ? source.items : null;
   const [mode, setMode] = useState('all');
-  useEffect(() => { setMode('all'); }, [invoice?.number, source.source_file]);
-  const returnedItems = useMemo(() => (items || []).filter(
-    (item) => Number(item.returned_quantity || 0) > 0
-  ), [items]);
-  const visibleItems = mode === 'returns' ? returnedItems : (items || []);
-  const gross = Number(source.invoice_value);
-  const net = Number(source.net);
-  const returned = Number(source.return_value);
-  const otherAdjustment = [source.invoice_value, source.net, source.return_value].every(
-    (v) => v !== null && v !== undefined && Number.isFinite(Number(v))
-  ) ? Number((gross - net - returned).toFixed(3)) : null;
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    setMode((source.items || []).some(returned) ? 'returns' : 'all');
+    setSearch('');
+  }, [invoice?.number, source.source_file]);
 
-  return <section dir="rtl" className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/40">
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3">
+  const returnItems = useMemo(() => (items || []).filter(returned), [items]);
+  const searched = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    const base = mode === 'returns' ? returnItems : (items || []);
+    const list = needle ? base.filter((item) =>
+      [item.name, item.code].some((field) => String(field || '').toLowerCase().includes(needle))
+    ) : base;
+    return [...list].sort((a, b) => Number(returned(b)) - Number(returned(a)));
+  }, [items, returnItems, mode, search]);
+
+  const adjustmentsKnown = [source.invoice_value, source.net, source.return_value].every(
+    (v) => v !== null && v !== undefined && Number.isFinite(Number(v))
+  );
+  const otherAdjustments = adjustmentsKnown
+    ? Number((Number(source.invoice_value) - Number(source.net) - Number(source.return_value)).toFixed(3))
+    : null;
+
+  return <section dir="rtl" className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 px-4 py-3">
       <div className="flex min-w-0 items-center gap-2">
-        <PackageSearch className="h-5 w-5 text-teal-700" />
+        <PackageSearch className="h-5 w-5 shrink-0 text-teal-700" />
         <div>
-          <h3 className="text-sm font-black text-slate-900">أصناف الفاتورة والمرتجعات</h3>
-          <p className="text-[11px] text-slate-500">تفاصيل مقروءة من ملف B-Connect المرفوع — عرض فقط</p>
+          <h3 className="text-sm font-black text-slate-900">أصناف الفاتورة</h3>
+          <p className="mt-0.5 text-[11px] text-slate-500">الكميات والمرتجعات من ملف B-Connect المرفوع، للعرض والمراجعة فقط</p>
         </div>
       </div>
-      {items && <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-bold">
-        <button type="button" onClick={() => setMode('all')} className={'rounded-md px-3 py-1.5 ' + (mode === 'all' ? 'bg-teal-700 text-white' : 'text-slate-600 hover:bg-white')}>كل الأصناف ({items.length})</button>
-        <button type="button" onClick={() => setMode('returns')} className={'rounded-md px-3 py-1.5 ' + (mode === 'returns' ? 'bg-teal-700 text-white' : 'text-slate-600 hover:bg-white')}>المرتجعات ({returnedItems.length})</button>
-      </div>}
+      {returnItems.length > 0 && <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-black text-rose-700">
+        <RotateCcw className="ml-1 inline h-3 w-3" />{returnItems.length} سطر مرتجع
+      </span>}
     </div>
-    {!items ? <div className="px-4 py-6 text-sm text-slate-600">
-      الملف ده بيعرض إجماليات الفواتير فقط، ومفيهوش سطور الأصناف التفصيلية. ارفع تقرير B-Connect التفصيلي لعرض الأصناف والكميات والمرتجعات.
+    {!items ? <div className="flex items-start gap-2 px-4 py-5 text-xs text-slate-600">
+      <FileText className="h-5 w-5 shrink-0 text-slate-400" />
+      هذا التقرير يحتوي على إجماليات الفواتير فقط. للحصول على تفاصيل الأصناف ارفع تقرير B-Connect التفصيلي.
     </div> : <>
       <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-4">
-        <Metric label="عدد سطور الأصناف" value={amount(items.length)} />
-        <Metric label="سطور بها مرتجع" value={amount(returnedItems.length)} />
-        <Metric label="قيمة المرتجعات" value={amount(source.return_value) + ' ج'} className={returnedItems.length ? 'border-rose-200' : ''} />
-        <Metric label="صافي الفاتورة في الملف" value={amount(source.net) + ' ج'} />
+        {[
+          ['عدد الأصناف', amount(items.length)],
+          ['سطور بها مرتجع', amount(returnItems.length)],
+          ['قيمة المرتجعات', amount(source.return_value) + ' ج'],
+          ['الصافي في المصدر', amount(source.net) + ' ج'],
+        ].map(([label, value]) => <div key={label} className="rounded-lg bg-slate-50 p-2.5">
+          <div className="text-[10px] font-bold text-slate-500">{label}</div>
+          <div className="mt-1 text-sm font-black text-slate-800">{value}</div>
+        </div>)}
       </div>
-      {(source.supplier_invoice_number || source.source_file) && <div className="flex flex-wrap gap-x-5 gap-y-1 px-4 pb-3 text-[11px] text-slate-600">
-        {source.supplier_invoice_number && <span>رقم فاتورة المورد: <strong className="font-mono">{source.supplier_invoice_number}</strong></span>}
-        {source.source_file && <span>المصدر: <strong>{source.source_file}</strong></span>}
+      {(source.supplier_invoice_number || source.source_file) && <div className="flex flex-wrap gap-2 px-4 pb-3 text-[11px] text-slate-500">
+        {source.supplier_invoice_number && <span>رقم فاتورة المورد: <strong className="text-slate-700">{source.supplier_invoice_number}</strong></span>}
+        {source.source_file && <span className="max-w-full truncate">الملف: {source.source_file}</span>}
       </div>}
-      {otherAdjustment !== null && Math.abs(otherAdjustment) > 0.02 && <div className="mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-        يوجد فرق آخر بين الإجمالي والصافي بعد طرح المرتجعات: {amount(otherAdjustment)} ج. قد يكون خصمًا أو تسوية؛ لا يُعتبر مرتجعًا بدون دليل من السطور.
+      {otherAdjustments !== null && Math.abs(otherAdjustments) > 0.02 && <div className="mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900">
+        يوجد فرق إضافي {amount(otherAdjustments)} ج بين إجمالي الفاتورة وصافيها بعد المرتجع. قد يكون خصمًا أو تسوية؛ لا تعتبره مرتجعًا بدون دليل.
       </div>}
-      {mode === 'returns' && !visibleItems.length ? <div className="px-4 pb-5 pt-1 text-sm font-bold text-slate-500">لا توجد كميات مرتجعة في تفاصيل الفاتورة.</div> : <div className="overflow-x-auto border-t border-slate-200">
-        <table className="min-w-[930px] w-full text-right text-xs">
-          <thead className="bg-slate-100 text-slate-600">
-            <tr>
-              <th className="min-w-[220px] px-3 py-2.5">الصنف / الكود</th>
-              <th className="px-3 py-2.5">كمية الشراء</th>
-              <th className="px-3 py-2.5">البونص</th>
-              <th className="px-3 py-2.5">كمية المرتجع</th>
-              <th className="px-3 py-2.5">صافي الكمية</th>
-              <th className="px-3 py-2.5">سعر الشراء</th>
-              <th className="px-3 py-2.5">إجمالي الشراء</th>
-              <th className="px-3 py-2.5">سعر المرتجع</th>
-              <th className="px-3 py-2.5">قيمة المرتجع</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
-            {visibleItems.map((item) => <tr key={item.row_number} className={Number(item.returned_quantity || 0) > 0 ? 'bg-rose-50/50' : ''}>
-              <td className="px-3 py-2.5"><div className="font-black text-slate-800">{item.name || 'بدون اسم'}</div><div className="mt-0.5 font-mono text-[11px] text-slate-500">{item.code || 'بدون كود'}</div></td>
-              <td className="px-3 py-2.5 font-bold">{amount(item.purchased_quantity)}</td>
-              <td className="px-3 py-2.5">{amount(item.bonus_quantity)}</td>
-              <td className="px-3 py-2.5 font-black text-rose-700">{amount(item.returned_quantity)}</td>
-              <td className="px-3 py-2.5 font-bold text-teal-800">{amount(item.net_quantity)}</td>
-              <td className="px-3 py-2.5">{amount(item.purchase_unit_price)}</td>
-              <td className="px-3 py-2.5">{amount(item.purchase_total)}</td>
-              <td className="px-3 py-2.5">{amount(item.return_unit_price)}</td>
-              <td className="px-3 py-2.5 font-bold text-rose-700">{amount(item.return_total)}</td>
-            </tr>)}
-          </tbody>
-        </table>
-      </div>}
-      {returnedItems.length > 0 && <div className="flex items-start gap-2 border-t border-rose-100 bg-rose-50 px-4 py-2.5 text-[11px] font-bold text-rose-800">
-        <RotateCcw className="mt-0.5 h-4 w-4 shrink-0" />
-        الكمية الصافية للصنف = كمية الشراء − كمية المرتجع. قيمة المرتجع تُقرأ من عمود المرتجع في الملف، ولا نعيد حسابها بسعر الشراء.
-      </div>}
+      <div className="flex flex-wrap gap-2 border-t border-slate-100 px-3 py-3">
+        <div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-xs font-black">
+          <button type="button" onClick={() => setMode('all')} className={'rounded-md px-3 py-1.5 transition ' + (mode === 'all' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-500')}>الكل ({items.length})</button>
+          <button type="button" onClick={() => setMode('returns')} className={'rounded-md px-3 py-1.5 transition ' + (mode === 'returns' ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-500')}>المرتجعات ({returnItems.length})</button>
+        </div>
+        <label className="relative min-w-[170px] flex-1">
+          <Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="اسم الصنف أو الكود" className="h-9 w-full rounded-lg border border-slate-200 bg-white pr-8 pl-2 text-xs outline-none focus:border-teal-400" />
+        </label>
+      </div>
+      <div className="space-y-2 px-3 pb-3">
+        {searched.map((item) => <SourceItem key={item.row_number} item={item} />)}
+        {!searched.length && <div className="rounded-lg bg-slate-50 p-4 text-center text-xs text-slate-500">
+          {search ? 'لا توجد أصناف مطابقة للبحث.' : mode === 'returns' ? 'لا يوجد مرتجع في سطور هذه الفاتورة.' : 'لا توجد أصناف في هذه الفاتورة.'}
+        </div>}
+      </div>
+      {returnItems.length > 0 && <p className="border-t border-rose-100 bg-rose-50/70 px-4 py-2.5 text-[11px] text-rose-800">
+        صافي كمية كل صنف = المشتريات − المرتجعات. لا يتم إنشاء حركة مرتجع أو تعديل المخزون من شاشة المراجعة.
+      </p>}
     </>}
   </section>;
 }
