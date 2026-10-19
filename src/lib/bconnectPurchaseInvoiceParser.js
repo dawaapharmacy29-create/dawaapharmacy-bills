@@ -140,6 +140,31 @@ function isDetailedInvoiceSubtotal(row) {
     text(row[8]) === "عدد الأصناف" && text(row[10]) === "رقم فاتورة المورد";
 }
 
+// The item block is positional in B-Connect's detailed export. The labels
+// at X:Y on its repeated header describe the *item* values in columns A:P,
+// not extra invoice header fields. Retain each source row as read-only proof.
+function readDetailedInvoiceItem(row, rowNumber) {
+  const purchasedQuantity = number(row[11]);
+  const returnedQuantity = number(row[9]);
+  const returnTotal = number(row[16]);
+  return {
+    row_number: rowNumber,
+    name: text(row[14]) || null,
+    code: text(row[15]) || null,
+    purchased_quantity: purchasedQuantity,
+    bonus_quantity: number(row[10]),
+    returned_quantity: returnedQuantity,
+    net_quantity: purchasedQuantity === null || returnedQuantity === null
+      ? null : Number((purchasedQuantity - returnedQuantity).toPrecision(12)),
+    purchase_unit_price: number(row[5]),
+    purchase_total: number(row[4]),
+    return_unit_price: number(row[8]),
+    return_total: returnTotal,
+    source_item_reference: text(row[13]) || null,
+    expiration: row[12] == null || row[12] === '' ? null : parseExcelDate(row[12]),
+  };
+}
+
 function parseDetailedBConnectRows(rows) {
   const invoices = [];
   const invalidInvoiceRows = [];
@@ -185,7 +210,7 @@ function parseDetailedBConnectRows(rows) {
         invoice_value: invoiceValue, count: null,
         serial: rawSerial, date: invoiceDate,
       } : null;
-      active = { row_number: i + 1, serial: rawSerial, invoice, itemLines: 0 };
+      active = { row_number: i + 1, serial: rawSerial, invoice, itemLines: 0, items: [] };
       continue;
     }
 
@@ -204,6 +229,13 @@ function parseDetailedBConnectRows(rows) {
       } else if (active.invoice) {
         active.invoice.supplier_invoice_number = supplierInvoiceNumber;
         active.invoice.count = itemCount;
+        active.invoice.items = active.items;
+        active.invoice.returned_items_count = active.items.filter((item) => (item.returned_quantity || 0) > 0).length;
+        // Keep the source's financial columns, not a reconstructed estimate.
+        // The returned total is the sum of explicit per-item return totals.
+        active.invoice.return_value = Number(active.items.reduce(
+          (sum, item) => sum + (item.return_total || 0), 0
+        ).toPrecision(12));
         const detailTotal = number(row[3]);
         active.invoice.detail_total = detailTotal;
         active.invoice.detail_total_difference = detailTotal === null ? null :
@@ -215,8 +247,18 @@ function parseDetailedBConnectRows(rows) {
     }
 
     if (active) {
-      if (!text(row[14]) || !text(row[15])) unrecognizedRows.push(i + 1);
-      else active.itemLines += 1;
+      if (!text(row[14]) || !text(row[15])) {
+        unrecognizedRows.push(i + 1);
+      } else {
+        const item = readDetailedInvoiceItem(row, i + 1);
+        active.itemLines += 1;
+        active.items.push(item);
+        // A nonzero returned quantity without a returned monetary value is
+        // incomplete financial evidence: don't silently count it as zero.
+        if ((item.returned_quantity || 0) > 0 && item.return_total === null) {
+          invalidInvoiceRows.push(i + 1);
+        }
+      }
       continue;
     }
 
