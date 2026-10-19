@@ -4,6 +4,7 @@ import { base44, performanceApi } from '@/api/base44Client';
 import { bconnectAtomicCreate } from '@/api/bconnectAtomicCreateClient';
 import { Button } from '@/components/ui/button';
 import BConnectSupplierSuggestions from '@/components/bconnect/BConnectSupplierSuggestions';
+import BConnectInvoiceItems from '@/components/bconnect/BConnectInvoiceItems';
 import { prepareBconnectWriteCommand } from '@/lib/bconnectAtomicInvoiceCommand';
 import { buildBConnectFormHandoff } from '@/lib/bconnectInvoiceFormHandoff';
 import { classifyBConnectReviewRow } from '@/lib/bconnectReviewDecisionPolicy';
@@ -342,6 +343,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
           </div>
         </div>
 
+        <BConnectInvoiceItems invoice={row} />
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
           <section className="space-y-2">
             <div className="flex items-center justify-between gap-2">
