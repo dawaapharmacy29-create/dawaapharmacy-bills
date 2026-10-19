@@ -124,3 +124,67 @@ test('counts decision lanes for manager summary', () => {
   const counts = countBConnectDecisionLanes(rows);
   assert.deepEqual({ approve: counts.approve, explain: counts.explain, register: counts.register }, { approve: 1, explain: 1, register: 1 });
 });
+
+
+test("a small confirmed amount drift is green and has no bulk approval action", () => {
+  const row = baseRow({
+    status: "clean",
+    financial: { comparable: true, match: false, within_tolerance: true, tolerance_amount: 5, difference: 5 },
+    bconnect: { branch: "دواء شكري", supplier: "مورد التطبيق", invoice_value: 305, return_value: 0, date: "2026-10-11" },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, "clean");
+  assert.equal(view.label, "فرق مقبول");
+  assert.equal(view.toleranceAccepted, true);
+  assert.equal(view.financialDifference, 5);
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+});
+
+test("a tolerated value never auto-approves a different supplier or date", () => {
+  const row = baseRow({
+    financial: { comparable: true, match: false, within_tolerance: true, tolerance_amount: 5, difference: -4.203 },
+    checks: { system_invoice_number: "match", branch: "match", supplier: "mismatch", invoice_date: "match" },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, "correct");
+  assert.equal(view.toleranceAccepted, true);
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+  assert.match(view.instruction, /مقبول/);
+});
+
+test("small differences involving a return, note or ambiguous identity remain investigated", () => {
+  const financial = { comparable: true, match: false, within_tolerance: true, tolerance_amount: 5, difference: 3 };
+  const returned = buildBConnectPurchaseDecision(baseRow({
+    financial,
+    app: { id: "a1", branch: "دواء شكري", returned_value: 3, notes: "" },
+  }));
+  assert.equal(returned.lane, "explain");
+  assert.equal(returned.toleranceAccepted, false);
+
+  const noted = buildBConnectPurchaseDecision(baseRow({
+    financial,
+    app: { id: "a1", branch: "دواء شكري", returned_value: 0, notes: "تم تجميع فاتورتين" },
+  }));
+  assert.equal(noted.lane, "explain");
+  assert.equal(noted.fastAccept, false);
+
+  const unverified = buildBConnectPurchaseDecision(baseRow({
+    financial,
+    identity: "unverified",
+    status: "problem",
+  }));
+  assert.equal(unverified.lane, "investigate");
+  assert.equal(unverified.toleranceAccepted, false);
+});
+
+test("5.01 EGP remains a financial explanation and never enters safe bulk", () => {
+  const row = baseRow({
+    financial: { comparable: true, match: false, within_tolerance: false, tolerance_amount: 5, difference: 5.01 },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, "explain");
+  assert.equal(view.toleranceAccepted, false);
+  assert.equal(view.bulkEligible, false);
+});
