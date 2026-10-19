@@ -303,7 +303,7 @@ test("parses the detailed B-Connect purchase export as invoices, never as line i
     makeDetailedSubtotal(11101),
     makeDetailedHeader({ serial: 11102, supplier: "مورد ثان", amount: 222 }),
     makeDetailedItem("66807"), makeDetailedItem("80458"),
-    makeDetailedSubtotal(11102, 2, 222),
+    makeDetailedSubtotal(84025, 2, 222),
     [82000, "قيمة الربح", 150000, "صافى الفواتير"],
     ["نقدى"],
     makeDetailedHeader({ serial: 11103, amount: 50 }),
@@ -322,11 +322,12 @@ test("parses the detailed B-Connect purchase export as invoices, never as line i
   assert.equal(result.invoices[1].user, "د اختبار");
   assert.equal(result.invoices[1].net, 222);
   assert.equal(result.invoices[1].count, 2);
+  assert.equal(result.invoices[1].supplier_invoice_number, "84025");
   assert.equal(result.invoices[0].payment_type, "آجل");
   assert.equal(result.invoices[2].payment_type, "نقدى");
 });
 
-test("fails closed on missing detailed invoice serial or mismatched closing subtotal", () => {
+test("fails closed on missing detailed invoice serial but accepts separate supplier invoice numbers", () => {
   const rows = [
     ["الفرعية الشامي", "موردين"],
     makeDetailedHeader({ serial: null }), makeDetailedItem(), makeDetailedSubtotal(11101),
@@ -334,7 +335,10 @@ test("fails closed on missing detailed invoice serial or mismatched closing subt
   ];
   const result = parseBConnectRows(rows);
   assert.equal(result.valid, false);
-  assert.deepEqual(result.meta.invalid_invoice_rows, [2, 4, 7]);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [2]);
+  assert.equal(result.invoices.length, 1);
+  assert.equal(result.invoices[0].serial, "11102");
+  assert.equal(result.invoices[0].supplier_invoice_number, "99999");
 });
 
 test("fails closed on missing item code or incomplete detailed invoice section", () => {
@@ -381,4 +385,14 @@ test("real-world header/subtotal amount disagreements remain visible for manual 
   assert.equal(result.valid, true);
   assert.equal(result.invoices[0].detail_total, 183.72);
   assert.ok(Math.abs(result.invoices[0].detail_total_difference - 36.54) < 0.001);
+});
+
+test("accepts a symbolic supplier invoice reference separately from B-Connect's internal serial", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11123 }), makeDetailedItem(), makeDetailedSubtotal("+"),
+  ]);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices[0].serial, "11123");
+  assert.equal(result.invoices[0].supplier_invoice_number, "+");
 });
