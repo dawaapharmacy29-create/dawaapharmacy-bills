@@ -348,6 +348,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
         </div>
 
         {canMarkReturnInspected && <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">فحص المرتجع لا يعدّل الفاتورة ولا يُسجّل حركة مخزون. علامة «تم الفحص» مؤقتة لهذه الجلسة فقط.</div>}
+        {decisionView.returnIssue && <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-800">قيمة المرتجع مختلفة أو غير مؤكدة بالتطبيق. الاطلاع على التفاصيل لا يحل الفرق ولا ينفّذ حفظًا؛ لازم مراجعة وتصحيح مستقل.</div>}
         <BConnectInvoiceItems invoice={row} />
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
           <section className="space-y-2">
@@ -398,7 +399,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
         <div className="text-xs text-slate-400">{showAllDetails && !isCreate ? <>السجل: <span className="font-mono">{app.id || '—'}</span>{hasRevision ? ` · نسخة ${revision}` : ''}</> : hasChanges ? `${changedCount} تعديل جاهز للحفظ` : 'راجع القرار ثم نفّذ'}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" disabled={saveState.saving} onClick={onClose}>إغلاق</Button>
-          {!isCreate && !canAcceptAsIs && !blocked && (!readOnly || canMarkReturnInspected) && <Button type="button" variant={canMarkReturnInspected ? 'default' : 'ghost'} size="sm" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>{canMarkReturnInspected ? 'تم فحص المرتجع' : 'تمت المراجعة'}</Button>}
+          {!isCreate && !canAcceptAsIs && !blocked && (!readOnly || canMarkReturnInspected) && <Button type="button" variant={canMarkReturnInspected ? 'default' : 'ghost'} size="sm" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>{canMarkReturnInspected ? 'تم فحص المرتجع' : decisionView.returnIssue ? 'اطلعت على فرق المرتجع' : 'تمت المراجعة'}</Button>}
           {canAcceptAsIs && <Button type="button" size="sm" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الآن</Button>}
           {isCreate && !blocked ? <Button type="button" size="sm" disabled={!canCreate} onClick={createMissing}>{saveState.saving ? 'جاري التسجيل...' : 'اعتماد وتسجيل'}</Button> : blocked || readOnly || canAcceptAsIs ? null : <Button type="button" size="sm" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ...' : hasChanges ? `حفظ ${changedCount} تعديل` : 'حفظ'}</Button>}
         </div>
