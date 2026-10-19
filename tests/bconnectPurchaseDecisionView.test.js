@@ -206,3 +206,21 @@ test("a returned item blocks fast and bulk acceptance even if totals match", () 
   assert.equal(view.bulkEligible, false);
   assert.equal(view.lane, 'correct');
 });
+
+
+test("equal invoice totals with different returned values still demand immediate review", () => {
+  const row = baseRow({
+    financial: { comparable: true, match: true, within_tolerance: true, difference: 0, return_issue: true, return_difference: 126 },
+    checks: { system_invoice_number: 'match', branch: 'match', supplier: 'match', invoice_date: 'match', returned_value: 'mismatch' },
+    app: { id: 'a1', branch: 'دواء شكري', supplier_name: 'مورد بي كونكت', returned_value: 0, total_value: 300 },
+    bconnect: { branch: 'دواء شكري', supplier: 'مورد بي كونكت', invoice_value: 300, return_value: 126, date: '2026-10-11' },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.returnIssue, true);
+  assert.equal(view.returnDifference, 126);
+  assert.equal(view.lane, 'explain');
+  assert.equal(view.label, 'راجع المرتجع');
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+  assert.match(view.instruction, /126/);
+});
