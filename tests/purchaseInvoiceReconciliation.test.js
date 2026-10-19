@@ -103,3 +103,53 @@ test("missing, corrupt and unverified amounts never qualify for tolerated clean 
     assert.equal(result.financial.within_tolerance, false);
   }
 });
+
+
+test("same total cannot conceal a supplier return mismatch", () => {
+  const localApp = {
+    system_invoice_number: '11102', branch: 'دواء الشامي', supplier_name: 'مورد',
+    total_value: 222, returned_value: 0, invoice_date: '2026-07-05',
+  };
+  const uploaded = {
+    serial: 11102, branch: 'دواء الشامي', supplier: 'مورد',
+    invoice_value: 222, return_value: 126, date: '2026-07-05',
+  };
+  const r = reconcilePurchaseInvoice(localApp, uploaded);
+  assert.equal(r.identity, 'confirmed');
+  assert.equal(r.financial.match, true);
+  assert.equal(r.financial.return_issue, true);
+  assert.equal(r.financial.return_difference, 126);
+  assert.equal(r.checks.returned_value, 'mismatch');
+  assert.equal(r.status, 'review');
+  assert.ok(r.reasons.some(reason => reason.includes('المرتجع')));
+});
+
+test("B-Connect return with unknown app return remains manual even when invoice total matches", () => {
+  const r = reconcilePurchaseInvoice(
+    { system_invoice_number: '11102', branch: 'دواء الشامي', supplier_name: 'مورد', total_value: 222, invoice_date: '2026-07-05' },
+    { serial: 11102, branch: 'دواء الشامي', supplier: 'مورد', invoice_value: 222, return_value: 126, date: '2026-07-05' }
+  );
+  assert.equal(r.financial.return_issue, true);
+  assert.equal(r.checks.returned_value, 'unknown');
+  assert.equal(r.status, 'review');
+});
+
+test("verified matching return values retain existing clean verdict, pending item inspection only", () => {
+  const r = reconcilePurchaseInvoice(
+    { system_invoice_number: '11102', branch: 'دواء الشامي', supplier_name: 'مورد', total_value: 222, returned_value: 126, invoice_date: '2026-07-05' },
+    { serial: 11102, branch: 'دواء الشامي', supplier: 'مورد', invoice_value: 222, return_value: 126, date: '2026-07-05' }
+  );
+  assert.equal(r.financial.return_issue, false);
+  assert.equal(r.checks.returned_value, 'match');
+  assert.equal(r.status, 'clean');
+});
+
+test("±5 EGP applies to invoice totals only, never to returned value discrepancies", () => {
+  const r = reconcilePurchaseInvoice(
+    { system_invoice_number: '11102', branch: 'دواء الشامي', supplier_name: 'مورد', total_value: 220, returned_value: 125, invoice_date: '2026-07-05' },
+    { serial: 11102, branch: 'دواء الشامي', supplier: 'مورد', invoice_value: 222, return_value: 126, date: '2026-07-05' }
+  );
+  assert.equal(r.financial.within_tolerance, true);
+  assert.equal(r.financial.return_issue, true);
+  assert.equal(r.status, 'review');
+});
