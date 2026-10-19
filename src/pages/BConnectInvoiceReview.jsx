@@ -236,7 +236,12 @@ export default function BConnectInvoiceReview() {
         try { parsed = parseBConnectWorkbook(await file.arrayBuffer()); }
         catch (error) { throw new Error('تعذر قراءة "' + file.name + '": ' + (error?.message || 'صيغة ملف غير صالحة')); }
         if (!parsed.valid) throw new Error('الملف "' + file.name + '": ' + (parsed.warnings?.join(' ') || 'تقرير B-Connect غير صالح.'));
-        fileSummaries.push({ name: file.name, invoice_count: parsed.invoices.length, report_format: parsed.meta?.report_format || 'standard' });
+        fileSummaries.push({
+          name: file.name, invoice_count: parsed.invoices.length,
+          item_line_count: parsed.meta?.item_line_count || 0,
+          returned_item_line_count: parsed.meta?.returned_item_line_count || 0,
+          report_format: parsed.meta?.report_format || 'standard',
+        });
         sources.push(...parsed.invoices.map((row) => ({ ...row, source_file: file.name })));
       }
 
@@ -308,7 +313,11 @@ export default function BConnectInvoiceReview() {
       setDecisions(restoredDecisions);
       setState({
         loading: false, error: '', fileName, rows,
-        meta: { files: fileSummaries, invoice_count: rows.length, global_lookup: true,
+        meta: {
+          files: fileSummaries, invoice_count: rows.length,
+          item_line_count: fileSummaries.reduce((sum, file) => sum + file.item_line_count, 0),
+          returned_item_line_count: fileSummaries.reduce((sum, file) => sum + file.returned_item_line_count, 0),
+          global_lookup: true,
           branch_scoped_identity: true, atomic_edit_enabled: true, atomic_create_enabled: true,
           persistent_acceptance_enabled: true },
       });
@@ -386,7 +395,7 @@ export default function BConnectInvoiceReview() {
   return <div dir="rtl" className="min-h-full bg-slate-50/30 p-3 md:p-4">
     <div className="mx-auto max-w-[1500px] space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-0.5 text-[11px] font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}{state.meta?.files?.length > 1 && <div className="mt-1 text-[10px] font-bold text-slate-500">{state.meta.files.map((file) => file.name + ' (' + file.invoice_count + ')').join(' · ')}</div>}</div>
+        <div><h1 className="text-xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-0.5 text-[11px] font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة{state.meta?.item_line_count ? ' · ' + state.meta.item_line_count + ' سطر صنف · ' + state.meta.returned_item_line_count + ' سطور مرتجع' : ''}</div>}{state.meta?.files?.length > 1 && <div className="mt-1 text-[10px] font-bold text-slate-500">{state.meta.files.map((file) => file.name + ' (' + file.invoice_count + ')').join(' · ')}</div>}</div>
         <div className="flex items-center gap-2"><Button asChild variant="ghost" size="sm" className="text-slate-600"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-teal-700 px-3 text-xs font-black text-white transition hover:bg-teal-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'تغيير الملفات' : 'اختيار ملفات'}<input type="file" multiple accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => { const files = Array.from(event.target.files || []); event.target.value = ""; reviewFiles(files); }} /></label></div>
       </div>
 
