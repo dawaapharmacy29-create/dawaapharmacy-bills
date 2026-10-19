@@ -280,6 +280,9 @@ function parseDetailedBConnectRows(rows) {
     meta: {
       parser_version: "v4-detailed", report_format: "invoice-with-item-details",
       header_sections: headerCount, invoice_count: invoices.length,
+      item_line_count: invoices.reduce((sum, invoice) => sum + (invoice.items?.length || 0), 0),
+      returned_item_line_count: invoices.reduce((sum, invoice) => sum + (invoice.returned_items_count || 0), 0),
+      return_value_total: Number(invoices.reduce((sum, invoice) => sum + (invoice.return_value || 0), 0).toPrecision(12)),
       invalid_invoice_rows: invalid, unrecognized_rows: unrecognizedRows,
     },
   };
