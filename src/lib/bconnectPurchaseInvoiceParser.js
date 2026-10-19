@@ -3,12 +3,12 @@ import * as XLSX from "xlsx";
 export const BCONNECT_PARSER_VERSION = "v3";
 
 const HEADER_ALIASES = {
-  user: ["المستخدم"],
-  net: ["الصافى", "الصافي"],
+  user: ["المستخدم", "مستخدم"],
+  net: ["الصافى", "الصافي", "صافى الفاتورة", "صافي الفاتورة"],
   tax: ["ض.إضافة", "ض.اضافة"],
   expenses: ["مصاريف"],
-  discount_percent: ["خصم %"],
-  discount_value: ["خصم قيمة"],
+  discount_percent: ["خصم %", "ن.خصم"],
+  discount_value: ["خصم قيمة", "ق.الخصم"],
   return_value: ["ق.المرتجع"],
   invoice_value: ["ق.الفاتورة"],
   count: ["العدد"],
