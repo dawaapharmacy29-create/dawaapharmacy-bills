@@ -269,3 +269,93 @@ test("real B-Connect layout with Excel serial dates, repeated headers and three 
   assert.equal(parsed.invoices.find(x => x.serial === "19520").payment_type,"نقدى");
   assert.ok(parsed.invoices.every(x => x.branch === "دواء شكري" && x.supplier));
 });
+
+
+function makeDetailedHeader({ serial, supplier = "مورد تجريبي", date = 46304.5, amount = 120, user = "د اختبار" } = {}) {
+  return [
+    "ملاحظات", "مستخدم", "صافى الفاتورة", "ض.إضافة", "مصاريف", "ن.خصم",
+    "ق.الخصم", "ق.الفاتورة", "إسم المورد", "ك.المورد", "التاريخ", "مسلسل",
+    "16", user, amount, 0, 0, 0, 0, amount, supplier, "300", date, serial,
+    "ن.الربح", "الربح", "خ.إضافى", "س.البيع", "إج.س.شراء",
+    "س.شراء", "إج.ض.مبيعات", "ض.مبيعات", "سعر المرتجع",
+    "كمية المرتجع", "بونص", "كمية", "ت.صلاحية", "الإسم", "الكود",
+  ];
+}
+function makeDetailedItem(code = "12345") {
+  const row = Array(39).fill(null);
+  row[14] = "صنف اختباري";
+  row[15] = code;
+  return row;
+}
+function makeDetailedSubtotal(serial, count = 1) {
+  return [20, 6, 100, 120, 0, 0, "الإجمالى", count,
+    "عدد الأصناف", String(serial), "رقم فاتورة المورد",
+    "*********************************************************************************"];
+}
+
+test("parses the detailed B-Connect purchase export as invoices, never as line items", () => {
+  const rows = [
+    ["تم الإسترجاع حسب: تاريخ الإنشاء , المخزن الفرعية الشامي"],
+    ["الفرعية الشامي", "موردين"],
+    ["آجل"],
+    makeDetailedHeader({ serial: 11101 }),
+    makeDetailedItem("47723"),
+    makeDetailedSubtotal(11101),
+    makeDetailedHeader({ serial: 11102, supplier: "مورد ثان", amount: 222 }),
+    makeDetailedItem("66807"), makeDetailedItem("80458"),
+    makeDetailedSubtotal(11102, 2),
+    [82000, "قيمة الربح", 150000, "صافى الفواتير"],
+    ["نقدى"],
+    makeDetailedHeader({ serial: 11103, amount: 50 }),
+    makeDetailedItem("80458"),
+    makeDetailedSubtotal(11103),
+    ["Page -1 of 1", "ePlus", 46314, "-", 0.304, "وقت الطباعة ", "Copyright © B-Connect 2011"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.meta.report_format, "invoice-with-item-details");
+  assert.equal(result.meta.header_sections, 3);
+  assert.deepEqual(result.invoices.map(({ serial }) => serial), ["11101", "11102", "11103"]);
+  assert.ok(result.invoices.every((invoice) => invoice.branch === "دواء الشامي"));
+  assert.equal(result.invoices[1].invoice_value, 222);
+  assert.equal(result.invoices[1].supplier, "مورد ثان");
+  assert.equal(result.invoices[1].count, 2);
+  assert.equal(result.invoices[0].payment_type, "آجل");
+  assert.equal(result.invoices[2].payment_type, "نقدى");
+});
+
+test("fails closed on missing detailed invoice serial or mismatched closing subtotal", () => {
+  const rows = [
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: null }), makeDetailedItem(), makeDetailedSubtotal(11101),
+    makeDetailedHeader({ serial: 11102 }), makeDetailedItem(), makeDetailedSubtotal(99999),
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [2, 4, 5, 7]);
+});
+
+test("fails closed on missing item code or incomplete detailed invoice section", () => {
+  const rows = [
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11102 }),
+    ["صف غير معروف"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.meta.unrecognized_rows, [3]);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [2]);
+});
+
+test("reads detailed invoice blocks directly from a real-layout workbook", () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11101, amount: 240 }),
+    makeDetailedItem(), makeDetailedSubtotal(11101),
+  ]), "Sheet1");
+  const result = parseBConnectWorkbook(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices.length, 1);
+  assert.equal(result.invoices[0].invoice_value, 240);
+});
