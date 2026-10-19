@@ -183,6 +183,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
   const app = row.app || {};
   const source = row.bconnect || {};
   const decisionView = buildBConnectPurchaseDecision(row);
+  const mainReason = row.status === 'problem' && row.reasons?.length ? row.reasons[0] : decisionView.instruction;
   const returnInspection = hasUploadedReturns(row);
   const canMarkReturnInspected = context.readOnly && returnInspection;
   const appEnteredBy = app.entered_by_name || app.entered_by || '';
@@ -329,8 +330,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
         <div className={`mt-3 rounded-2xl border p-3 ${decisionView.confidence?.code === 'blocked' || decisionView.confidence?.code === 'low' ? 'border-rose-200 bg-rose-50/60' : decisionView.confidence?.code === 'high_explanation' || decisionView.confidence?.code === 'medium' ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
-              <div className="mt-1 text-sm font-bold text-slate-700">{canMarkReturnInspected ? 'القيم المطابقة سليمة، لكن لازم تراجع أصناف المرتجع وكمياته قبل إغلاق الفحص.' : decisionView.instruction}</div>
+              <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{decisionView.confidence?.code !== 'blocked' && Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
+              <div className="mt-1 text-sm font-bold text-slate-700">{canMarkReturnInspected ? 'القيم المطابقة سليمة، لكن لازم تراجع أصناف المرتجع وكمياته قبل إغلاق الفحص.' : mainReason}</div>
               {row.reasons?.length > 0 && <div className="mt-2 text-[11px] leading-5 text-slate-600">{row.reasons.slice(0, 2).join(' · ')}</div>}
               <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold">
                 {financialMismatch && <span className={`rounded-full px-2 py-1 ${decisionView.toleranceAccepted ? 'bg-teal-100 text-teal-800' : 'bg-rose-100 text-rose-700'}`}>{decisionView.toleranceAccepted ? 'فرق مقبول' : 'فرق'} {money(Math.abs(decisionView.financialDifference))} ج{decisionView.toleranceAccepted ? ' · سماحية ±5 ج' : ''}</span>}
