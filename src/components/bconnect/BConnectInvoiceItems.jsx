@@ -70,7 +70,7 @@ export default function BConnectInvoiceItems({ invoice }) {
   useEffect(() => {
     setMode((source.items || []).some(returned) ? 'returns' : 'all');
     setSearch('');
-  }, [invoice?.number, source.source_file]);
+  }, [invoice?.number, source.source_file, source.branch]);
 
   const returnItems = useMemo(() => (items || []).filter(returned), [items]);
   const searched = useMemo(() => {
