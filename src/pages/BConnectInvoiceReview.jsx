@@ -48,7 +48,9 @@ function DecisionBadge({ view, large = false }) {
 
 function DecisionFacts({ view, large = false }) {
   const facts = [];
-  if (view.financialDifference !== null && view.financialDifference !== 0) facts.push({ text: `فرق ${money(Math.abs(view.financialDifference))} ج`, className: 'border-rose-100 bg-rose-50 text-rose-700' });
+  if (view.financialDifference !== null && view.financialDifference !== 0) facts.push(view.toleranceAccepted
+    ? { text: `فرق مقبول ${money(Math.abs(view.financialDifference))} ج (±5 ج)`, className: 'border-teal-100 bg-teal-50 text-teal-800' }
+    : { text: `فرق ${money(Math.abs(view.financialDifference))} ج`, className: 'border-rose-100 bg-rose-50 text-rose-700' });
   if (view.evidence?.label && facts.length < 3) facts.push({ text: view.evidence.label, className: 'border-slate-200 bg-slate-50 text-slate-600' });
   if (view.supplierMismatch && facts.length < 3) facts.push({ text: 'المورد مختلف', className: 'border-amber-100 bg-amber-50 text-amber-700' });
   if (view.dateMismatch && facts.length < 3) facts.push({ text: view.dateDifferenceDays === null ? 'التاريخ مختلف' : `التاريخ ±${Math.abs(view.dateDifferenceDays)} يوم`, className: 'border-amber-100 bg-amber-50 text-amber-700' });
@@ -162,7 +164,7 @@ export default function BConnectInvoiceReview() {
     try {
       await saveBconnectAcceptance(row);
       const key = rowKey(row);
-      setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'اعتماد دائم: تم قبول اختلاف المورد/التاريخ كما هو', source_id: row.app?.id || null } }));
+      setDecisions((old) => ({ ...old, [key]: { action: 'accepted', note: 'اعتماد دائم: مراجعة اختلاف المورد/التاريخ كما هو', source_id: row.app?.id || null } }));
       selectNext(row);
       setReviewRow(null);
       setState((old) => ({ ...old, error: '' }));
@@ -351,7 +353,7 @@ export default function BConnectInvoiceReview() {
         {view.financialDifference !== null && view.financialDifference !== 0 && <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
           <div><span className="text-[10px] font-bold text-slate-400">B-Connect</span><div className="text-base font-black text-slate-900">{money(view.bconnectTotal)} ج</div></div>
           <div><span className="text-[10px] font-bold text-slate-400">التطبيق</span><div className="text-base font-black text-slate-900">{money(view.appTotal)} ج</div></div>
-          <div className="mr-auto border-r border-slate-200 pr-5"><span className="text-[10px] font-bold text-rose-500">الفرق</span><div className="text-base font-black text-rose-700">{money(Math.abs(view.financialDifference))} ج</div></div>
+          <div className="mr-auto border-r border-slate-200 pr-5"><span className={`text-[10px] font-bold ${view.toleranceAccepted ? "text-teal-600" : "text-rose-500"}`}>{view.toleranceAccepted ? "فرق مقبول ±5 ج" : "الفرق"}</span><div className={`text-base font-black ${view.toleranceAccepted ? "text-teal-700" : "text-rose-700"}`}>{money(Math.abs(view.financialDifference))} ج</div></div>
         </div>}
 
         <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
