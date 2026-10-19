@@ -190,12 +190,15 @@ function parseDetailedBConnectRows(rows) {
         unrecognizedRows.push(i + 1);
         continue;
       }
-      const subtotalSerial = text(row[9]);
+      // Column J is the SUPPLIER'S invoice number; the program serial lives
+      // in column X of the preceding header. They must not be compared.
+      const supplierInvoiceNumber = text(row[9]) || null;
       const itemCount = number(row[7]);
-      if (subtotalSerial !== active.serial || itemCount === null ||
-          !Number.isSafeInteger(itemCount) || itemCount < 0 || itemCount !== active.itemLines) {
+      if (itemCount === null || !Number.isSafeInteger(itemCount) ||
+          itemCount < 0 || itemCount !== active.itemLines) {
         invalidInvoiceRows.push(i + 1);
       } else if (active.invoice) {
+        active.invoice.supplier_invoice_number = supplierInvoiceNumber;
         active.invoice.count = itemCount;
         const detailTotal = number(row[3]);
         active.invoice.detail_total = detailTotal;
