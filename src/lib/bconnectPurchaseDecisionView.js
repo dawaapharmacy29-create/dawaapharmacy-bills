@@ -116,6 +116,7 @@ export function buildBConnectPurchaseDecision(row = {}) {
     && identityConfirmed
     && row?.status === 'review'
     && financialMatch
+    && !hasReturn
     && (supplierMismatch || dateMismatch);
 
   const exactReturnExplanation = returnExplanation({ difference, appReturn: returned, sourceReturn });
