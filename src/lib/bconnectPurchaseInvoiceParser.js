@@ -255,7 +255,10 @@ function parseDetailedBConnectRows(rows) {
         active.items.push(item);
         // A nonzero returned quantity without a returned monetary value is
         // incomplete financial evidence: don't silently count it as zero.
-        if ((item.returned_quantity || 0) > 0 && item.return_total === null) {
+        if (((item.returned_quantity || 0) > 0 &&
+              (item.return_total === null || item.return_total < 0 ||
+               item.purchased_quantity === null)) ||
+            ((item.return_total || 0) > 0 && !(item.returned_quantity > 0))) {
           invalidInvoiceRows.push(i + 1);
         }
       }
