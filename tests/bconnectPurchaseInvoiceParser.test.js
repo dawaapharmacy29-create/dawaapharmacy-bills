@@ -287,8 +287,8 @@ function makeDetailedItem(code = "12345") {
   row[15] = code;
   return row;
 }
-function makeDetailedSubtotal(serial, count = 1) {
-  return [20, 6, 100, 120, 0, 0, "الإجمالى", count,
+function makeDetailedSubtotal(serial, count = 1, amount = 120) {
+  return [20, 6, 100, amount, 0, 0, "الإجمالى", count,
     "عدد الأصناف", String(serial), "رقم فاتورة المورد",
     "*********************************************************************************"];
 }
@@ -303,12 +303,12 @@ test("parses the detailed B-Connect purchase export as invoices, never as line i
     makeDetailedSubtotal(11101),
     makeDetailedHeader({ serial: 11102, supplier: "مورد ثان", amount: 222 }),
     makeDetailedItem("66807"), makeDetailedItem("80458"),
-    makeDetailedSubtotal(11102, 2),
+    makeDetailedSubtotal(11102, 2, 222),
     [82000, "قيمة الربح", 150000, "صافى الفواتير"],
     ["نقدى"],
     makeDetailedHeader({ serial: 11103, amount: 50 }),
     makeDetailedItem("80458"),
-    makeDetailedSubtotal(11103),
+    makeDetailedSubtotal(11103, 1, 50),
     ["Page -1 of 1", "ePlus", 46314, "-", 0.304, "وقت الطباعة ", "Copyright © B-Connect 2011"],
   ];
   const result = parseBConnectRows(rows);
@@ -354,10 +354,31 @@ test("reads detailed invoice blocks directly from a real-layout workbook", () =>
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
     ["الفرعية الشامي", "موردين"],
     makeDetailedHeader({ serial: 11101, amount: 240 }),
-    makeDetailedItem(), makeDetailedSubtotal(11101),
+    makeDetailedItem(), makeDetailedSubtotal(11101, 1, 240),
   ]), "Sheet1");
   const result = parseBConnectWorkbook(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
   assert.equal(result.valid, true, result.warnings.join(" "));
   assert.equal(result.invoices.length, 1);
   assert.equal(result.invoices[0].invoice_value, 240);
+});
+
+
+test("detailed subtotal with missing items blocks approval instead of silently accepting a partial invoice", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11101 }), makeDetailedItem(), makeDetailedSubtotal(11101, 2),
+  ]);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [4]);
+});
+
+test("real-world header/subtotal amount disagreements remain visible for manual review", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11155, amount: 147.18 }), makeDetailedItem(),
+    makeDetailedItem("73104"), makeDetailedSubtotal(11155, 2, 183.72),
+  ]);
+  assert.equal(result.valid, true);
+  assert.equal(result.invoices[0].detail_total, 183.72);
+  assert.ok(Math.abs(result.invoices[0].detail_total_difference - 36.54) < 0.001);
 });
