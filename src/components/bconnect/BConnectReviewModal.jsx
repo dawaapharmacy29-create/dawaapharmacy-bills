@@ -5,6 +5,7 @@ import { bconnectAtomicCreate } from '@/api/bconnectAtomicCreateClient';
 import { Button } from '@/components/ui/button';
 import BConnectSupplierSuggestions from '@/components/bconnect/BConnectSupplierSuggestions';
 import BConnectInvoiceItems from '@/components/bconnect/BConnectInvoiceItems';
+import BConnectInvoiceIdentity from '@/components/bconnect/BConnectInvoiceIdentity';
 import { hasUploadedReturns } from '@/lib/bconnectReviewQueue';
 import { prepareBconnectWriteCommand } from '@/lib/bconnectAtomicInvoiceCommand';
 import { buildBConnectFormHandoff } from '@/lib/bconnectInvoiceFormHandoff';
@@ -324,7 +325,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
       </div>
 
       <div className="overflow-y-auto p-4 md:p-5">
-        <div className={`rounded-2xl border p-3 ${decisionView.confidence?.code === 'blocked' || decisionView.confidence?.code === 'low' ? 'border-rose-200 bg-rose-50/60' : decisionView.confidence?.code === 'high_explanation' || decisionView.confidence?.code === 'medium' ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
+        <BConnectInvoiceIdentity invoice={row} />
+        <div className={`mt-3 rounded-2xl border p-3 ${decisionView.confidence?.code === 'blocked' || decisionView.confidence?.code === 'low' ? 'border-rose-200 bg-rose-50/60' : decisionView.confidence?.code === 'high_explanation' || decisionView.confidence?.code === 'medium' ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
@@ -357,7 +359,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
               <button type="button" onClick={() => setShowAllDetails((value) => !value)} className="inline-flex items-center gap-1 text-xs font-black text-teal-700">{showAllDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}{showAllDetails ? 'إخفاء المطابق' : 'عرض كل البيانات'}</button>
             </div>
 
-            {!hasFocusedDifference && !showAllDetails && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-bold text-emerald-800">لا توجد فروق مؤثرة إضافية.</div>}
+            {!hasFocusedDifference && !showAllDetails && <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">{blocked ? 'لا توجد فروق مالية مؤكدة، لكن أدلة ربط الفاتورة غير كافية. راجع بيانات الهوية بالأعلى.' : 'لا توجد فروق مؤثرة إضافية.'}</div>}
             {showBranchCompare && <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} comparison={row.checks?.branch} />}
             {showSupplierCompare && <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} comparison={supplierComparison} />}
             {showDateCompare && <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} comparison={row.checks?.invoice_date} />}
