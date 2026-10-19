@@ -349,6 +349,10 @@ export default function BConnectInvoiceReview() {
 
       <div className="space-y-3 p-4 md:p-5">
         <DecisionFacts view={view} large />
+        {Array.isArray(selectedRow.bconnect?.items) && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-100 bg-teal-50/50 px-3 py-2">
+          <span className="text-xs font-black text-teal-900">{selectedRow.bconnect.items.length} سطر صنف{selectedRow.bconnect.returned_items_count > 0 ? ' · ' + selectedRow.bconnect.returned_items_count + ' أصناف بها مرتجع' : ''}</span>
+          <button type="button" onClick={() => setReviewRow(selectedRow)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-black text-teal-700 shadow-sm hover:bg-teal-100">عرض الأصناف والمرتجعات</button>
+        </div>}
 
         {view.financialDifference !== null && view.financialDifference !== 0 && <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3">
           <div><span className="text-[10px] font-bold text-slate-400">B-Connect</span><div className="text-base font-black text-slate-900">{money(view.bconnectTotal)} ج</div></div>
@@ -422,7 +426,7 @@ export default function BConnectInvoiceReview() {
               const view = buildBConnectPurchaseDecision(row);
               const active = selectedRow && rowKey(selectedRow) === rowKey(row);
               return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full border-r-[3px] px-3 py-2.5 text-right transition ${active ? 'border-teal-500 bg-teal-50/45' : 'border-transparent bg-white hover:bg-slate-50'}`}>
-                <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} /></div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div>{state.meta?.files?.length > 1 && <div className="mt-0.5 truncate text-[10px] text-slate-400">{row.bconnect?.source_file}</div>}<div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
+                <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} /></div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div>{state.meta?.files?.length > 1 && <div className="mt-0.5 truncate text-[10px] text-slate-400">{row.bconnect?.source_file}</div>}{Array.isArray(row.bconnect?.items) && <div className="mt-0.5 text-[10px] font-bold text-teal-700">{row.bconnect.items.length} صنف{row.bconnect.returned_items_count > 0 ? ' · مرتجع ' + row.bconnect.returned_items_count : ''}</div>}<div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
               </button>;
             })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
           </Card>
