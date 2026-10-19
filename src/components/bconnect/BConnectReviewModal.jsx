@@ -5,6 +5,7 @@ import { bconnectAtomicCreate } from '@/api/bconnectAtomicCreateClient';
 import { Button } from '@/components/ui/button';
 import BConnectSupplierSuggestions from '@/components/bconnect/BConnectSupplierSuggestions';
 import BConnectInvoiceItems from '@/components/bconnect/BConnectInvoiceItems';
+import { hasUploadedReturns } from '@/lib/bconnectReviewQueue';
 import { prepareBconnectWriteCommand } from '@/lib/bconnectAtomicInvoiceCommand';
 import { buildBConnectFormHandoff } from '@/lib/bconnectInvoiceFormHandoff';
 import { classifyBConnectReviewRow } from '@/lib/bconnectReviewDecisionPolicy';
@@ -181,6 +182,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
   const app = row.app || {};
   const source = row.bconnect || {};
   const decisionView = buildBConnectPurchaseDecision(row);
+  const returnInspection = hasUploadedReturns(row);
+  const canMarkReturnInspected = context.readOnly && returnInspection;
   const appEnteredBy = app.entered_by_name || app.entered_by || '';
   const supplierComparison = row.checks?.supplier || 'unknown';
   const supplierChoices = app.supplier_id && !suppliers.some((supplier) => String(supplier.id) === String(app.supplier_id))
@@ -325,7 +328,8 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
-              <div className="mt-1 text-sm font-bold text-slate-700">{decisionView.instruction}</div>
+              <div className="mt-1 text-sm font-bold text-slate-700">{canMarkReturnInspected ? 'القيم المطابقة سليمة، لكن لازم تراجع أصناف المرتجع وكمياته قبل إغلاق الفحص.' : decisionView.instruction}</div>
+              {row.reasons?.length > 0 && <div className="mt-2 text-[11px] leading-5 text-slate-600">{row.reasons.slice(0, 2).join(' · ')}</div>}
               <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold">
                 {financialMismatch && <span className={`rounded-full px-2 py-1 ${decisionView.toleranceAccepted ? 'bg-teal-100 text-teal-800' : 'bg-rose-100 text-rose-700'}`}>{decisionView.toleranceAccepted ? 'فرق مقبول' : 'فرق'} {money(Math.abs(decisionView.financialDifference))} ج{decisionView.toleranceAccepted ? ' · سماحية ±5 ج' : ''}</span>}
                 {decisionView.supplierMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">مورد</span>}
@@ -343,6 +347,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
           </div>
         </div>
 
+        {canMarkReturnInspected && <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">فحص المرتجع لا يعدّل الفاتورة ولا يُسجّل حركة مخزون. علامة «تم الفحص» مؤقتة لهذه الجلسة فقط.</div>}
         <BConnectInvoiceItems invoice={row} />
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
           <section className="space-y-2">
@@ -393,7 +398,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
         <div className="text-xs text-slate-400">{showAllDetails && !isCreate ? <>السجل: <span className="font-mono">{app.id || '—'}</span>{hasRevision ? ` · نسخة ${revision}` : ''}</> : hasChanges ? `${changedCount} تعديل جاهز للحفظ` : 'راجع القرار ثم نفّذ'}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" disabled={saveState.saving} onClick={onClose}>إغلاق</Button>
-          {!isCreate && !canAcceptAsIs && !blocked && !readOnly && <Button type="button" variant="ghost" size="sm" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>تمت المراجعة</Button>}
+          {!isCreate && !canAcceptAsIs && !blocked && (!readOnly || canMarkReturnInspected) && <Button type="button" variant={canMarkReturnInspected ? 'default' : 'ghost'} size="sm" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>{canMarkReturnInspected ? 'تم فحص المرتجع' : 'تمت المراجعة'}</Button>}
           {canAcceptAsIs && <Button type="button" size="sm" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الآن</Button>}
           {isCreate && !blocked ? <Button type="button" size="sm" disabled={!canCreate} onClick={createMissing}>{saveState.saving ? 'جاري التسجيل...' : 'اعتماد وتسجيل'}</Button> : blocked || readOnly || canAcceptAsIs ? null : <Button type="button" size="sm" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ...' : hasChanges ? `حفظ ${changedCount} تعديل` : 'حفظ'}</Button>}
         </div>
