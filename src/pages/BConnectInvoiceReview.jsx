@@ -308,7 +308,13 @@ export default function BConnectInvoiceReview() {
       const restoredDecisions = {};
       rows.forEach((row) => {
         const fingerprint = bconnectAcceptanceFingerprint(row);
-        if (fingerprint && acceptedFingerprints.has(fingerprint)) restoredDecisions[rowKey(row)] = { action: 'accepted', note: 'اعتماد محفوظ سابقًا', source_id: row.app?.id || null, persistent: true };
+        // A previously accepted supplier/date drift must never conceal newly
+        // detected returns. Keep these rows visible for individual review.
+        const view = buildBConnectPurchaseDecision(row);
+        if (fingerprint && acceptedFingerprints.has(fingerprint) && !view.hasReturn &&
+            (view.lane === 'approve' || view.lane === 'clean')) {
+          restoredDecisions[rowKey(row)] = { action: 'accepted', note: 'اعتماد محفوظ سابقًا', source_id: row.app?.id || null, persistent: true };
+        }
       });
       setDecisions(restoredDecisions);
       setState({
