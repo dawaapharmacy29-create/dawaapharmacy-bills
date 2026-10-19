@@ -49,7 +49,8 @@ function DecisionBadge({ view, large = false }) {
 
 function DecisionFacts({ view, large = false }) {
   const facts = [];
-  if (view.financialDifference !== null && view.financialDifference !== 0) facts.push(view.toleranceAccepted
+  if (view.returnIssue) facts.push({ text: view.returnDifference === null ? 'مرتجع غير مؤكد بالتطبيق' : `فرق مرتجع ${money(Math.abs(view.returnDifference))} ج`, className: 'border-amber-200 bg-amber-50 text-amber-800' });
+  if (view.financialDifference !== null && view.financialDifference !== 0 && facts.length < 3) facts.push(view.toleranceAccepted
     ? { text: `فرق مقبول ${money(Math.abs(view.financialDifference))} ج (±5 ج)`, className: 'border-teal-100 bg-teal-50 text-teal-800' }
     : { text: `فرق ${money(Math.abs(view.financialDifference))} ج`, className: 'border-rose-100 bg-rose-50 text-rose-700' });
   if (view.evidence?.label && facts.length < 3) facts.push({ text: view.evidence.label, className: 'border-slate-200 bg-slate-50 text-slate-600' });
