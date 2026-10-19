@@ -124,7 +124,115 @@ function looksLikeInvoice(row, map) {
   return text(serial) !== "" && number(serial) !== null && number(value) !== null && parseExcelDate(row[map.date]) !== null;
 }
 
+
+// Detailed exports put invoice values 12 columns to the right of repeated
+// label headers, followed by item details and a closing invoice subtotal.
+function isDetailedInvoiceHeader(row) {
+  const map = detectHeader(row);
+  return !!map && text(row[0]) === "ملاحظات" &&
+    ["إسم المورد", "اسم المورد"].includes(text(row[8])) &&
+    ["ك.المورد", "كود المورد"].includes(text(row[9])) &&
+    text(row[37]) === "الإسم" && text(row[38]) === "الكود";
+}
+
+function isDetailedInvoiceSubtotal(row) {
+  return /^ال[اإ]جمال[يى]$/u.test(text(row[6])) &&
+    text(row[8]) === "عدد الأصناف" && text(row[10]) === "رقم فاتورة المورد";
+}
+
+function parseDetailedBConnectRows(rows) {
+  const invoices = [];
+  const invalidInvoiceRows = [];
+  const unrecognizedRows = [];
+  let branch = null;
+  let payment_type = null;
+  let active = null;
+  let headerCount = 0;
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = Array.isArray(rows[i]) ? rows[i] : [];
+    const cells = row.map(text).filter(Boolean);
+    if (!cells.length) continue;
+    const inferredBranch = cells.map(inferBranchFromBConnectLocation).find(Boolean);
+    if (inferredBranch) branch = inferredBranch;
+    const payment = cells.find(isPaymentLabel);
+    if (payment) payment_type = normalizePayment(payment);
+
+    if (isDetailedInvoiceHeader(row)) {
+      headerCount += 1;
+      if (active) invalidInvoiceRows.push(active.row_number);
+      const labels = detectHeader(row);
+      const field = (key) => Number.isInteger(labels[key]) ? row[labels[key] + 12] : null;
+      const supplier = text(row[20]) || null;
+      const rawSerial = text(field("serial"));
+      const invoiceValue = number(field("invoice_value"));
+      const invoiceDate = parseExcelDate(field("date"));
+      const valid = /^[0-9]+$/u.test(rawSerial) && Number.isSafeInteger(Number(rawSerial)) &&
+        Number(rawSerial) > 0 && invoiceValue !== null && invoiceDate !== null && !!supplier && !!branch;
+      if (!valid) invalidInvoiceRows.push(i + 1);
+      const invoice = valid ? {
+        row_number: i + 1, supplier, branch, payment_type,
+        user: text(field("user")) || null,
+        net: number(field("net")), tax: number(field("tax")),
+        expenses: number(field("expenses")),
+        discount_percent: number(field("discount_percent")),
+        discount_value: number(field("discount_value")),
+        return_value: null,
+        invoice_value: invoiceValue, count: null,
+        serial: rawSerial, date: invoiceDate,
+      } : null;
+      active = { row_number: i + 1, serial: rawSerial, invoice };
+      continue;
+    }
+
+    if (isDetailedInvoiceSubtotal(row)) {
+      if (!active) {
+        unrecognizedRows.push(i + 1);
+        continue;
+      }
+      const subtotalSerial = text(row[9]);
+      const itemCount = number(row[7]);
+      if (subtotalSerial !== active.serial || itemCount === null ||
+          !Number.isSafeInteger(itemCount) || itemCount < 0) {
+        invalidInvoiceRows.push(i + 1);
+      } else if (active.invoice) {
+        active.invoice.count = itemCount;
+        invoices.push(active.invoice);
+      }
+      active = null;
+      continue;
+    }
+
+    if (active) {
+      if (!text(row[14]) || !text(row[15])) unrecognizedRows.push(i + 1);
+      continue;
+    }
+
+    if (inferredBranch || payment ||
+        cells.some((cell) => /^(?:تم ال[اإ]سترجاع حسب:|Page -|Copyright|وقت الطباعة)/u.test(cell)) ||
+        cells.some((cell) => /^(?:صافى الفواتير|صافي الفواتير|قيمة الفواتير|قيمة الربح|الإجم|الاجم)/u.test(cell))) continue;
+    unrecognizedRows.push(i + 1);
+  }
+
+  if (active) invalidInvoiceRows.push(active.row_number);
+  const invalid = [...new Set(invalidInvoiceRows)];
+  const warnings = [];
+  if (invalid.length) warnings.push("صفوف فواتير تفصيلية غير صالحة أو غير مكتملة: " + invalid.join("، ") + ". يجب مراجعتها قبل المطابقة.");
+  if (unrecognizedRows.length) warnings.push("صفوف غير معروفة في تقرير الفواتير التفصيلي: " + unrecognizedRows.join("، ") + ".");
+  if (!invoices.length) warnings.push("لم يتم العثور على فواتير تفصيلية مكتملة.");
+  return {
+    valid: headerCount > 0 && invoices.length === headerCount && !invalid.length && !unrecognizedRows.length,
+    invoices, warnings,
+    meta: {
+      parser_version: "v4-detailed", report_format: "invoice-with-item-details",
+      header_sections: headerCount, invoice_count: invoices.length,
+      invalid_invoice_rows: invalid, unrecognized_rows: unrecognizedRows,
+    },
+  };
+}
+
 export function parseBConnectRows(rows) {
+  if (rows.some((row) => Array.isArray(row) && isDetailedInvoiceHeader(row))) return parseDetailedBConnectRows(rows);
   const invoices = [];
   const warnings = [];
   const invalidInvoiceRows = [];
