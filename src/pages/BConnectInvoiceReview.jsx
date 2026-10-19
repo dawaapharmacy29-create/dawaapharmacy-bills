@@ -10,6 +10,7 @@ import { parseBConnectWorkbook } from '@/lib/bconnectPurchaseInvoiceParser';
 import { reconcilePurchaseInvoice } from '@/lib/purchaseInvoiceReconciliation';
 import { normalizeBranch, normalizeInvoiceNumber, normalizeMoney } from '@/lib/purchaseInvoiceTruth';
 import { buildBConnectDecisionGroups, buildBConnectPurchaseDecision } from '@/lib/bconnectPurchaseDecisionView';
+import { hasUploadedReturns, matchesReviewSearch, needsReturnInspection, reviewAttentionSummary, reviewQueuePriority } from '@/lib/bconnectReviewQueue';
 
 const invoiceScopeKey = (branch, number) => `${normalizeBranch(branch) || 'unknown'}::${normalizeInvoiceNumber(number) || 'unknown'}`;
 const rowKey = (row) => invoiceScopeKey(row?.bconnect?.branch || row?.app?.branch, row?.number);
@@ -115,6 +116,10 @@ export default function BConnectInvoiceReview() {
   }, [state.rows, decisions]);
 
   const individualApproveCount = Math.max(0, counts.approve - safeBulkRows.length);
+  const returnSummary = useMemo(
+    () => reviewAttentionSummary(state.rows, decisions, rowKey),
+    [state.rows, decisions]
+  );
 
   const queueRows = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -124,16 +129,20 @@ export default function BConnectInvoiceReview() {
       const view = buildBConnectPurchaseDecision(row);
       const branch = normalizeBranch(row.bconnect?.branch || row.app?.branch);
       if (branchFilter !== 'all' && branch !== branchFilter) return false;
-      if (query && ![row.number, row.bconnect?.supplier, row.app?.supplier_name, row.bconnect?.user, row.app?.entered_by_name, row.app?.entered_by, view.note].some((value) => String(value ?? '').toLowerCase().includes(query))) return false;
-      if (queueFilter === 'done') return action === 'accepted' || view.lane === 'clean';
-      if (action === 'accepted' || view.lane === 'clean') return false;
+      if (!matchesReviewSearch(row, query) && !String(view.note || '').toLowerCase().includes(query)) return false;
+      const returnPending = needsReturnInspection(row, decisions, key);
+      if (queueFilter === 'returns') return hasUploadedReturns(row);
+      if (queueFilter === 'done') return action === 'accepted' || action === 'reviewed' || (view.lane === 'clean' && !returnPending);
+      if (action === 'accepted' || action === 'reviewed' || (view.lane === 'clean' && !returnPending)) return false;
       if (queueFilter === 'needs') return ['correct', 'explain', 'register'].includes(view.lane);
       if (queueFilter === 'investigate') return view.lane === 'investigate';
-      if (queueFilter === 'approve') return view.lane === 'approve' && !safeBulkKeys.has(key);
-      return ['correct', 'explain', 'register', 'investigate'].includes(view.lane) || (view.lane === 'approve' && !safeBulkKeys.has(key));
+      if (queueFilter === 'approve') return view.lane === 'approve' && !safeBulkKeys.has(key) && !returnPending;
+      return returnPending || ['correct', 'explain', 'register', 'investigate'].includes(view.lane) || (view.lane === 'approve' && !safeBulkKeys.has(key));
     }).sort((a, b) => {
-      const priority = { explain: 0, correct: 1, register: 2, investigate: 3, approve: 4, clean: 9 };
-      return (priority[buildBConnectPurchaseDecision(a).lane] ?? 8) - (priority[buildBConnectPurchaseDecision(b).lane] ?? 8);
+      const aPriority = reviewQueuePriority(a, buildBConnectPurchaseDecision(a));
+      const bPriority = reviewQueuePriority(b, buildBConnectPurchaseDecision(b));
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return String(a.number || '').localeCompare(String(b.number || ''), 'ar', { numeric: true });
     });
   }, [state.rows, decisions, branchFilter, search, queueFilter, safeBulkKeys]);
 
@@ -346,7 +355,11 @@ export default function BConnectInvoiceReview() {
     const view = buildBConnectPurchaseDecision(selectedRow);
     const meta = laneMeta[view.lane] || laneMeta.clean;
     const branch = normalizeBranch(selectedRow.bconnect?.branch || selectedRow.app?.branch) || 'فرع غير معروف';
-    const actionLabel = view.fastAccept ? 'اعتماد وانتقل' : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق' : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'investigate' ? 'فتح التحقيق' : 'فتح التفاصيل';
+    const pendingReturn = needsReturnInspection(selectedRow, decisions, rowKey(selectedRow));
+    const actionLabel = pendingReturn && view.lane === 'clean' ? 'فحص تفاصيل المرتجع'
+      : view.fastAccept ? 'اعتماد وانتقل'
+      : view.lane === 'correct' ? 'فتح التصحيح' : view.lane === 'explain' ? 'مراجعة الفرق'
+      : view.lane === 'register' ? 'تسجيل الفاتورة' : view.lane === 'investigate' ? 'فتح التحقيق' : 'فتح التفاصيل';
     const appSupplier = selectedRow.app?.supplier_name || '—';
     const sourceSupplier = selectedRow.bconnect?.supplier || '—';
     const sourceEnteredBy = selectedRow.bconnect?.user || 'غير مسجل';
@@ -358,12 +371,18 @@ export default function BConnectInvoiceReview() {
           <div className="flex flex-wrap items-center gap-2.5"><span className="font-mono text-2xl font-black text-slate-950">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
           <div className="mt-1.5 truncate text-lg font-black text-slate-900">{sourceSupplier}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-400"><span>{branch}</span><span>•</span><span>{formatArabicDate(selectedRow.bconnect?.date)}</span></div>
+          <div className="mt-2 text-xs font-semibold text-slate-600">{pendingReturn && view.lane === 'clean' ? 'إجمالي الفاتورة مطابق؛ مرتجع المورد محتاج فحص السطور فقط.' : view.instruction}</div>
         </div>
         <div className={`rounded-full px-3 py-1 text-[11px] font-black ${meta.bg} ${meta.text}`}>القرار الآن: {meta.label}</div>
       </div>
 
       <div className="space-y-3 p-4 md:p-5">
         <DecisionFacts view={view} large />
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-3 text-xs md:grid-cols-3">
+          <div><div className="font-bold text-slate-400">أصناف الملف</div><div className="mt-1 font-black text-slate-800">{Array.isArray(selectedRow.bconnect?.items) ? selectedRow.bconnect.items.length : 'غير متاحة'}</div></div>
+          <div><div className="font-bold text-slate-400">المرتجعات</div><div className={'mt-1 font-black ' + (hasUploadedReturns(selectedRow) ? 'text-rose-700' : 'text-slate-800')}>{hasUploadedReturns(selectedRow) ? (selectedRow.bconnect?.returned_items_count || 'موجودة') : 'لا يوجد في الملف'}</div></div>
+          <div><div className="font-bold text-slate-400">الخطوة المقترحة</div><div className="mt-1 font-black text-teal-800">{actionLabel}</div></div>
+        </div>
         {Array.isArray(selectedRow.bconnect?.items) && <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-teal-100 bg-teal-50/50 px-3 py-2">
           <span className="text-xs font-black text-teal-900">{selectedRow.bconnect.items.length} سطر صنف{selectedRow.bconnect.returned_items_count > 0 ? ' · ' + selectedRow.bconnect.returned_items_count + ' أصناف بها مرتجع' : ''}</span>
           <button type="button" onClick={() => setReviewRow(selectedRow)} className="rounded-lg bg-white px-3 py-1.5 text-xs font-black text-teal-700 shadow-sm hover:bg-teal-100">عرض الأصناف والمرتجعات</button>
@@ -410,11 +429,12 @@ export default function BConnectInvoiceReview() {
 
       {!!state.rows.length && <>
         <Card className="overflow-hidden border-slate-200 bg-white shadow-none">
-          <div className="grid divide-y divide-slate-100 md:grid-cols-4 md:divide-x md:divide-x-reverse md:divide-y-0">
+          <div className="grid divide-y divide-slate-100 md:grid-cols-5 md:divide-x md:divide-x-reverse md:divide-y-0">
             <StatItem label="اعتماد جماعي آمن" value={safeBulkRows.length} hint={`من ${counts.approve} حالة اعتماد`} active={safeBulkRows.length > 0} action={<Button type="button" size="sm" className="h-8 bg-teal-700 px-3 text-[11px] text-white hover:bg-teal-800" disabled={!safeBulkRows.length || bulkState.running} onClick={acceptAllSafe}>{bulkState.running && bulkState.key === 'all_safe' ? 'جاري...' : 'اعتماد الكل'}</Button>} />
             <StatItem label="اعتماد فردي" value={individualApproveCount} active={queueFilter === 'approve'} onClick={() => { setQueueFilter('approve'); setSelectedKey(''); }} />
             <StatItem label="تحتاج قرار" value={counts.needs} active={queueFilter === 'needs'} onClick={() => { setQueueFilter('needs'); setSelectedKey(''); }} />
             <StatItem label="تحقيق" value={counts.investigate} hint={`مكتمل ${counts.done}`} active={queueFilter === 'investigate'} onClick={() => { setQueueFilter('investigate'); setSelectedKey(''); }} />
+            <StatItem label="مرتجعات للفحص" value={returnSummary.returnsToInspect} hint={`من ${returnSummary.returnsTotal} فاتورة بها مرتجع`} active={queueFilter === 'returns'} onClick={() => { setQueueFilter('returns'); setSelectedKey(''); }} />
           </div>
         </Card>
 
@@ -429,11 +449,11 @@ export default function BConnectInvoiceReview() {
           <Card className="overflow-hidden border-slate-200 bg-white shadow-none lg:sticky lg:top-3 lg:self-start">
             <div className="border-b border-slate-100 p-3">
               <div className="flex items-center gap-2">
-                <label className="relative min-w-0 flex-1"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث برقم أو مورد" className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/50 pr-8 pl-2 text-xs outline-none transition focus:border-teal-300 focus:bg-white" /></label>
+                <label className="relative min-w-0 flex-1"><Search className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="رقم فاتورة أو صنف أو كود أو مورد" className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/50 pr-8 pl-2 text-xs outline-none transition focus:border-teal-300 focus:bg-white" /></label>
                 <select value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-9 max-w-28 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-bold text-slate-600"><option value="all">كل الفروع</option>{branches.map((branch) => <option key={branch} value={branch}>{branch}</option>)}</select>
               </div>
               <div className="mt-2 flex items-center gap-1 overflow-x-auto text-[10px] font-black">
-                {[['actionable','المهم'],['needs','قرار'],['approve','اعتماد'],['investigate','تحقيق'],['done','تم']].map(([key,label]) => <button key={key} type="button" onClick={() => { setQueueFilter(key); setSelectedKey(''); }} className={`whitespace-nowrap rounded-full px-3 py-1.5 transition ${queueFilter === key ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{label}</button>)}
+                {[['actionable','المهم'],['returns','مرتجعات'],['needs','قرار'],['approve','اعتماد'],['investigate','تحقيق'],['done','تم']].map(([key,label]) => <button key={key} type="button" onClick={() => { setQueueFilter(key); setSelectedKey(''); }} className={`whitespace-nowrap rounded-full px-3 py-1.5 transition ${queueFilter === key ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{label}</button>)}
                 <span className="mr-auto whitespace-nowrap text-slate-400">{queueRows.length} حالة</span>
               </div>
             </div>
@@ -441,7 +461,7 @@ export default function BConnectInvoiceReview() {
               const view = buildBConnectPurchaseDecision(row);
               const active = selectedRow && rowKey(selectedRow) === rowKey(row);
               return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full border-r-[3px] px-3 py-2.5 text-right transition ${active ? 'border-teal-500 bg-teal-50/45' : 'border-transparent bg-white hover:bg-slate-50'}`}>
-                <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} /></div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div>{state.meta?.files?.length > 1 && <div className="mt-0.5 truncate text-[10px] text-slate-400">{row.bconnect?.source_file}</div>}{Array.isArray(row.bconnect?.items) && <div className="mt-0.5 text-[10px] font-bold text-teal-700">{row.bconnect.items.length} صنف{row.bconnect.returned_items_count > 0 ? ' · مرتجع ' + row.bconnect.returned_items_count : ''}</div>}<div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
+                <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} />{hasUploadedReturns(row) && <span className="rounded-md border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[10px] font-black text-rose-700">{decisions[rowKey(row)]?.action === 'reviewed' ? 'مرتجع فُحص' : 'مرتجع للفحص'}</span>}</div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div>{state.meta?.files?.length > 1 && <div className="mt-0.5 truncate text-[10px] text-slate-400">{row.bconnect?.source_file}</div>}{Array.isArray(row.bconnect?.items) && <div className="mt-0.5 text-[10px] font-bold text-teal-700">{row.bconnect.items.length} صنف{row.bconnect.returned_items_count > 0 ? ' · مرتجع ' + row.bconnect.returned_items_count : ''}</div>}<div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
               </button>;
             })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
           </Card>
