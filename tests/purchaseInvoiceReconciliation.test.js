@@ -50,3 +50,56 @@ test("identical monetary values remain clean after precision fix",()=>{
 });
 
 test("all verified fields equal can be clean",()=>{const r=reconcilePurchaseInvoice({...app,total_value:411.483,invoice_date:"2026-10-06"},bc);assert.equal(r.status,"clean");});
+
+
+test("±5 EGP tolerance is inclusive, directional and never changes the financial truth", () => {
+  const source = { ...bc, date: "2026-10-06", invoice_value: 100 };
+  const base = { ...app, invoice_date: "2026-10-06", total_value: 100 };
+  for (const [delta, status, accepted] of [
+    [0, "clean", true], [0.0004, "clean", true],
+    [4.999, "clean", true], [5, "clean", true],
+    [-5, "clean", true], [-4.999, "clean", true],
+    [5.001, "review", false], [-5.001, "review", false],
+    [23.9, "review", false],
+  ]) {
+    const result = reconcilePurchaseInvoice({ ...base, total_value: 100 - delta }, source);
+    assert.equal(result.status, status, "difference " + delta);
+    assert.equal(result.financial.within_tolerance, accepted, "difference " + delta);
+    assert.equal(result.financial.match, delta === 0, "exact match difference " + delta);
+    assert.ok(Math.abs(result.financial.difference - delta) < 0.000001);
+    assert.equal(result.financial.tolerance_amount, 5);
+  }
+});
+
+test("a tolerated difference never hides supplier, date, branch or source-note problems", () => {
+  const source = { ...bc, date: "2026-10-06", invoice_value: 100 };
+  const base = { ...app, invoice_date: "2026-10-06", total_value: 95 };
+  const supplier = reconcilePurchaseInvoice({ ...base, supplier_name: "غير المورد" }, source);
+  assert.equal(supplier.status, "review");
+  assert.equal(supplier.financial.within_tolerance, true);
+  assert.equal(supplier.checks.supplier, "mismatch");
+
+  const date = reconcilePurchaseInvoice({ ...base, invoice_date: "2026-10-04" }, source);
+  assert.equal(date.status, "review");
+  assert.equal(date.checks.invoice_date, "mismatch");
+
+  const branch = reconcilePurchaseInvoice({ ...base, branch: "دواء الشامي" }, source);
+  assert.equal(branch.status, "problem");
+
+  const note = reconcilePurchaseInvoice({ ...base, notes: "فاتورة مجمعة" }, source);
+  assert.equal(note.status, "review");
+  assert.equal(note.financial.needs_manual_review, true);
+
+  const returned = reconcilePurchaseInvoice({ ...base, returned_value: 3 }, source);
+  assert.equal(returned.status, "review");
+  assert.equal(returned.financial.needs_manual_review, true);
+});
+
+test("missing, corrupt and unverified amounts never qualify for tolerated clean status", () => {
+  const source = { ...bc, date: "2026-10-06", invoice_value: 100 };
+  for (const total of [undefined, null, "", "junk", "Infinity"]) {
+    const result = reconcilePurchaseInvoice({ ...app, total_value: total }, source);
+    assert.equal(result.status, "review");
+    assert.equal(result.financial.within_tolerance, false);
+  }
+});
