@@ -214,34 +214,64 @@ export default function BConnectInvoiceReview() {
     setReviewRow(null);
   };
 
-  const reviewFile = async (file) => {
-    if (!file) return;
-    const fileName = String(file.name || '').toLowerCase();
-    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
-      setState((old) => ({ ...old, error: 'الملف لازم يكون Excel بصيغة xlsx أو xls.' }));
+  const reviewFiles = async (selectedFiles) => {
+    const files = Array.from(selectedFiles || []);
+    if (!files.length || state.loading) return;
+    const fileName = files.length === 1 ? files[0].name : files.length + ' ملفات Excel';
+    const invalidType = files.find((file) => !/\.xlsx?$/i.test(String(file.name || '')));
+    if (invalidType) {
+      setState((old) => ({ ...old, error: 'صيغة غير مدعومة: ' + invalidType.name + '. استخدم xlsx أو xls.' }));
       return;
     }
-    setState({ loading: true, error: '', fileName: file.name, rows: [], meta: null });
+    setState({ loading: true, error: '', fileName, rows: [], meta: null });
     setDecisions({}); setReviewRow(null); setSelectedKey(''); setQueueFilter('actionable'); setSearch(''); setBranchFilter('all'); setBulkState({ key: '', running: false, message: '' }); setShowBulkGroups(false);
+
     try {
-      const parsed = parseBConnectWorkbook(await file.arrayBuffer());
-      if (!parsed.valid) throw new Error(parsed.warnings?.join(' ') || 'ملف B-Connect غير صالح.');
-      const numbers = [...new Set(parsed.invoices.map((row) => normalizeInvoiceNumber(row.serial)).filter(Boolean))];
-      if (!numbers.length) throw new Error('الملف لا يحتوي على أرقام فواتير صالحة للمراجعة.');
-      if (numbers.length > 500) throw new Error('الملف يحتوي على أكثر من 500 رقم فاتورة مختلف. قسّمه إلى ملفات أصغر.');
-      const checked = await performanceApi.bconnectInvoiceNumbers(numbers);
-      if (!Array.isArray(checked)) throw new Error('تعذر التحقق الشامل من أرقام الفواتير.');
-      const pairs = checked.map((entry) => [normalizeInvoiceNumber(entry?.number), entry]);
-      const returned = pairs.map(([number]) => number);
-      if (returned.length !== numbers.length || new Set(returned).size !== returned.length || returned.some((number) => !number || !numbers.includes(number))) throw new Error('نتيجة البحث الشامل ناقصة أو متعارضة؛ لا يمكن اعتماد المطابقة.');
-      const globalLookup = new Map(pairs);
-      const fileCounts = new Map();
-      parsed.invoices.forEach((source) => {
-        const number = normalizeInvoiceNumber(source.serial);
-        const branch = normalizeBranch(source.branch);
-        if (number && branch) fileCounts.set(invoiceScopeKey(branch, number), (fileCounts.get(invoiceScopeKey(branch, number)) || 0) + 1);
-      });
-      const rows = parsed.invoices.map((source) => {
+      const sources = [];
+      const fileSummaries = [];
+      for (const file of files) {
+        let parsed;
+        try { parsed = parseBConnectWorkbook(await file.arrayBuffer()); }
+        catch (error) { throw new Error('تعذر قراءة "' + file.name + '": ' + (error?.message || 'صيغة ملف غير صالحة')); }
+        if (!parsed.valid) throw new Error('الملف "' + file.name + '": ' + (parsed.warnings?.join(' ') || 'تقرير B-Connect غير صالح.'));
+        fileSummaries.push({ name: file.name, invoice_count: parsed.invoices.length, report_format: parsed.meta?.report_format || 'standard' });
+        sources.push(...parsed.invoices.map((row) => ({ ...row, source_file: file.name })));
+      }
+
+      // Identity is (branch, invoice number), not file or supplier. Reject
+      // overlapping files before reconciliation; never hide duplicate rows.
+      const occurrences = new Map();
+      for (const source of sources) {
+        const key = invoiceScopeKey(source.branch, source.serial);
+        occurrences.set(key, (occurrences.get(key) || 0) + 1);
+      }
+      const duplicateKeys = [...occurrences.entries()].filter(([, count]) => count > 1).map(([key]) => key);
+      if (duplicateKeys.length) {
+        throw new Error('فواتير مكررة بين الملفات أو داخلها (' + duplicateKeys.length + '): ' +
+          duplicateKeys.slice(0, 12).join('، ') +
+          (duplicateKeys.length > 12 ? ' …' : '') +
+          '. راجع الملفات المتداخلة؛ لم تُعتمد أي فاتورة.');
+      }
+
+      const numbers = [...new Set(sources.map((row) => normalizeInvoiceNumber(row.serial)).filter(Boolean))];
+      if (!numbers.length) throw new Error('الملفات لا تحتوي على أرقام فواتير صالحة للمراجعة.');
+      const globalLookup = new Map();
+      // The secure RPC has bounded request sizes. Verify every response;
+      // never treat an incomplete chunk as proof that a record is missing.
+      for (let offset = 0; offset < numbers.length; offset += 150) {
+        const batch = numbers.slice(offset, offset + 150);
+        const checked = await performanceApi.bconnectInvoiceNumbers(batch);
+        if (!Array.isArray(checked)) throw new Error('تعذر التحقق الشامل من أرقام الفواتير.');
+        const pairs = checked.map((entry) => [normalizeInvoiceNumber(entry?.number), entry]);
+        const returned = pairs.map(([number]) => number);
+        if (returned.length !== batch.length || new Set(returned).size !== returned.length ||
+            returned.some((number) => !number || !batch.includes(number))) {
+          throw new Error('نتيجة البحث الشامل ناقصة أو متعارضة؛ لا يمكن اعتماد المطابقة.');
+        }
+        pairs.forEach(([number, entry]) => globalLookup.set(number, entry));
+      }
+
+      const rows = sources.map((source) => {
         const number = normalizeInvoiceNumber(source.serial);
         const branch = normalizeBranch(source.branch);
         const gate = globalLookup.get(number);
@@ -251,7 +281,6 @@ export default function BConnectInvoiceReview() {
         if (!branch) return problem('unverified', 'فرع B-Connect غير معروف؛ لا يمكن تكوين هوية الفاتورة بأمان.');
         if (!gate || !Number.isSafeInteger(recordCount) || recordCount < 0) return problem('unverified', 'التحقق الشامل غير مكتمل لهذا الرقم؛ ممنوع الاعتماد.');
         if (!Array.isArray(gate?.rows) || authorizedRows.length > recordCount) return problem('unverified', 'تفاصيل الاستجابة الشاملة غير مكتملة؛ ممنوع الاعتماد.');
-        if ((fileCounts.get(invoiceScopeKey(branch, number)) || 0) > 1) return problem('duplicate_bconnect', 'رقم الفاتورة مكرر داخل نفس الفرع في ملف B-Connect.');
         const sameBranchRows = authorizedRows.filter((row) => normalizeBranch(row?.branch) === branch);
         if (sameBranchRows.length > 1) return problem('duplicate_app', 'رقم الفاتورة مكرر داخل نفس الفرع في التطبيق؛ ممنوع الاعتماد.');
         if (!sameBranchRows.length) {
@@ -262,16 +291,26 @@ export default function BConnectInvoiceReview() {
         if (!app?.id || normalizeInvoiceNumber(app.system_invoice_number) !== number || normalizeBranch(app.branch) !== branch || !Number.isSafeInteger(Number(app.bconnect_revision_v1))) return problem('unverified', 'تفاصيل الفاتورة المرجعية أو رقم نسختها غير مكتملة؛ ممنوع الاعتماد.');
         return { number, bconnect: source, app, ...reconcilePurchaseInvoice(app, source) };
       });
-      const acceptedFingerprints = await loadBconnectAcceptances(rows);
+
+      const acceptedFingerprints = new Set();
+      for (let offset = 0; offset < rows.length; offset += 150) {
+        const accepted = await loadBconnectAcceptances(rows.slice(offset, offset + 150));
+        accepted.forEach((fingerprint) => acceptedFingerprints.add(fingerprint));
+      }
       const restoredDecisions = {};
       rows.forEach((row) => {
         const fingerprint = bconnectAcceptanceFingerprint(row);
         if (fingerprint && acceptedFingerprints.has(fingerprint)) restoredDecisions[rowKey(row)] = { action: 'accepted', note: 'اعتماد محفوظ سابقًا', source_id: row.app?.id || null, persistent: true };
       });
       setDecisions(restoredDecisions);
-      setState({ loading: false, error: '', fileName: file.name, rows, meta: { ...parsed.meta, global_lookup: true, branch_scoped_identity: true, atomic_edit_enabled: true, atomic_create_enabled: true, persistent_acceptance_enabled: true } });
+      setState({
+        loading: false, error: '', fileName, rows,
+        meta: { files: fileSummaries, invoice_count: rows.length, global_lookup: true,
+          branch_scoped_identity: true, atomic_edit_enabled: true, atomic_create_enabled: true,
+          persistent_acceptance_enabled: true },
+      });
     } catch (error) {
-      setState({ loading: false, error: error?.message || 'تعذر مراجعة الملف.', fileName: file.name, rows: [], meta: null });
+      setState({ loading: false, error: error?.message || 'تعذر مراجعة الملفات.', fileName, rows: [], meta: null });
     }
   };
 
@@ -280,8 +319,8 @@ export default function BConnectInvoiceReview() {
     event.stopPropagation();
     setDragActive(false);
     if (state.loading) return;
-    const file = event.dataTransfer?.files?.[0];
-    if (file) reviewFile(file);
+    const files = event.dataTransfer?.files;
+    if (files?.length) reviewFiles(files);
   };
 
   const renderFocus = () => {
@@ -340,11 +379,11 @@ export default function BConnectInvoiceReview() {
   return <div dir="rtl" className="min-h-full bg-slate-50/30 p-3 md:p-4">
     <div className="mx-auto max-w-[1500px] space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-0.5 text-[11px] font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}</div>
-        <div className="flex items-center gap-2"><Button asChild variant="ghost" size="sm" className="text-slate-600"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-teal-700 px-3 text-xs font-black text-white transition hover:bg-teal-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'تغيير الملف' : 'اختيار ملف'}<input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} /></label></div>
+        <div><h1 className="text-xl font-black text-slate-950">مراجعة B-Connect</h1>{state.fileName && <div className="mt-0.5 text-[11px] font-bold text-slate-400">{state.fileName} · {state.rows.length} فاتورة</div>}{state.meta?.files?.length > 1 && <div className="mt-1 text-[10px] font-bold text-slate-500">{state.meta.files.map((file) => file.name + ' (' + file.invoice_count + ')').join(' · ')}</div>}</div>
+        <div className="flex items-center gap-2"><Button asChild variant="ghost" size="sm" className="text-slate-600"><Link to="/invoices">الفواتير <ChevronLeft className="mr-1 h-4 w-4" /></Link></Button><label className="inline-flex h-9 cursor-pointer items-center rounded-lg bg-teal-700 px-3 text-xs font-black text-white transition hover:bg-teal-800"><Upload className="ml-1.5 h-4 w-4" />{state.fileName ? 'تغيير الملفات' : 'اختيار ملفات'}<input type="file" multiple accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => { const files = Array.from(event.target.files || []); event.target.value = ""; reviewFiles(files); }} /></label></div>
       </div>
 
-      {state.loading && <Card className="border-slate-200 bg-white p-4 text-center text-sm font-bold text-slate-600 shadow-none">جاري تحليل الملف...</Card>}
+      {state.loading && <Card className="border-slate-200 bg-white p-4 text-center text-sm font-bold text-slate-600 shadow-none">جاري تحليل الملفات والتحقق من الفواتير...</Card>}
       {state.error && <div className="rounded-lg border border-rose-100 bg-rose-50/70 px-4 py-2.5 text-xs font-bold text-rose-700">{state.error}</div>}
 
       {!!state.rows.length && <>
@@ -380,7 +419,7 @@ export default function BConnectInvoiceReview() {
               const view = buildBConnectPurchaseDecision(row);
               const active = selectedRow && rowKey(selectedRow) === rowKey(row);
               return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full border-r-[3px] px-3 py-2.5 text-right transition ${active ? 'border-teal-500 bg-teal-50/45' : 'border-transparent bg-white hover:bg-slate-50'}`}>
-                <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} /></div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div><div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
+                <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} /></div><div className="mt-1 truncate text-xs font-black text-slate-700">{row.bconnect?.supplier || row.app?.supplier_name || 'مورد غير معروف'}</div>{state.meta?.files?.length > 1 && <div className="mt-0.5 truncate text-[10px] text-slate-400">{row.bconnect?.source_file}</div>}<div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
               </button>;
             })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
           </Card>
@@ -398,10 +437,10 @@ export default function BConnectInvoiceReview() {
       >
         <Card className={`border-2 border-dashed p-12 text-center shadow-none transition-all ${dragActive ? 'border-teal-500 bg-teal-50/70 ring-4 ring-teal-100' : 'border-slate-200 bg-white hover:border-teal-300 hover:bg-teal-50/20'}`}>
           <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full transition ${dragActive ? 'bg-teal-100 text-teal-700' : 'bg-slate-50 text-slate-300'}`}><Upload className="h-6 w-6" /></div>
-          <div className="mt-4 text-base font-black text-slate-800">{dragActive ? 'سيب الملف هنا' : 'ارفع ملف B-Connect'}</div>
-          <div className="mt-1 text-xs font-bold text-slate-500">اسحب ملف Excel وارميه هنا، أو اضغط في أي مكان داخل المربع لاختيار الملف</div>
-          <div className="mt-2 text-[10px] font-bold text-slate-400">xlsx أو xls · سنظهر فقط الحالات التي تحتاج قرارًا</div>
-          <input type="file" accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => reviewFile(event.target.files?.[0])} />
+          <div className="mt-4 text-base font-black text-slate-800">{dragActive ? 'سيب الملفات هنا' : 'ارفع ملفات B-Connect'}</div>
+          <div className="mt-1 text-xs font-bold text-slate-500">اسحب ملفات Excel هنا، أو اضغط لاختيار أكتر من ملف في نفس المرة</div>
+          <div className="mt-2 text-[10px] font-bold text-slate-400">xlsx أو xls · فحص جماعي مع كشف الفواتير المكررة بين الملفات</div>
+          <input type="file" multiple accept=".xlsx,.xls" className="hidden" disabled={state.loading} onChange={(event) => { const files = Array.from(event.target.files || []); event.target.value = ""; reviewFiles(files); }} />
         </Card>
       </label>}
 
