@@ -1,4 +1,6 @@
 import { getCanonicalWorkflowStatus } from '@/lib/invoiceWorkflowStatus';
+import { normalizeInvoiceNumber } from '@/lib/purchaseInvoiceTruth';
+import { mayRetryAppDataAction, validatePurchaseInvoiceCreateEvidence } from '@/lib/purchaseInvoiceWriteSafety';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 const ENV_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -62,7 +64,10 @@ async function callDataApi(payload) {
   if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('إعدادات Supabase غير مكتملة.');
   try { return await executeRequest(payload); }
   catch (error) {
-    const retryable = !['invalid_session', 'Authentication required', 'forbidden'].includes(error?.message);
+    // Writes are not idempotent. The server might have saved the invoice
+    // before the browser lost the response, so a retry can duplicate it.
+    const retryable = mayRetryAppDataAction(payload?.action) &&
+      !['invalid_session', 'Authentication required', 'forbidden'].includes(error?.message);
     if (!retryable) throw error;
     await new Promise((resolve) => window.setTimeout(resolve, 450));
     return executeRequest(payload);
@@ -220,15 +225,37 @@ function standardClient(entity) {
   };
 }
 
+async function checkPurchaseInvoiceCreateAvailable(invoices) {
+  const batch = Array.isArray(invoices) ? invoices : [invoices];
+  // A read-only global number check immediately before attempting to write.
+  // Concurrent writers still require an atomic server guard; this stops
+  // known duplicates and fails closed when authorisation hides conflicts.
+  const numbers = [...new Set(batch.map((x) => normalizeInvoiceNumber(x?.system_invoice_number)).filter(Boolean))];
+  if (!numbers.length) throw new Error('لا يوجد رقم برنامج صالح للتحقق من تكرار الفاتورة.');
+  const checks = [];
+  for (let i = 0; i < numbers.length; i += 200) {
+    const evidence = await callSecureRpc('app_bconnect_invoice_number_check', { p_numbers: numbers.slice(i, i + 200) });
+    if (!Array.isArray(evidence)) throw new Error('تعذر التحقق من تكرار رقم الفاتورة على الخادم؛ لم يتم الحفظ.');
+    checks.push(...evidence);
+  }
+  return validatePurchaseInvoiceCreateEvidence(batch, checks);
+}
+
 function entityClient(entity) {
   if (entity === 'PurchaseInvoice') return {
     list: (sort, limit, offset) => listPurchaseInvoices(sort, limit, offset),
     filter: (filters = {}, sort, limit, offset) => listPurchaseInvoices(sort, limit, offset, filters),
     get: async (id) => (await listPurchaseInvoices('-created_at', 5000, 0)).find((row) => row.id === id) || null,
-    create: (data) => callDataApi({ action: 'create', entity, data }),
+    create: async (data) => {
+      await checkPurchaseInvoiceCreateAvailable(data);
+      return callDataApi({ action: 'create', entity, data });
+    },
     update: (id, data) => callDataApi({ action: 'update', entity, id, data }),
     delete: (id) => callDataApi({ action: 'delete', entity, id }),
-    bulkCreate: (items) => callDataApi({ action: 'bulkCreate', entity, items }),
+    bulkCreate: async (items) => {
+      await checkPurchaseInvoiceCreateAvailable(items);
+      return callDataApi({ action: 'bulkCreate', entity, items });
+    },
     bulkUpdate: (items) => callDataApi({ action: 'bulkUpdate', entity, items }),
     subscribe: () => () => {},
   };
