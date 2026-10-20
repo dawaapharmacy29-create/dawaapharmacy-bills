@@ -10,8 +10,8 @@ export function isInvoiceQualityDuplicate(row) {
 
 export function invoiceQualitySupplierKey(row) {
   const branch = normalizeBranch(row?.branch);
-  const supplier = normalizeText(row?.supplier_name);
-  const reference = normalizeText(row?.supplier_invoice_number);
+  const supplier = normalizeText(row?.supplier_name ?? '');
+  const reference = normalizeText(row?.supplier_invoice_number ?? '');
   if (!branch || !supplier || !reference) return null;
   return JSON.stringify([branch, supplier, reference]);
 }
@@ -115,11 +115,11 @@ export function buildInvoiceQualityGroups(rows, mode = 'all') {
 }
 
 export function filterInvoiceQualityGroups(groups, query) {
-  const term = normalizeText(query);
+  const term = normalizeText(query ?? '');
   if (!term) return groups;
   return groups.filter((group) => group.rows.some((row) =>
     [row.system_invoice_number, row.supplier_invoice_number, row.supplier_name, row.entered_by, row.id]
-      .some((value) => normalizeText(value).includes(term))
+      .some((value) => normalizeText(value ?? '').includes(term))
   ));
 }
 
