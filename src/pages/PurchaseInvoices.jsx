@@ -662,6 +662,7 @@ export default function PurchaseInvoices() {
       <InvoiceTable
         key={`${filterBranch}-${filterSupplier}-${filterCategory}-${filterTransactionType}-${filterNetMode}-${search}-${dateFrom}-${dateTo}`}
         invoices={filtered}
+        programCollisionKeys={new Set(programCollisionMap.keys())}
         isLoading={isLoading}
         onEdit={handleEdit}
         onDelete={handleSingleDelete}
