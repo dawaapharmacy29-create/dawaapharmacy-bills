@@ -1,6 +1,6 @@
 import { getCanonicalWorkflowStatus } from '@/lib/invoiceWorkflowStatus';
 import { normalizeInvoiceNumber } from '@/lib/purchaseInvoiceTruth';
-import { mayRetryAppDataAction, validatePurchaseInvoiceCreateEvidence } from '@/lib/purchaseInvoiceWriteSafety';
+import { mayRetryAppDataAction, validatePurchaseInvoiceCreateEvidence, appDataWriteUncertaintyMessage } from '@/lib/purchaseInvoiceWriteSafety';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const LEGACY_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxZnNha3J4YXp6bmtxbmpsZ3p2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5OTkzODMsImV4cCI6MjEwMDU3NTM4M30.ar5PScL6jPRMaWm8wItAL_ux3A2ewuSUa7Ha8le8Br0';
 const ENV_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -68,7 +68,10 @@ async function callDataApi(payload) {
     // before the browser lost the response, so a retry can duplicate it.
     const retryable = mayRetryAppDataAction(payload?.action) &&
       !['invalid_session', 'Authentication required', 'forbidden'].includes(error?.message);
-    if (!retryable) throw error;
+    if (!retryable) {
+      if (!mayRetryAppDataAction(payload?.action)) throw new Error(appDataWriteUncertaintyMessage(error));
+      throw error;
+    }
     await new Promise((resolve) => window.setTimeout(resolve, 450));
     return executeRequest(payload);
   }
