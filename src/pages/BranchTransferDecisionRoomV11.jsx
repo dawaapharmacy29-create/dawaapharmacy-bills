@@ -250,7 +250,7 @@ export default function BranchTransferDecisionRoomV11() {
                   <p className="mx-auto mt-3 max-w-2xl text-sm font-bold leading-6 opacity-75">{decision.reason}</p>
                 </div>
 
-                <OperationalEvidenceStrip selected={selected} timeline={timeline} />
+                <OperationalEvidenceStrip selected={selected} timeline={timeline} productName={currentAction.product_name} />
 
                 <div className="mx-auto mt-4 flex max-w-2xl flex-wrap items-center justify-center gap-2">
                   <Button onClick={primaryAction} disabled={decision.mode === 'wait' && filteredQueue.length <= 1} className="min-w-[220px] bg-teal-700 px-8 py-6 text-base font-black hover:bg-teal-800">{decision.mode === 'wait' ? <SkipForward className="ml-2 h-5 w-5" /> : decision.mode === 'learn' ? <Sparkles className="ml-2 h-5 w-5" /> : decision.can_resolve ? <CheckCircle2 className="ml-2 h-5 w-5" /> : <Eye className="ml-2 h-5 w-5" />}{decision.primary_label}</Button>
