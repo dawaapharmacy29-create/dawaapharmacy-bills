@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { normalizeText } from "@/lib/dataIntegrity";
 import { canonicalizeInvoicePageRows, findInvoiceProgramNumberCollisions } from "@/lib/purchaseInvoiceCollisionAudit";
-import { buildInvoiceQualityGroups, filterInvoiceQualityGroups, paginateInvoiceQualityGroups, isInvoiceQualityDuplicate } from "@/lib/invoiceQualityGrouping";
+import { buildInvoiceQualityGroups, filterInvoiceQualityGroups, paginateInvoiceQualityGroups, isInvoiceQualityDuplicate, invoiceQualitySupplierKey } from "@/lib/invoiceQualityGrouping";
 
 const PAGE_SIZE = 250;
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
@@ -66,9 +66,9 @@ export default function InvoiceQualityCenter() {
     const duplicateMap = new Map();
 
     invoices.forEach((inv) => {
-      const supplierInvoice = normalizeText(inv.supplier_invoice_number);
-      if (!supplierInvoice) return;
-      const key = [normalizeText(inv.supplier_name), normalizeText(inv.branch), supplierInvoice].join("|");
+      // Ignore missing supplier invoice references and normalize consistently.
+      const key = invoiceQualitySupplierKey(inv);
+      if (!key) return;
       if (!duplicateMap.has(key)) duplicateMap.set(key, []);
       duplicateMap.get(key).push(inv.id);
     });
@@ -125,9 +125,9 @@ export default function InvoiceQualityCenter() {
   const matchingGroups = useMemo(() => filterInvoiceQualityGroups(groups, search), [groups, search]);
   const filtered = useMemo(() => {
     if (groupDuplicates) return matchingGroups.flatMap((group) => group.rows);
-    const term = normalizeText(search);
+    const term = normalizeText(search ?? '');
     return candidates.filter((row) => !term || [row.system_invoice_number, row.supplier_invoice_number, row.supplier_name, row.entered_by, row.id]
-      .some((value) => normalizeText(value).includes(term)));
+      .some((value) => normalizeText(value ?? '').includes(term)));
   }, [groupDuplicates, matchingGroups, candidates, search]);
 
   const duplicateGroups = matchingGroups.filter((group) => group.isDuplicate);
@@ -150,7 +150,16 @@ export default function InvoiceQualityCenter() {
   };
 
   const exportRows = () => {
+    const memberGroups = new Map(matchingGroups.flatMap((group) => group.rows.map((row) => [row.id, group])));
     const rows = filtered.map((row) => ({
+      "مجموعة المراجعة": memberGroups.get(row.id)?.isDuplicate
+        ? (memberGroups.get(row.id).kind === 'program'
+            ? 'رقم البرنامج ' + memberGroups.get(row.id).programNumber
+            : memberGroups.get(row.id).kind === 'supplier'
+              ? 'فاتورة المورد ' + memberGroups.get(row.id).supplierNumber
+              : 'مجموعة أرقام مرتبطة: ' + memberGroups.get(row.id).numbers.join('، '))
+        : '',
+      "عدد السجلات في المجموعة": memberGroups.get(row.id)?.isDuplicate ? memberGroups.get(row.id).size : 1,
       "رقم البرنامج": row.system_invoice_number || "",
       "رقم فاتورة المورد": row.supplier_invoice_number || "",
       "المورد": row.supplier_name || "",
@@ -249,6 +258,22 @@ export default function InvoiceQualityCenter() {
               {BRANCHES.map((branch) => <SelectItem key={branch} value={branch}>{branch}</SelectItem>)}
             </SelectContent>
           </Select>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            ['all', 'كل المشكلات'],
+            ['all_duplicates', 'كل التكرارات'],
+            ['duplicate_program', 'نفس رقم البرنامج'],
+            ['duplicate', 'نفس فاتورة المورد'],
+          ].map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={issueFilter === value}
+              onClick={() => { setIssueFilter(value); setGroupDuplicates(true); setPage(1); }}
+              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${issueFilter === value
+                ? 'border-teal-700 bg-teal-700 text-white'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-teal-200 hover:text-teal-800'}`}>
+              {label}
+            </button>
+          ))}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-slate-600">
