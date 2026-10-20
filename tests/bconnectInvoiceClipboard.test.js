@@ -50,3 +50,29 @@ test('success never invokes legacy fallback', async () => {
   assert.equal(result, true);
   assert.equal(fallbackCalls, 0);
 });
+
+
+test('supplier invoice reference is copied without changing leading zeros or punctuation', async () => {
+  let copied;
+  const ref = '00045-A/2026';
+  const success = await copyBConnectInvoiceNumber(ref, { writeText: async (value) => { copied = value; } });
+  assert.equal(success, true);
+  assert.equal(copied, '00045-A/2026');
+});
+
+test('supplier name is copied as plain text without accidentally copying invoice numbers', async () => {
+  let copied;
+  const supplier = 'مخزن المدينة';
+  const success = await copyBConnectInvoiceNumber(supplier, { writeText: async (value) => { copied = value; } });
+  assert.equal(success, true);
+  assert.equal(copied, 'مخزن المدينة');
+});
+
+test('copying an absent supplier invoice reference does not copy placeholder dashes', async () => {
+  let calls = 0;
+  const copied = await copyBConnectInvoiceNumber(null, {
+    writeText: async () => { calls += 1; },
+  });
+  assert.equal(copied, false);
+  assert.equal(calls, 0);
+});
