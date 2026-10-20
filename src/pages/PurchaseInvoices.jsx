@@ -633,6 +633,7 @@ export default function PurchaseInvoices() {
             )}
             {canSaveInvoice && (
               <Button size="sm" variant="outline" className="border-purple-400 text-purple-700 hover:bg-purple-50 gap-1.5" onClick={() => {
+                if (!ensureSafeSelectedActions()) return;
                 const batchId = `bulk-internal-${Date.now()}`;
                 selectedIds.forEach((id) => {
                   const inv = invoices.find((i) => i.id === id);
