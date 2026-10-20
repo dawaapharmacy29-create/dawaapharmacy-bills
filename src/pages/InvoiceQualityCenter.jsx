@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Download, FileWarning, RefreshCw, Search, 
 import * as XLSX from "xlsx";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
+import CopyInvoiceNumber from "@/components/bconnect/CopyInvoiceNumber";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -324,6 +325,13 @@ export default function InvoiceQualityCenter() {
                             : group.kind === 'supplier'
                               ? `فاتورة المورد ${group.supplierNumber}`
                               : `مجموعة أرقام مرتبطة: ${group.numbers.join('، ')}`}</span>
+                          {(group.kind === 'program' || group.kind === 'supplier') &&
+                            <CopyInvoiceNumber
+                              number={group.kind === 'program' ? group.programNumber : group.supplierNumber}
+                              subject={group.kind === 'program' ? 'رقم البرنامج' : 'رقم فاتورة المورد'}
+                              iconOnly
+                              className="!min-h-7 !px-1.5"
+                            />}
                           <span>· {group.branch}</span>
                           <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5">{group.size} سجلات للمراجعة</span>
                         </div>
@@ -332,9 +340,33 @@ export default function InvoiceQualityCenter() {
                   )}
                   {group.rows.map((row, index) => (
                 <tr key={row.id || `${group.key}:${index}`} className={`border-b last:border-0 hover:bg-slate-50/70 ${groupDuplicates && group.isDuplicate ? 'bg-teal-50/20' : ''}`}>
-                  <td className="p-3 font-semibold">{row.system_invoice_number || "—"}</td>
-                  <td className="p-3">{row.supplier_invoice_number || "—"}</td>
-                  <td className="p-3">{row.supplier_name || "—"}</td>
+                  <td className="p-3 font-semibold">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span>{row.system_invoice_number || "—"}</span>
+                      {row.system_invoice_number && <CopyInvoiceNumber
+                        number={row.system_invoice_number} subject="رقم البرنامج" iconOnly
+                        className="!min-h-7 !px-1.5"
+                      />}
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span>{row.supplier_invoice_number || "—"}</span>
+                      {row.supplier_invoice_number && <CopyInvoiceNumber
+                        number={row.supplier_invoice_number} subject="رقم فاتورة المورد" iconOnly
+                        className="!min-h-7 !px-1.5"
+                      />}
+                    </div>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="min-w-0">{row.supplier_name || "—"}</span>
+                      {row.supplier_name && <CopyInvoiceNumber
+                        number={row.supplier_name} subject="اسم المورد" iconOnly
+                        className="!min-h-7 !px-1.5"
+                      />}
+                    </div>
+                  </td>
                   <td className="p-3">{row.branch || "—"}</td>
                   <td className="p-3">{row.invoice_date || "—"}</td>
                   <td className="p-3 font-semibold">{Number(row.total_value || 0).toLocaleString("ar-EG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
