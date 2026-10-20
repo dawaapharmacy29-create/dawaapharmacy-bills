@@ -32,7 +32,9 @@ export function validatePurchaseInvoiceCreateEvidence(invoices, checks) {
   if (!Array.isArray(checks)) throw new Error('تعذر التأكد من خلو قاعدة البيانات من تكرار الفاتورة؛ لم يتم الحفظ.');
   for (const target of wanted.values()) {
     const match = checks.find((entry) => normalizeInvoiceNumber(entry?.number) === target.number);
-    if (!match || !Number.isSafeInteger(Number(match.record_count)) || Number(match.record_count) < 0 || !Array.isArray(match.rows)) {
+    if (!match || match.record_count === null || match.record_count === undefined ||
+      !Number.isSafeInteger(Number(match.record_count)) || Number(match.record_count) < 0 ||
+      !Array.isArray(match.rows)) {
       throw new Error('التحقق من هوية الفاتورة غير مكتمل؛ لم يتم الحفظ.');
     }
     if (match.rows.some((row) => normalizeInvoiceNumber(row?.system_invoice_number) === target.number &&
