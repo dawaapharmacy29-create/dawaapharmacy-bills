@@ -48,6 +48,7 @@ export default function PurchaseInvoices() {
   const [activeHandoff, setActiveHandoff] = useState(null);
   const [handoffSaving, setHandoffSaving] = useState(false);
   const [handoffWriteWarning, setHandoffWriteWarning] = useState("");
+  const [collisionActionWarning, setCollisionActionWarning] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewInvoice, setViewInvoice] = useState(null);
@@ -265,6 +266,8 @@ export default function PurchaseInvoices() {
 
   const handleSubmit = async (formData) => {
     if (!activeHandoff) {
+      createMutation.reset();
+      updateMutation.reset();
       if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
       else createMutation.mutate(formData);
       return;
@@ -275,17 +278,37 @@ export default function PurchaseInvoices() {
   };
 
   // Bulk actions
+  const selectedCollisionIds = new Set(
+    [...findInvoiceProgramNumberCollisions(invoices).values()]
+      .flatMap((group) => group.map((row) => String(row.id)))
+  );
+  const ensureSafeSelectedActions = () => {
+    const unsafe = selectedIds.filter((id) => selectedCollisionIds.has(String(id)));
+    if (!unsafe.length) { setCollisionActionWarning(""); return true; }
+    setCollisionActionWarning('تم إيقاف الإجراء الجماعي لأن الاختيار يحتوي ' + unsafe.length +
+      ' سجلًا يتعارض رقم فاتورته مع سجل آخر في نفس الفرع. افتح مركز جودة الفواتير وراجع الهوية والمصدر أولًا.');
+    return false;
+  };
+
   const executeBulkDelete = () => {
+    if (!ensureSafeSelectedActions()) return;
     selectedIds.forEach((id) => deleteMutation.mutate(id));
     setSelectedIds([]);
   };
 
   const executeSingleDelete = () => {
+    if (singleDeleteId && selectedCollisionIds.has(String(singleDeleteId))) {
+      setCollisionActionWarning('الحذف من فاتورة لها تعارض رقم داخل الفرع متوقف حتى مراجعة مصدر السجل وحساباته.');
+      setSingleDeleteId(null);
+      setConfirmDelete(false);
+      return;
+    }
     if (singleDeleteId) deleteMutation.mutate(singleDeleteId);
     setSingleDeleteId(null);
   };
 
   const executeBulkSave = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-save-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -295,6 +318,7 @@ export default function PurchaseInvoices() {
   };
 
   const executeBulkExclude = ({ exclusion_reason, exclusion_note }) => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-exclude-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -311,6 +335,7 @@ export default function PurchaseInvoices() {
   };
 
   const executeBulkCategory = ({ purchase_category, purchase_category_source }) => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-category-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -328,6 +353,7 @@ export default function PurchaseInvoices() {
 
   // تصنيف جماعي كأدوية
   const executeBulkMedicines = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-medicines-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -344,6 +370,7 @@ export default function PurchaseInvoices() {
 
   // تصنيف جماعي كمستلزمات
   const executeBulkSupplies = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-supplies-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -360,6 +387,7 @@ export default function PurchaseInvoices() {
 
   // تطبيق إعداد المورد جماعيًا
   const executeBulkApplySupplierDefault = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-supplier-default-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -381,6 +409,7 @@ export default function PurchaseInvoices() {
 
   // تحويل جماعي لشراء خارجي
   const executeBulkExternal = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-external-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -397,6 +426,7 @@ export default function PurchaseInvoices() {
 
   // إلغاء الاستبعاد جماعيًا
   const executeBulkInclude = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-include-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -469,6 +499,7 @@ export default function PurchaseInvoices() {
         )}
       </div>
 
+      {collisionActionWarning && <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm font-bold text-rose-800">{collisionActionWarning}</div>}
       {handoffWarning && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{handoffWarning}</div>}
       {programCollisionCount > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-950">
         <div><strong>تنبيه: {programCollisionCount} مجموعة أرقام فواتير مكررة داخل نفس الفرع ({programCollisionRecords} سجل).</strong>
@@ -679,7 +710,7 @@ export default function PurchaseInvoices() {
         invoice={editingInvoice}
         prefill={bconnectPrefill}
         reviewOnly={Boolean(activeHandoff)}
-        externalError={handoffWriteWarning}
+        externalError={handoffWriteWarning || createMutation.error?.message || updateMutation.error?.message || ""}
         isLoading={handoffSaving || createMutation.isPending || updateMutation.isPending}
         allInvoices={invoices}
       />
