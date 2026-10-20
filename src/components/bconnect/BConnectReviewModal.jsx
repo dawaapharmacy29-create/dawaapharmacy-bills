@@ -5,6 +5,7 @@ import { bconnectAtomicCreate } from '@/api/bconnectAtomicCreateClient';
 import { Button } from '@/components/ui/button';
 import BConnectSupplierSuggestions from '@/components/bconnect/BConnectSupplierSuggestions';
 import BConnectInvoiceItems from '@/components/bconnect/BConnectInvoiceItems';
+import CopyInvoiceNumber from '@/components/bconnect/CopyInvoiceNumber';
 import BConnectInvoiceIdentity from '@/components/bconnect/BConnectInvoiceIdentity';
 import { hasUploadedReturns } from '@/lib/bconnectReviewQueue';
 import { prepareBconnectWriteCommand } from '@/lib/bconnectAtomicInvoiceCommand';
@@ -320,7 +321,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
     <div dir="rtl" className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-r bg-white shadow-2xl">
       <div className="flex items-center justify-between gap-3 border-b bg-white px-4 py-3 md:px-5">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-black">فاتورة {row.number}</h2><StatusBadge row={row} /><span className="text-xs font-bold text-slate-500">{normalizeBranch(source.branch || app.branch) || 'فرع غير معروف'}</span></div>
+          <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-black">فاتورة {row.number}</h2><CopyInvoiceNumber number={row.number} /><StatusBadge row={row} /><span className="text-xs font-bold text-slate-500">{normalizeBranch(source.branch || app.branch) || 'فرع غير معروف'}</span></div>
         </div>
         <Button type="button" variant="ghost" size="sm" disabled={saveState.saving} onClick={onClose}><X className="h-4 w-4" /></Button>
       </div>
