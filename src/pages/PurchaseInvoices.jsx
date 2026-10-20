@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { normalizeDate, normalizeInvoiceNumber, normalizeMoney } from "@/lib/purchaseInvoiceTruth";
+import { canonicalizeInvoicePageRows, findInvoiceProgramNumberCollisions, invoiceBusinessNumberKey } from "@/lib/purchaseInvoiceCollisionAudit";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -126,7 +127,11 @@ export default function PurchaseInvoices() {
         if (batch.length < PAGE) break;
         page++;
       }
-      return all;
+      // Each RPC page is deduplicated by ID individually. Overlapping page
+      // boundaries can repeat the same ID across separate fetches; collapse
+      // those only after the entire list was assembled. Never collapse
+      // distinct record IDs by number: they need accounting review.
+      return canonicalizeInvoicePageRows(all);
     },
     staleTime: 60000,
     placeholderData: (prev) => prev,
@@ -419,6 +424,9 @@ export default function PurchaseInvoices() {
   const handleEdit = (inv) => { setEditingInvoice(inv); setBconnectPrefill(null); setActiveHandoff(null); setDialogOpen(true); };
   const handleSingleDelete = (id) => { setSingleDeleteId(id); setConfirmDelete(true); };
 
+  const programCollisionMap = findInvoiceProgramNumberCollisions(invoices);
+  const programCollisionCount = programCollisionMap.size;
+  const programCollisionRecords = [...programCollisionMap.values()].reduce((n, group) => n + group.length, 0);
   const uniqueSuppliers = [...new Set(invoices.map((i) => i.supplier_name).filter(Boolean))];
 
   const filtered = invoices.filter((i) => {
@@ -462,6 +470,12 @@ export default function PurchaseInvoices() {
       </div>
 
       {handoffWarning && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{handoffWarning}</div>}
+      {programCollisionCount > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-950">
+        <div><strong>تنبيه: {programCollisionCount} مجموعة أرقام فواتير مكررة داخل نفس الفرع ({programCollisionRecords} سجل).</strong>
+          <p className="mt-1 text-xs">السجلات لها هويات مستقلة؛ لم يتم إخفاؤها أو حذفها أو تسوية قيمتها. راجع سجلات المصدر قبل أي قرار مالي.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => navigate("/invoices/quality")} className="border-rose-200 bg-white text-rose-800">فتح مركز جودة الفواتير</Button>
+      </div>}
       <InvoiceStats invoices={invoices} />
 
       {/* Month Buttons */}
