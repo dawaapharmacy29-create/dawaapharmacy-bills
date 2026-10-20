@@ -138,8 +138,15 @@ export default function InvoiceQualityCenter() {
       "الإجمالي": Number(row.total_value || 0),
       "المرتجع": Number(row.returned_value || 0),
       "مدخل الفاتورة": row.entered_by || "",
+      "المدفوع": Number(row.paid_value || 0),
+      "حالة سير الفاتورة": row.workflow_status || "",
       "المشكلات": row.issues.map((issue) => ISSUE_LABELS[issue]).join("، "),
-      "معرف السجل": row.id,
+      "معرف السجل": row.id || "",
+      "معرف المصدر": row.base44_id || row.source_record_id || "",
+      "حالة المزامنة": row.base44_sync_state || "",
+      "حالة مراجعة التكرار": row.duplicate_review_status || "",
+      "وقت إنشاء السجل": row.created_at || row.created_date || "",
+      "وقت آخر تعديل": row.updated_at || row.updated_date || "",
     }));
     const sheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
