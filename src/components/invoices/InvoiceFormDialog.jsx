@@ -17,6 +17,7 @@ import {
 } from "@/lib/purchaseCalculations";
 import { useInvoiceRulesResolver } from "@/hooks/useInvoiceRulesResolver";
 import { findDuplicateSupplierInvoice, isFutureDate } from "@/lib/dataIntegrity";
+import { invoiceBusinessNumberKey } from "@/lib/purchaseInvoiceCollisionAudit";
 
 function SearchableSelect({ value, onChange, options, placeholder, className = "" }) {
   const [search, setSearch] = useState("");
@@ -276,12 +277,12 @@ export default function InvoiceFormDialog({ open, onOpenChange, onSubmit, invoic
       }
     }
 
-    // Check duplicate system_invoice_number per branch
-    const isDuplicate = allInvoices.some(
-      (inv) =>
-        inv.branch === form.branch &&
-        inv.system_invoice_number === form.system_invoice_number &&
-        (!invoice || inv.id !== invoice.id)
+    // Compare canonical branch + program number (e.g. 11205 === 11205.0).
+    // This is a UI guard only: a backend uniqueness rule must also protect
+    // concurrent writes and external synchronization.
+    const proposedKey = invoiceBusinessNumberKey(form);
+    const isDuplicate = !!proposedKey && allInvoices.some(
+      (inv) => inv.id !== invoice?.id && invoiceBusinessNumberKey(inv) === proposedKey
     );
     if (isDuplicate) {
       setDupError(`رقم الفاتورة "${form.system_invoice_number}" موجود بالفعل في ${form.branch}`);

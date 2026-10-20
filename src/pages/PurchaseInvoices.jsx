@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { normalizeDate, normalizeInvoiceNumber, normalizeMoney } from "@/lib/purchaseInvoiceTruth";
+import { canonicalizeInvoicePageRows, findInvoiceProgramNumberCollisions } from "@/lib/purchaseInvoiceCollisionAudit";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ export default function PurchaseInvoices() {
   const [activeHandoff, setActiveHandoff] = useState(null);
   const [handoffSaving, setHandoffSaving] = useState(false);
   const [handoffWriteWarning, setHandoffWriteWarning] = useState("");
+  const [collisionActionWarning, setCollisionActionWarning] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [viewInvoice, setViewInvoice] = useState(null);
@@ -126,7 +128,11 @@ export default function PurchaseInvoices() {
         if (batch.length < PAGE) break;
         page++;
       }
-      return all;
+      // Each RPC page is deduplicated by ID individually. Overlapping page
+      // boundaries can repeat the same ID across separate fetches; collapse
+      // those only after the entire list was assembled. Never collapse
+      // distinct record IDs by number: they need accounting review.
+      return canonicalizeInvoicePageRows(all);
     },
     staleTime: 60000,
     placeholderData: (prev) => prev,
@@ -150,7 +156,7 @@ export default function PurchaseInvoices() {
     },
     onSuccess: (inv) => {
       // تحديث ذكي: أضف الفاتورة الجديدة للكاش مباشرة بدلاً من إعادة تحميل الكل
-      queryClient.setQueryData(["purchase-invoices"], (old = []) => [inv, ...old]);
+      queryClient.setQueryData(["purchase-invoices"], (old = []) => canonicalizeInvoicePageRows([inv, ...old]));
       queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
       queryClient.invalidateQueries({ queryKey: ["pending-invoices-count"] });
       setDialogOpen(false);
@@ -260,6 +266,8 @@ export default function PurchaseInvoices() {
 
   const handleSubmit = async (formData) => {
     if (!activeHandoff) {
+      createMutation.reset();
+      updateMutation.reset();
       if (editingInvoice) updateMutation.mutate({ id: editingInvoice.id, data: formData });
       else createMutation.mutate(formData);
       return;
@@ -270,17 +278,37 @@ export default function PurchaseInvoices() {
   };
 
   // Bulk actions
+  const selectedCollisionIds = new Set(
+    [...findInvoiceProgramNumberCollisions(invoices).values()]
+      .flatMap((group) => group.map((row) => String(row.id)))
+  );
+  const ensureSafeSelectedActions = () => {
+    const unsafe = selectedIds.filter((id) => selectedCollisionIds.has(String(id)));
+    if (!unsafe.length) { setCollisionActionWarning(""); return true; }
+    setCollisionActionWarning('تم إيقاف الإجراء الجماعي لأن الاختيار يحتوي ' + unsafe.length +
+      ' سجلًا يتعارض رقم فاتورته مع سجل آخر في نفس الفرع. افتح مركز جودة الفواتير وراجع الهوية والمصدر أولًا.');
+    return false;
+  };
+
   const executeBulkDelete = () => {
+    if (!ensureSafeSelectedActions()) return;
     selectedIds.forEach((id) => deleteMutation.mutate(id));
     setSelectedIds([]);
   };
 
   const executeSingleDelete = () => {
+    if (singleDeleteId && selectedCollisionIds.has(String(singleDeleteId))) {
+      setCollisionActionWarning('الحذف من فاتورة لها تعارض رقم داخل الفرع متوقف حتى مراجعة مصدر السجل وحساباته.');
+      setSingleDeleteId(null);
+      setConfirmDelete(false);
+      return;
+    }
     if (singleDeleteId) deleteMutation.mutate(singleDeleteId);
     setSingleDeleteId(null);
   };
 
   const executeBulkSave = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-save-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -290,6 +318,7 @@ export default function PurchaseInvoices() {
   };
 
   const executeBulkExclude = ({ exclusion_reason, exclusion_note }) => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-exclude-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -306,6 +335,7 @@ export default function PurchaseInvoices() {
   };
 
   const executeBulkCategory = ({ purchase_category, purchase_category_source }) => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-category-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -323,6 +353,7 @@ export default function PurchaseInvoices() {
 
   // تصنيف جماعي كأدوية
   const executeBulkMedicines = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-medicines-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -339,6 +370,7 @@ export default function PurchaseInvoices() {
 
   // تصنيف جماعي كمستلزمات
   const executeBulkSupplies = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-supplies-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -355,6 +387,7 @@ export default function PurchaseInvoices() {
 
   // تطبيق إعداد المورد جماعيًا
   const executeBulkApplySupplierDefault = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-supplier-default-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -376,6 +409,7 @@ export default function PurchaseInvoices() {
 
   // تحويل جماعي لشراء خارجي
   const executeBulkExternal = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-external-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -392,6 +426,7 @@ export default function PurchaseInvoices() {
 
   // إلغاء الاستبعاد جماعيًا
   const executeBulkInclude = () => {
+    if (!ensureSafeSelectedActions()) return;
     const batchId = `bulk-include-${Date.now()}`;
     selectedIds.forEach((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -419,6 +454,9 @@ export default function PurchaseInvoices() {
   const handleEdit = (inv) => { setEditingInvoice(inv); setBconnectPrefill(null); setActiveHandoff(null); setDialogOpen(true); };
   const handleSingleDelete = (id) => { setSingleDeleteId(id); setConfirmDelete(true); };
 
+  const programCollisionMap = findInvoiceProgramNumberCollisions(invoices);
+  const programCollisionCount = programCollisionMap.size;
+  const programCollisionRecords = [...programCollisionMap.values()].reduce((n, group) => n + group.length, 0);
   const uniqueSuppliers = [...new Set(invoices.map((i) => i.supplier_name).filter(Boolean))];
 
   const filtered = invoices.filter((i) => {
@@ -461,7 +499,14 @@ export default function PurchaseInvoices() {
         )}
       </div>
 
+      {collisionActionWarning && <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm font-bold text-rose-800">{collisionActionWarning}</div>}
       {handoffWarning && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{handoffWarning}</div>}
+      {programCollisionCount > 0 && <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-950">
+        <div><strong>تنبيه: {programCollisionCount} مجموعة أرقام فواتير مكررة داخل نفس الفرع ({programCollisionRecords} سجل).</strong>
+          <p className="mt-1 text-xs">السجلات لها هويات مستقلة؛ لم يتم إخفاؤها أو حذفها أو تسوية قيمتها. راجع سجلات المصدر قبل أي قرار مالي.</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => navigate("/invoices/quality")} className="border-rose-200 bg-white text-rose-800">فتح مركز جودة الفواتير</Button>
+      </div>}
       <InvoiceStats invoices={invoices} />
 
       {/* Month Buttons */}
@@ -588,6 +633,7 @@ export default function PurchaseInvoices() {
             )}
             {canSaveInvoice && (
               <Button size="sm" variant="outline" className="border-purple-400 text-purple-700 hover:bg-purple-50 gap-1.5" onClick={() => {
+                if (!ensureSafeSelectedActions()) return;
                 const batchId = `bulk-internal-${Date.now()}`;
                 selectedIds.forEach((id) => {
                   const inv = invoices.find((i) => i.id === id);
@@ -648,6 +694,7 @@ export default function PurchaseInvoices() {
       <InvoiceTable
         key={`${filterBranch}-${filterSupplier}-${filterCategory}-${filterTransactionType}-${filterNetMode}-${search}-${dateFrom}-${dateTo}`}
         invoices={filtered}
+        programCollisionKeys={new Set(programCollisionMap.keys())}
         isLoading={isLoading}
         onEdit={handleEdit}
         onDelete={handleSingleDelete}
@@ -664,7 +711,7 @@ export default function PurchaseInvoices() {
         invoice={editingInvoice}
         prefill={bconnectPrefill}
         reviewOnly={Boolean(activeHandoff)}
-        externalError={handoffWriteWarning}
+        externalError={handoffWriteWarning || createMutation.error?.message || updateMutation.error?.message || ""}
         isLoading={handoffSaving || createMutation.isPending || updateMutation.isPending}
         allInvoices={invoices}
       />
