@@ -59,3 +59,17 @@ export function reviewAttentionSummary(rows, decisions = {}, keyForRow = (row) =
   }
   return data;
 }
+
+
+/**
+ * Recovered approvals are historical decisions, not fresh proofs. Do not
+ * conceal an invoice that now carries a note, item return or new source
+ * discrepancy even if its previous approval fingerprint still matches.
+ */
+export function canRestoreBConnectAcceptance(row, view) {
+  if (!row?.app?.id || !row?.number) return false;
+  if (view?.hasReturn || view?.hasNote || view?.returnIssue) return false;
+  if (!['approve', 'clean'].includes(view?.lane)) return false;
+  return row?.status === 'clean' ||
+    (row?.identity === 'confirmed' && view?.fastAccept === true);
+}
