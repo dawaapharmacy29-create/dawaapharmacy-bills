@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
+import { invoiceBusinessNumberKey } from "@/lib/purchaseInvoiceCollisionAudit";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pencil, Trash2, Eye, MessageSquare, ChevronLeft, ChevronRight, ArrowRightLeft, Ban, AlertTriangle } from "lucide-react";
@@ -65,7 +66,7 @@ const branchColor = {
   "دواء الشامي": "bg-purple-100 text-purple-800",
 };
 
-export default function InvoiceTable({ invoices, isLoading, onEdit, onDelete, onView, selectedIds, onToggleSelect, onToggleAll }) {
+export default function InvoiceTable({ invoices, programCollisionKeys = new Set(), isLoading, onEdit, onDelete, onView, selectedIds, onToggleSelect, onToggleAll }) {
   const { canSaveInvoice, canDeleteInvoice } = useUserRole();
   const [currentPage, setCurrentPage] = useState(1);
   const { sortField, sortDirection, toggleSort, setSort, resetSort, sortData, isActive } = useTableSorting({
@@ -151,6 +152,7 @@ export default function InvoiceTable({ invoices, isLoading, onEdit, onDelete, on
                   <TableCell className="font-mono font-semibold text-teal-700 cursor-pointer hover:underline" onClick={() => onView(inv)}>
                     <div className="flex items-center gap-1.5">
                       {inv.system_invoice_number}
+                      {programCollisionKeys.has(invoiceBusinessNumberKey(inv)) && <span title="أكثر من سجل مستقل لنفس رقم الفاتورة والفرع؛ يحتاج مراجعة مصدر الفاتورة" className="rounded-md border border-rose-200 bg-rose-50 px-1 py-0.5 text-[10px] font-black text-rose-700">تكرار رقم</span>}
                       {inv.notes && <MessageSquare className="w-3.5 h-3.5 text-amber-500 shrink-0" title={inv.notes} />}
                     </div>
                   </TableCell>
@@ -243,7 +245,7 @@ export default function InvoiceTable({ invoices, isLoading, onEdit, onDelete, on
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono font-semibold text-teal-700 cursor-pointer hover:underline text-sm" onClick={() => onView(inv)}>{inv.system_invoice_number}</span>
+                      <span className="font-mono font-semibold text-teal-700 cursor-pointer hover:underline text-sm" onClick={() => onView(inv)}>{inv.system_invoice_number}</span>{programCollisionKeys.has(invoiceBusinessNumberKey(inv)) && <span title="أكثر من سجل مستقل لنفس الرقم والفرع" className="rounded-md border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-black text-rose-700">تكرار رقم</span>}
                       {inv.notes && <MessageSquare className="w-3.5 h-3.5 text-amber-500 shrink-0" title={inv.notes} />}
                     </div>
                     <p className="text-xs text-gray-600 truncate">{inv.supplier_name || "—"}</p>
