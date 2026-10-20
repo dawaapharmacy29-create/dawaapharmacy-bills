@@ -68,7 +68,10 @@ function EvidenceCard({ title, branchName, tone, side, fallbackQty }) {
   </div>;
 }
 
-export default function OperationalEvidenceStrip({ selected, timeline }) {
+export default function OperationalEvidenceStrip({ selected, timeline, productName }) {
+  // Prefer the exact title displayed above the decision panel; selected is
+  // only a fallback for callers that do not supply that heading.
+  const displayProductName = clean(productName) || clean(selected?.product_name);
   const saleCodes = unique(selected?.sale_codes || []);
   const purchaseCodes = unique(selected?.purchase_codes || []);
   const allCodes = unique([...saleCodes, ...purchaseCodes]);
@@ -81,6 +84,10 @@ export default function OperationalEvidenceStrip({ selected, timeline }) {
   return <div className="mx-auto mt-4 w-full max-w-4xl rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5 text-right">
     <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 pb-2">
       <span className="ml-auto text-[10px] font-black text-slate-500">مفاتيح التحقق السريع</span>
+      {displayProductName && <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1.5 gap-y-0.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] leading-5" title={displayProductName}>
+        <span className="shrink-0 font-bold text-slate-500">اسم الصنف:</span>
+        <span dir="auto" className="min-w-0 break-words font-black text-slate-900">{displayProductName}</span>
+      </div>}
       {sameCode ? <CopyChip label="كود الصنف" value={allCodes[0]} /> : <>
         {saleCodes.slice(0, 2).map((value) => <CopyChip key={`s-${value}`} label="كود البيع" value={value} />)}
         {purchaseCodes.slice(0, 2).map((value) => <CopyChip key={`p-${value}`} label="كود الشراء" value={value} />)}
