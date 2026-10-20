@@ -12,7 +12,7 @@ import { parseBConnectWorkbook } from '@/lib/bconnectPurchaseInvoiceParser';
 import { reconcilePurchaseInvoice } from '@/lib/purchaseInvoiceReconciliation';
 import { normalizeBranch, normalizeInvoiceNumber, normalizeMoney } from '@/lib/purchaseInvoiceTruth';
 import { buildBConnectDecisionGroups, buildBConnectPurchaseDecision } from '@/lib/bconnectPurchaseDecisionView';
-import { hasUploadedReturns, matchesReviewSearch, needsReturnInspection, reviewAttentionSummary, reviewQueuePriority } from '@/lib/bconnectReviewQueue';
+import { hasUploadedReturns, matchesReviewSearch, needsReturnInspection, reviewAttentionSummary, reviewQueuePriority, canRestoreBConnectAcceptance } from '@/lib/bconnectReviewQueue';
 
 const invoiceScopeKey = (branch, number) => `${normalizeBranch(branch) || 'unknown'}::${normalizeInvoiceNumber(number) || 'unknown'}`;
 const rowKey = (row) => invoiceScopeKey(row?.bconnect?.branch || row?.app?.branch, row?.number);
@@ -92,7 +92,7 @@ export default function BConnectInvoiceReview() {
   const [dragActive, setDragActive] = useState(false);
 
   const branches = useMemo(() => [...new Set(state.rows.map((row) => normalizeBranch(row.bconnect?.branch || row.app?.branch)).filter(Boolean))], [state.rows]);
-  const unacceptedRows = useMemo(() => state.rows.filter((row) => decisions[rowKey(row)]?.action !== 'accepted'), [state.rows, decisions]);
+  const unacceptedRows = useMemo(() => state.rows.filter((row) => !['accepted', 'reviewed', 'saved'].includes(decisions[rowKey(row)]?.action)), [state.rows, decisions]);
   const decisionGroups = useMemo(() => buildBConnectDecisionGroups(unacceptedRows), [unacceptedRows]);
   const safeBulkRows = useMemo(() => {
     const seen = new Set();
@@ -325,8 +325,8 @@ export default function BConnectInvoiceReview() {
         // A previously accepted supplier/date drift must never conceal newly
         // detected returns. Keep these rows visible for individual review.
         const view = buildBConnectPurchaseDecision(row);
-        if (fingerprint && acceptedFingerprints.has(fingerprint) && !view.hasReturn &&
-            (view.lane === 'approve' || view.lane === 'clean')) {
+        if (fingerprint && acceptedFingerprints.has(fingerprint) &&
+            canRestoreBConnectAcceptance(row, view)) {
           restoredDecisions[rowKey(row)] = { action: 'accepted', note: 'اعتماد محفوظ سابقًا', source_id: row.app?.id || null, persistent: true };
         }
       });
