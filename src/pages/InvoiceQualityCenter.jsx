@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { normalizeText } from "@/lib/dataIntegrity";
+import { canonicalizeInvoicePageRows, findInvoiceProgramNumberCollisions } from "@/lib/purchaseInvoiceCollisionAudit";
 
 const PAGE_SIZE = 250;
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
@@ -21,7 +22,8 @@ const ISSUE_LABELS = {
   invalid_return: "مرتجع أكبر من الفاتورة",
   invalid_branch: "فرع غير صحيح",
   future_date: "تاريخ مستقبلي",
-  duplicate: "تكرار محتمل",
+  duplicate: "تكرار فاتورة المورد",
+  duplicate_program: "تكرار رقم البرنامج بنفس الفرع",
 };
 
 async function loadAllInvoices() {
@@ -34,11 +36,11 @@ async function loadAllInvoices() {
     if (batch.length < pageSize) break;
     offset += pageSize;
   }
-  return rows;
+  return canonicalizeInvoicePageRows(rows);
 }
 
 function issueTone(issue) {
-  if (["invalid_return", "duplicate"].includes(issue)) return "bg-red-100 text-red-700 border-red-200";
+  if (["invalid_return", "duplicate", "duplicate_program"].includes(issue)) return "bg-red-100 text-red-700 border-red-200";
   if (["missing_supplier", "invalid_branch", "future_date"].includes(issue)) return "bg-amber-100 text-amber-800 border-amber-200";
   return "bg-slate-100 text-slate-700 border-slate-200";
 }
@@ -72,6 +74,9 @@ export default function InvoiceQualityCenter() {
     const duplicateIds = new Set(
       [...duplicateMap.values()].filter((ids) => ids.length > 1).flat()
     );
+    const duplicateProgramIds = new Set(
+      [...findInvoiceProgramNumberCollisions(invoices).values()].flatMap((group) => group.map((row) => row.id))
+    );
 
     const rows = invoices.map((inv) => {
       const issues = [];
@@ -90,6 +95,7 @@ export default function InvoiceQualityCenter() {
       if (!BRANCHES.includes(inv.branch)) issues.push("invalid_branch");
       if (invoiceDate && invoiceDate >= tomorrow) issues.push("future_date");
       if (duplicateIds.has(inv.id)) issues.push("duplicate");
+      if (duplicateProgramIds.has(inv.id)) issues.push("duplicate_program");
 
       return { ...inv, issues };
     }).filter((row) => row.issues.length > 0);
