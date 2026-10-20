@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { normalizeDate, normalizeInvoiceNumber, normalizeMoney } from "@/lib/purchaseInvoiceTruth";
-import { canonicalizeInvoicePageRows, findInvoiceProgramNumberCollisions, invoiceBusinessNumberKey } from "@/lib/purchaseInvoiceCollisionAudit";
+import { canonicalizeInvoicePageRows, findInvoiceProgramNumberCollisions } from "@/lib/purchaseInvoiceCollisionAudit";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -155,7 +155,7 @@ export default function PurchaseInvoices() {
     },
     onSuccess: (inv) => {
       // تحديث ذكي: أضف الفاتورة الجديدة للكاش مباشرة بدلاً من إعادة تحميل الكل
-      queryClient.setQueryData(["purchase-invoices"], (old = []) => [inv, ...old]);
+      queryClient.setQueryData(["purchase-invoices"], (old = []) => canonicalizeInvoicePageRows([inv, ...old]));
       queryClient.invalidateQueries({ queryKey: ["activity-logs"] });
       queryClient.invalidateQueries({ queryKey: ["pending-invoices-count"] });
       setDialogOpen(false);
