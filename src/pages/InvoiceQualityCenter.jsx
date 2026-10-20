@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Download, FileWarning, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileWarning, RefreshCw, Search, Layers3, List } from "lucide-react";
 import * as XLSX from "xlsx";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { normalizeText } from "@/lib/dataIntegrity";
 import { canonicalizeInvoicePageRows, findInvoiceProgramNumberCollisions } from "@/lib/purchaseInvoiceCollisionAudit";
+import { buildInvoiceQualityGroups, filterInvoiceQualityGroups, paginateInvoiceQualityGroups, isInvoiceQualityDuplicate } from "@/lib/invoiceQualityGrouping";
 
 const PAGE_SIZE = 250;
 const BRANCHES = ["دواء شكري", "دواء الشامي"];
@@ -50,6 +51,7 @@ export default function InvoiceQualityCenter() {
   const [branchFilter, setBranchFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [groupDuplicates, setGroupDuplicates] = useState(true);
 
   const query = useQuery({
     queryKey: ["invoice-quality-center"],
@@ -108,20 +110,39 @@ export default function InvoiceQualityCenter() {
     return { rows, counts, totalInvoices: invoices.length };
   }, [query.data]);
 
-  const filtered = useMemo(() => {
-    const term = normalizeText(search);
-    return analysis.rows.filter((row) => {
-      if (issueFilter !== "all" && !row.issues.includes(issueFilter)) return false;
-      if (branchFilter !== "all" && row.branch !== branchFilter) return false;
-      if (!term) return true;
-      return [row.system_invoice_number, row.supplier_invoice_number, row.supplier_name, row.entered_by]
-        .some((value) => normalizeText(value).includes(term));
-    });
-  }, [analysis.rows, issueFilter, branchFilter, search]);
+  const candidates = useMemo(() => analysis.rows.filter((row) => {
+    if (issueFilter === 'all_duplicates') {
+      if (!isInvoiceQualityDuplicate(row)) return false;
+    } else if (issueFilter !== 'all' && !row.issues.includes(issueFilter)) return false;
+    return branchFilter === 'all' || row.branch === branchFilter;
+  }), [analysis.rows, issueFilter, branchFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Group BEFORE applying search so a search for one supplier/date still
+  // returns the other records of that same collision for comparison.
+  const groupMode = issueFilter === 'duplicate_program' ? 'program' :
+    issueFilter === 'duplicate' ? 'supplier' : 'all';
+  const groups = useMemo(() => buildInvoiceQualityGroups(candidates, groupMode), [candidates, groupMode]);
+  const matchingGroups = useMemo(() => filterInvoiceQualityGroups(groups, search), [groups, search]);
+  const filtered = useMemo(() => {
+    if (groupDuplicates) return matchingGroups.flatMap((group) => group.rows);
+    const term = normalizeText(search);
+    return candidates.filter((row) => !term || [row.system_invoice_number, row.supplier_invoice_number, row.supplier_name, row.entered_by, row.id]
+      .some((value) => normalizeText(value).includes(term)));
+  }, [groupDuplicates, matchingGroups, candidates, search]);
+
+  const duplicateGroups = matchingGroups.filter((group) => group.isDuplicate);
+  const groupPages = useMemo(() => paginateInvoiceQualityGroups(matchingGroups, PAGE_SIZE), [matchingGroups]);
+  const totalPages = groupDuplicates
+    ? groupPages.length
+    : Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pageGroups = groupDuplicates
+    ? (groupPages[currentPage - 1] || [])
+    : [{
+      key: 'ungrouped-page',
+      isDuplicate: false,
+      rows: filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    }];
 
   const updateFilter = (setter) => (value) => {
     setter(value);
@@ -217,6 +238,7 @@ export default function InvoiceQualityCenter() {
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">كل أنواع المشكلات</SelectItem>
+              <SelectItem value="all_duplicates">كل أنواع التكرار</SelectItem>
               {Object.entries(ISSUE_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -228,7 +250,23 @@ export default function InvoiceQualityCenter() {
             </SelectContent>
           </Select>
         </div>
-        <p className="text-xs text-slate-500">النتائج الحالية: {filtered.length.toLocaleString("ar-EG")}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs text-slate-600">
+            <span>النتائج الحالية: <strong>{filtered.length.toLocaleString("ar-EG")}</strong> سجل</span>
+            {groupDuplicates && duplicateGroups.length > 0 && <span className="mr-2">· <strong>{duplicateGroups.length.toLocaleString("ar-EG")}</strong> مجموعة متعارضة</span>}
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+            <button type="button" aria-pressed={groupDuplicates} onClick={() => { setGroupDuplicates(true); setPage(1); }}
+              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-bold ${groupDuplicates ? 'bg-teal-700 text-white' : 'text-slate-600 hover:bg-white'}`}>
+              <Layers3 className="h-3.5 w-3.5" /> تجميع المتكررات
+            </button>
+            <button type="button" aria-pressed={!groupDuplicates} onClick={() => { setGroupDuplicates(false); setPage(1); }}
+              className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-bold ${!groupDuplicates ? 'bg-teal-700 text-white' : 'text-slate-600 hover:bg-white'}`}>
+              <List className="h-3.5 w-3.5" /> عرض عادي
+            </button>
+          </div>
+        </div>
+        {groupDuplicates && <p className="text-[11px] text-slate-500">كل مجموعة لها نفس رقم البرنامج داخل الفرع أو نفس مرجع فاتورة المورد. السجلات تظل منفصلة؛ التجميع للعرض فقط، ولا يعني ثبوت التكرار المحاسبي.</p>}
       </Card>
 
       <Card className="overflow-hidden">
@@ -247,10 +285,28 @@ export default function InvoiceQualityCenter() {
               </tr>
             </thead>
             <tbody>
-              {pageRows.length === 0 ? (
+              {filtered.length === 0 ? (
                 <tr><td colSpan={8} className="p-8 text-center text-slate-500">لا توجد نتائج مطابقة.</td></tr>
-              ) : pageRows.map((row) => (
-                <tr key={row.id} className="border-b last:border-0 hover:bg-slate-50/70">
+              ) : pageGroups.map((group) => (
+                <Fragment key={group.key}>
+                  {groupDuplicates && group.isDuplicate && (
+                    <tr className="border-y border-teal-200 bg-teal-50/80">
+                      <td colSpan={8} className="px-3 py-2.5 text-xs font-black text-teal-950">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Layers3 className="h-4 w-4" />
+                          <span>{group.kind === 'program'
+                            ? `رقم البرنامج ${group.programNumber}`
+                            : group.kind === 'supplier'
+                              ? `فاتورة المورد ${group.supplierNumber}`
+                              : `مجموعة أرقام مرتبطة: ${group.numbers.join('، ')}`}</span>
+                          <span>· {group.branch}</span>
+                          <span className="rounded-full border border-teal-200 bg-white px-2 py-0.5">{group.size} سجلات للمراجعة</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {group.rows.map((row, index) => (
+                <tr key={row.id || `${group.key}:${index}`} className={`border-b last:border-0 hover:bg-slate-50/70 ${groupDuplicates && group.isDuplicate ? 'bg-teal-50/20' : ''}`}>
                   <td className="p-3 font-semibold">{row.system_invoice_number || "—"}</td>
                   <td className="p-3">{row.supplier_invoice_number || "—"}</td>
                   <td className="p-3">{row.supplier_name || "—"}</td>
@@ -264,6 +320,8 @@ export default function InvoiceQualityCenter() {
                     </div>
                   </td>
                 </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
