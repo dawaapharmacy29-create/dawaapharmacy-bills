@@ -7,6 +7,7 @@ import {
   needsReturnInspection,
   reviewAttentionSummary,
   reviewQueuePriority,
+  canRestoreBConnectAcceptance,
 } from '../src/lib/bconnectReviewQueue.js';
 
 const base = {
@@ -67,4 +68,19 @@ test('return counts separate pending, inspected, and total without double-counti
     rows, { '11104': { action: 'reviewed' } }, (row) => row.number
   );
   assert.deepEqual(summary, { returnsTotal: 2, returnsToInspect: 1, returnsReviewed: 1 });
+});
+
+
+test('previous approval is never restored after a new note or supplier return appears', () => {
+  const row = { ...base, status: 'review', identity: 'confirmed' };
+  const normalView = { lane: 'approve', fastAccept: true, hasNote: false, hasReturn: false, returnIssue: false };
+  assert.equal(canRestoreBConnectAcceptance(row, normalView), false); // missing stable application record
+  const withApp = { ...row, app: { id: 'invoice-1', supplier_name: 'مورد', notes: '' } };
+  assert.equal(canRestoreBConnectAcceptance(withApp, normalView), true);
+  assert.equal(canRestoreBConnectAcceptance(withApp, { ...normalView, hasNote: true }), false);
+  assert.equal(canRestoreBConnectAcceptance(withApp, { ...normalView, hasReturn: true }), false);
+  assert.equal(canRestoreBConnectAcceptance(withApp, { ...normalView, returnIssue: true }), false);
+  assert.equal(canRestoreBConnectAcceptance(withApp, { ...normalView, fastAccept: false }), false);
+  assert.equal(canRestoreBConnectAcceptance(withApp, { ...normalView, lane: 'investigate' }), false);
+  assert.equal(canRestoreBConnectAcceptance({ ...withApp, status: 'clean' }, { ...normalView, lane: 'clean', fastAccept: false }), true);
 });
