@@ -6,6 +6,7 @@ import { bconnectAcceptanceFingerprint, loadBconnectAcceptances, saveBconnectAcc
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import BConnectReviewModal from '@/components/bconnect/BConnectReviewModal';
+import CopyInvoiceNumber from '@/components/bconnect/CopyInvoiceNumber';
 import BConnectInvoiceIdentity from '@/components/bconnect/BConnectInvoiceIdentity';
 import { describeBConnectInvoiceTimestamp } from '@/lib/bconnectInvoiceTimestamp';
 import { parseBConnectWorkbook } from '@/lib/bconnectPurchaseInvoiceParser';
@@ -378,7 +379,7 @@ export default function BConnectInvoiceReview() {
     return <Card className="overflow-hidden border-slate-200 bg-white shadow-none">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5"><span className="font-mono text-2xl font-black text-slate-950">{selectedRow.number}</span><DecisionBadge view={view} large /></div>
+          <div className="flex flex-wrap items-center gap-2.5"><span className="font-mono text-2xl font-black text-slate-950">{selectedRow.number}</span><CopyInvoiceNumber number={selectedRow.number} /><DecisionBadge view={view} large /></div>
           <div className="mt-1 text-[11px] font-bold text-slate-500">{branch} · المورد والتاريخ والتوقيت بالأسفل</div>
           <div className="mt-2 text-xs font-semibold text-slate-600">{primaryReason}</div>
         </div>
@@ -471,9 +472,9 @@ export default function BConnectInvoiceReview() {
               const view = buildBConnectPurchaseDecision(row);
               const invoiceStamp = describeBConnectInvoiceTimestamp(row.bconnect?.date);
               const active = selectedRow && rowKey(selectedRow) === rowKey(row);
-              return <button key={rowKey(row)} type="button" onClick={() => setSelectedKey(rowKey(row))} className={`w-full border-r-[3px] px-3 py-2.5 text-right transition ${active ? 'border-teal-500 bg-teal-50/45' : 'border-transparent bg-white hover:bg-slate-50'}`}>
+              return <div key={rowKey(row)} className={`w-full border-r-[3px] px-3 py-2.5 transition ${active ? 'border-teal-500 bg-teal-50/45' : 'border-transparent bg-white hover:bg-slate-50'}`}><div className="flex items-start gap-2"><button type="button" onClick={() => setSelectedKey(rowKey(row))} className="min-w-0 flex-1 text-right">
                 <div className="flex items-start gap-2.5"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="font-mono text-sm font-black text-slate-900">{row.number}</span><DecisionBadge view={view} />{hasUploadedReturns(row) && <span className="rounded-md border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[10px] font-black text-rose-700">{decisions[rowKey(row)]?.action === 'reviewed' ? 'مرتجع فُحص' : 'مرتجع للفحص'}</span>}</div><div className="mt-1 truncate text-xs font-black text-slate-700" title={row.bconnect?.supplier || ''}><span className="font-semibold text-slate-400">المورد: </span>{row.bconnect?.supplier || row.app?.supplier_name || 'غير مسجل'}</div><div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-bold text-slate-500"><span>{invoiceStamp.date}</span><span>• {invoiceStamp.hasTime ? invoiceStamp.time : 'الوقت غير مسجل'}</span></div>{state.meta?.files?.length > 1 && <div className="mt-0.5 truncate text-[10px] text-slate-400">{row.bconnect?.source_file}</div>}{Array.isArray(row.bconnect?.items) && <div className="mt-0.5 text-[10px] font-bold text-teal-700">{row.bconnect.items.length} صنف{row.bconnect.returned_items_count > 0 ? ' · مرتجع ' + row.bconnect.returned_items_count : ''}</div>}<div className="mt-1.5"><DecisionFacts view={view} /></div></div></div>
-              </button>;
+              </button><CopyInvoiceNumber number={row.number} compact className="mt-0.5" /></div></div>;
             })}{!queueRows.length && <div className="p-8 text-center text-xs font-bold text-slate-400">لا توجد حالات هنا.</div>}</div>
           </Card>
 
