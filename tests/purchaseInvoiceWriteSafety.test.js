@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mayRetryAppDataAction, validatePurchaseInvoiceCreateEvidence } from '../src/lib/purchaseInvoiceWriteSafety.js';
+import { mayRetryAppDataAction, validatePurchaseInvoiceCreateEvidence, appDataWriteUncertaintyMessage } from '../src/lib/purchaseInvoiceWriteSafety.js';
 
 test('only explicitly read-only app-data actions may be transparently retried', () => {
   for (const name of ['list', 'filter', 'get']) assert.equal(mayRetryAppDataAction(name), true, name);
@@ -55,4 +55,15 @@ test('batch may contain distinct numbers in the same branch', () => {
 test('branch and number are required and cannot be guessed', () => {
   assert.throws(() => validatePurchaseInvoiceCreateEvidence({ branch: 'دواء الشامي' }, []), /بدون رقم برنامج/);
   assert.throws(() => validatePurchaseInvoiceCreateEvidence([], []), /فارغة/);
+});
+
+
+test('an ambiguous write timeout tells the operator to inspect the invoice before retrying', () => {
+  const message = appDataWriteUncertaintyMessage(new Error('انتهت مهلة الاتصال بالخادم. أعد المحاولة.'));
+  assert.match(message, /قد تكون الفاتورة اتسجلت بالفعل/);
+  assert.match(message, /قبل أي محاولة جديدة/);
+});
+
+test('explicit server validation errors are preserved without retry warnings', () => {
+  assert.equal(appDataWriteUncertaintyMessage(new Error('invoice_already_exists')), 'invoice_already_exists');
 });
