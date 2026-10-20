@@ -20,7 +20,7 @@ function legacyCopy(value) {
 }
 
 /** Copy action is separate from row selection and never changes an invoice. */
-export default function CopyInvoiceNumber({ number, compact = false, className = '' }) {
+export default function CopyInvoiceNumber({ number, compact = false, iconOnly = false, subject = 'رقم الفاتورة', className = '' }) {
   const [feedback, setFeedback] = useState('');
   useEffect(() => { setFeedback(''); }, [number]);
   useEffect(() => {
@@ -42,6 +42,9 @@ export default function CopyInvoiceNumber({ number, compact = false, className =
 
   const label = feedback === 'copied' ? 'تم النسخ' :
     feedback === 'failed' ? 'تعذر النسخ' : compact ? 'نسخ' : 'نسخ الرقم';
+  const accessibleLabel = feedback === 'copied' ? 'تم نسخ ' + subject
+    : feedback === 'failed' ? 'تعذر نسخ ' + subject
+    : 'نسخ ' + subject;
   const Icon = feedback === 'copied' ? Check : feedback === 'failed' ? CircleAlert : ClipboardCopy;
   const tone = feedback === 'copied'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
@@ -51,13 +54,13 @@ export default function CopyInvoiceNumber({ number, compact = false, className =
 
   return <button
     type="button"
-    aria-label={feedback === 'copied' ? 'تم نسخ رقم الفاتورة' : 'نسخ رقم الفاتورة'}
-    title={feedback === 'failed' ? 'لم يسمح المتصفح بالنسخ؛ جرّب تحديد الرقم يدويًا' : 'نسخ رقم الفاتورة فقط'}
+    aria-label={accessibleLabel}
+    title={feedback === 'failed' ? 'لم يسمح المتصفح بالنسخ؛ جرّب تحديد القيمة يدويًا' : 'نسخ ' + subject + ' فقط'}
     disabled={number === null || number === undefined || String(number).trim() === ''}
     onClick={handleCopy}
     className={'inline-flex min-h-8 shrink-0 items-center justify-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-black transition disabled:opacity-40 ' + tone + ' ' + className}
   >
     <Icon aria-hidden="true" className="h-3.5 w-3.5" />
-    <span aria-live="polite">{label}</span>
+    <span aria-live="polite" className={iconOnly && !feedback ? 'sr-only' : ''}>{iconOnly && !feedback ? accessibleLabel : label}</span>
   </button>;
 }
