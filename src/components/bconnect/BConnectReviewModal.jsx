@@ -4,6 +4,9 @@ import { base44, performanceApi } from '@/api/base44Client';
 import { bconnectAtomicCreate } from '@/api/bconnectAtomicCreateClient';
 import { Button } from '@/components/ui/button';
 import BConnectSupplierSuggestions from '@/components/bconnect/BConnectSupplierSuggestions';
+import BConnectInvoiceItems from '@/components/bconnect/BConnectInvoiceItems';
+import BConnectInvoiceIdentity from '@/components/bconnect/BConnectInvoiceIdentity';
+import { hasUploadedReturns } from '@/lib/bconnectReviewQueue';
 import { prepareBconnectWriteCommand } from '@/lib/bconnectAtomicInvoiceCommand';
 import { buildBConnectFormHandoff } from '@/lib/bconnectInvoiceFormHandoff';
 import { classifyBConnectReviewRow } from '@/lib/bconnectReviewDecisionPolicy';
@@ -87,13 +90,14 @@ function CompareValue({ label, source, current, moneyValue = false, normalize, d
   const normalizedCurrent = currentKnown ? (normalize ? normalize(current) : current) : null;
   const comparable = comparison ? comparison !== 'unknown' : sourceKnown && currentKnown && normalizedSource !== null && normalizedCurrent !== null;
   const same = comparison ? comparison === 'match' : comparable && String(normalizedSource) === String(normalizedCurrent);
+  const acceptable = comparison === 'acceptable';
   const format = (value, known) => {
     if (!known) return 'غير متاح';
     if (display) return display(value);
     if (moneyValue) return money(value) === '—' ? 'غير متاح' : `${money(value)} ج`;
     return value || 'غير متاح';
   };
-  return <div className={`grid gap-2 rounded-xl border px-3 py-2.5 md:grid-cols-[110px_1fr_1fr] ${!comparable ? 'border-slate-200 bg-slate-50' : same ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
+  return <div className={`grid gap-2 rounded-xl border px-3 py-2.5 md:grid-cols-[110px_1fr_1fr] ${!comparable ? 'border-slate-200 bg-slate-50' : acceptable ? 'border-teal-200 bg-teal-50/40' : same ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50/60'}`}>
     <div className="text-xs font-black text-slate-700">{label}</div>
     <div><div className="text-[10px] text-slate-400">B-Connect</div><div className="mt-0.5 break-words text-sm font-bold">{format(source, sourceKnown)}</div></div>
     <div><div className="text-[10px] text-slate-400">التطبيق</div><div className="mt-0.5 break-words text-sm font-bold">{format(current, currentKnown)}</div></div>
@@ -179,6 +183,9 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
   const app = row.app || {};
   const source = row.bconnect || {};
   const decisionView = buildBConnectPurchaseDecision(row);
+  const mainReason = row.status === 'problem' && row.reasons?.length ? row.reasons[0] : decisionView.instruction;
+  const returnInspection = hasUploadedReturns(row);
+  const canMarkReturnInspected = context.readOnly && returnInspection;
   const appEnteredBy = app.entered_by_name || app.entered_by || '';
   const supplierComparison = row.checks?.supplier || 'unknown';
   const supplierChoices = app.supplier_id && !suppliers.some((supplier) => String(supplier.id) === String(app.supplier_id))
@@ -227,7 +234,9 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
     setDraft((old) => ({
       ...old,
       invoice_date: source.date ? dateOnly(source.date) : old.invoice_date,
-      total_value: source.invoice_value !== null && source.invoice_value !== undefined ? fieldText(source.invoice_value) : old.total_value,
+      // Do not overwrite an accepted ±5 EGP discrepancy when preparing another correction.
+      total_value: decisionView.toleranceAccepted ? old.total_value :
+        (source.invoice_value !== null && source.invoice_value !== undefined ? fieldText(source.invoice_value) : old.total_value),
       returned_value: source.return_value !== null && source.return_value !== undefined ? fieldText(source.return_value) : old.returned_value,
     }));
     setSaveState({ saving: false, error: '', success: 'تم تجهيز قيم B-Connect. لو مناسبة اضغط حفظ.' });
@@ -317,13 +326,15 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
       </div>
 
       <div className="overflow-y-auto p-4 md:p-5">
-        <div className={`rounded-2xl border p-3 ${decisionView.confidence?.code === 'blocked' || decisionView.confidence?.code === 'low' ? 'border-rose-200 bg-rose-50/60' : decisionView.confidence?.code === 'high_explanation' || decisionView.confidence?.code === 'medium' ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
+        <BConnectInvoiceIdentity invoice={row} />
+        <div className={`mt-3 rounded-2xl border p-3 ${decisionView.confidence?.code === 'blocked' || decisionView.confidence?.code === 'low' ? 'border-rose-200 bg-rose-50/60' : decisionView.confidence?.code === 'high_explanation' || decisionView.confidence?.code === 'medium' ? 'border-amber-200 bg-amber-50/60' : 'border-emerald-200 bg-emerald-50/60'}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
-              <div className="mt-1 text-sm font-bold text-slate-700">{decisionView.instruction}</div>
+              <div className="flex flex-wrap items-center gap-2"><Sparkles className="h-4 w-4" /><strong className="text-base">{decisionView.label}</strong><span className="rounded-full bg-white px-2 py-1 text-[11px] font-black">{decisionView.confidence?.label || 'ثقة منخفضة'}{decisionView.confidence?.code !== 'blocked' && Number.isFinite(decisionView.confidence?.score) ? ` ${decisionView.confidence.score}%` : ''}</span></div>
+              <div className="mt-1 text-sm font-bold text-slate-700">{canMarkReturnInspected ? 'القيم المطابقة سليمة، لكن لازم تراجع أصناف المرتجع وكمياته قبل إغلاق الفحص.' : mainReason}</div>
+              {row.reasons?.length > 0 && <div className="mt-2 text-[11px] leading-5 text-slate-600">{row.reasons.slice(0, 2).join(' · ')}</div>}
               <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold">
-                {financialMismatch && <span className="rounded-full bg-rose-100 px-2 py-1 text-rose-700">فرق {money(Math.abs(decisionView.financialDifference))} ج</span>}
+                {financialMismatch && <span className={`rounded-full px-2 py-1 ${decisionView.toleranceAccepted ? 'bg-teal-100 text-teal-800' : 'bg-rose-100 text-rose-700'}`}>{decisionView.toleranceAccepted ? 'فرق مقبول' : 'فرق'} {money(Math.abs(decisionView.financialDifference))} ج{decisionView.toleranceAccepted ? ' · سماحية ±5 ج' : ''}</span>}
                 {decisionView.supplierMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">مورد</span>}
                 {decisionView.dateMismatch && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-700">تاريخ {decisionView.dateDifferenceDays == null ? '' : `${Math.abs(decisionView.dateDifferenceDays)} يوم`}</span>}
                 {decisionView.evidence?.label && <span className="rounded-full bg-white px-2 py-1 text-slate-700">{decisionView.evidence.label}</span>}
@@ -339,6 +350,9 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
           </div>
         </div>
 
+        {canMarkReturnInspected && <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">فحص المرتجع لا يعدّل الفاتورة ولا يُسجّل حركة مخزون. علامة «تم الفحص» مؤقتة لهذه الجلسة فقط.</div>}
+        {decisionView.returnIssue && <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-800">قيمة المرتجع مختلفة أو غير مؤكدة بالتطبيق. الاطلاع على التفاصيل لا يحل الفرق ولا ينفّذ حفظًا؛ لازم مراجعة وتصحيح مستقل.</div>}
+        <BConnectInvoiceItems invoice={row} />
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
           <section className="space-y-2">
             <div className="flex items-center justify-between gap-2">
@@ -346,11 +360,11 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
               <button type="button" onClick={() => setShowAllDetails((value) => !value)} className="inline-flex items-center gap-1 text-xs font-black text-teal-700">{showAllDetails ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}{showAllDetails ? 'إخفاء المطابق' : 'عرض كل البيانات'}</button>
             </div>
 
-            {!hasFocusedDifference && !showAllDetails && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-bold text-emerald-800">لا توجد فروق مؤثرة إضافية.</div>}
+            {!hasFocusedDifference && !showAllDetails && <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-bold text-slate-700">{blocked ? 'لا توجد فروق مالية مؤكدة، لكن أدلة ربط الفاتورة غير كافية. راجع بيانات الهوية بالأعلى.' : 'لا توجد فروق مؤثرة إضافية.'}</div>}
             {showBranchCompare && <CompareValue label="الفرع" source={source.branch} current={app.branch} normalize={normalizeBranch} display={(value) => normalizeBranch(value) || 'غير متاح'} comparison={row.checks?.branch} />}
             {showSupplierCompare && <CompareValue label="المورد" source={source.supplier} current={app.supplier_name} comparison={supplierComparison} />}
             {showDateCompare && <CompareValue label="التاريخ" source={dateOnly(source.date)} current={dateOnly(app.invoice_date)} display={formatArabicDate} comparison={row.checks?.invoice_date} />}
-            {showTotalCompare && <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : 'mismatch') : 'unknown'} />}
+            {showTotalCompare && <CompareValue label="الإجمالي" source={source.invoice_value} current={app.total_value} moneyValue normalize={normalizeMoney} comparison={row.financial?.comparable ? (row.financial?.match ? 'match' : decisionView.toleranceAccepted ? 'acceptable' : 'mismatch') : 'unknown'} />}
             {showReturnCompare && <CompareValue label="المرتجع" source={source.return_value} current={app.returned_value} moneyValue normalize={normalizeMoney} />}
             {showAllDetails && <CompareValue label="المستخدم" source={source.user} current={appEnteredBy} normalize={normalizeUserName} />}
             {showAllDetails && row.reasons?.length > 0 && <div className="rounded-xl border bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-600">{row.reasons.join(' — ')}</div>}
@@ -388,7 +402,7 @@ export default function BConnectReviewModal({ row, onClose, onMarkReviewed, onAc
         <div className="text-xs text-slate-400">{showAllDetails && !isCreate ? <>السجل: <span className="font-mono">{app.id || '—'}</span>{hasRevision ? ` · نسخة ${revision}` : ''}</> : hasChanges ? `${changedCount} تعديل جاهز للحفظ` : 'راجع القرار ثم نفّذ'}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" disabled={saveState.saving} onClick={onClose}>إغلاق</Button>
-          {!isCreate && !canAcceptAsIs && !blocked && !readOnly && <Button type="button" variant="ghost" size="sm" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>تمت المراجعة</Button>}
+          {!isCreate && !canAcceptAsIs && !blocked && (!readOnly || canMarkReturnInspected) && <Button type="button" variant={canMarkReturnInspected ? 'default' : 'ghost'} size="sm" disabled={saveState.saving} onClick={() => onMarkReviewed(row)}>{canMarkReturnInspected ? 'تم فحص المرتجع' : decisionView.returnIssue ? 'اطلعت على فرق المرتجع' : 'تمت المراجعة'}</Button>}
           {canAcceptAsIs && <Button type="button" size="sm" disabled={saveState.saving} onClick={() => onAcceptAsIs(row)}>اعتماد الآن</Button>}
           {isCreate && !blocked ? <Button type="button" size="sm" disabled={!canCreate} onClick={createMissing}>{saveState.saving ? 'جاري التسجيل...' : 'اعتماد وتسجيل'}</Button> : blocked || readOnly || canAcceptAsIs ? null : <Button type="button" size="sm" disabled={!canSave} onClick={save}>{saveState.saving ? 'جاري الحفظ...' : hasChanges ? `حفظ ${changedCount} تعديل` : 'حفظ'}</Button>}
         </div>

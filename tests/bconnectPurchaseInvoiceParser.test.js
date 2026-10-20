@@ -269,3 +269,247 @@ test("real B-Connect layout with Excel serial dates, repeated headers and three 
   assert.equal(parsed.invoices.find(x => x.serial === "19520").payment_type,"نقدى");
   assert.ok(parsed.invoices.every(x => x.branch === "دواء شكري" && x.supplier));
 });
+
+
+function makeDetailedHeader({ serial, supplier = "مورد تجريبي", date = 46304.5, amount = 120, user = "د اختبار" } = {}) {
+  return [
+    "ملاحظات", "مستخدم", "صافى الفاتورة", "ض.إضافة", "مصاريف", "ن.خصم",
+    "ق.الخصم", "ق.الفاتورة", "إسم المورد", "ك.المورد", "التاريخ", "مسلسل",
+    "16", user, amount, 0, 0, 0, 0, amount, supplier, "300", date, serial,
+    "ن.الربح", "الربح", "خ.إضافى", "س.البيع", "إج.س.شراء",
+    "س.شراء", "إج.ض.مبيعات", "ض.مبيعات", "سعر المرتجع",
+    "كمية المرتجع", "بونص", "كمية", "ت.صلاحية", "الإسم", "الكود",
+  ];
+}
+function makeDetailedItem(code = "12345") {
+  const row = Array(39).fill(null);
+  row[14] = "صنف اختباري";
+  row[15] = code;
+  return row;
+}
+function makeDetailedSubtotal(serial, count = 1, amount = 120) {
+  return [20, 6, 100, amount, 0, 0, "الإجمالى", count,
+    "عدد الأصناف", String(serial), "رقم فاتورة المورد",
+    "*********************************************************************************"];
+}
+
+test("parses the detailed B-Connect purchase export as invoices, never as line items", () => {
+  const rows = [
+    ["تم الإسترجاع حسب: تاريخ الإنشاء , المخزن الفرعية الشامي"],
+    ["الفرعية الشامي", "موردين"],
+    ["آجل"],
+    makeDetailedHeader({ serial: 11101 }),
+    makeDetailedItem("47723"),
+    makeDetailedSubtotal(11101),
+    makeDetailedHeader({ serial: 11102, supplier: "مورد ثان", amount: 222 }),
+    makeDetailedItem("66807"), makeDetailedItem("80458"),
+    makeDetailedSubtotal(84025, 2, 222),
+    [82000, "قيمة الربح", 150000, "صافى الفواتير"],
+    ["نقدى"],
+    makeDetailedHeader({ serial: 11103, amount: 50 }),
+    makeDetailedItem("80458"),
+    makeDetailedSubtotal(11103, 1, 50),
+    ["Page -1 of 1", "ePlus", 46314, "-", 0.304, "وقت الطباعة ", "Copyright © B-Connect 2011"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.meta.report_format, "invoice-with-item-details");
+  assert.equal(result.meta.header_sections, 3);
+  assert.deepEqual(result.invoices.map(({ serial }) => serial), ["11101", "11102", "11103"]);
+  assert.ok(result.invoices.every((invoice) => invoice.branch === "دواء الشامي"));
+  assert.equal(result.invoices[1].invoice_value, 222);
+  assert.equal(result.invoices[1].supplier, "مورد ثان");
+  assert.equal(result.invoices[1].user, "د اختبار");
+  assert.equal(result.invoices[1].net, 222);
+  assert.equal(result.invoices[1].count, 2);
+  assert.equal(result.invoices[1].supplier_invoice_number, "84025");
+  assert.equal(result.invoices[0].payment_type, "آجل");
+  assert.equal(result.invoices[2].payment_type, "نقدى");
+});
+
+test("fails closed on missing detailed invoice serial but accepts separate supplier invoice numbers", () => {
+  const rows = [
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: null }), makeDetailedItem(), makeDetailedSubtotal(11101),
+    makeDetailedHeader({ serial: 11102 }), makeDetailedItem(), makeDetailedSubtotal(99999),
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [2]);
+  assert.equal(result.invoices.length, 1);
+  assert.equal(result.invoices[0].serial, "11102");
+  assert.equal(result.invoices[0].supplier_invoice_number, "99999");
+});
+
+test("fails closed on missing item code or incomplete detailed invoice section", () => {
+  const rows = [
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11102 }),
+    ["صف غير معروف"],
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.meta.unrecognized_rows, [3]);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [2]);
+});
+
+test("reads detailed invoice blocks directly from a real-layout workbook", () => {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11101, amount: 240 }),
+    makeDetailedItem(), makeDetailedSubtotal(11101, 1, 240),
+  ]), "Sheet1");
+  const result = parseBConnectWorkbook(XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices.length, 1);
+  assert.equal(result.invoices[0].invoice_value, 240);
+});
+
+
+test("detailed subtotal with missing items blocks approval instead of silently accepting a partial invoice", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11101 }), makeDetailedItem(), makeDetailedSubtotal(11101, 2),
+  ]);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [4]);
+});
+
+test("real-world header/subtotal amount disagreements remain visible for manual review", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11155, amount: 147.18 }), makeDetailedItem(),
+    makeDetailedItem("73104"), makeDetailedSubtotal(11155, 2, 183.72),
+  ]);
+  assert.equal(result.valid, true);
+  assert.equal(result.invoices[0].detail_total, 183.72);
+  assert.ok(Math.abs(result.invoices[0].detail_total_difference - 36.54) < 0.001);
+});
+
+test("accepts a symbolic supplier invoice reference separately from B-Connect's internal serial", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11123 }), makeDetailedItem(), makeDetailedSubtotal("+"),
+  ]);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices[0].serial, "11123");
+  assert.equal(result.invoices[0].supplier_invoice_number, "+");
+});
+
+test("detailed supplier/location-looking name cannot overwrite the report branch", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11200, supplier: "مخزن د وائل" }),
+    makeDetailedItem(), makeDetailedSubtotal(11200),
+  ]);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices[0].supplier, "مخزن د وائل");
+  assert.equal(result.invoices[0].branch, "دواء الشامي");
+});
+
+
+function detailedReturnItem({ name, code, purchased, returned, unitCost, returnUnitPrice, returnTotal, bonus = 0 }) {
+  const row = Array(39).fill(null);
+  row[4] = Number((purchased * unitCost).toPrecision(12));
+  row[5] = unitCost;
+  row[8] = returnUnitPrice;
+  row[9] = returned;
+  row[10] = bonus;
+  row[11] = purchased;
+  row[14] = name;
+  row[15] = code;
+  row[16] = returnTotal;
+  return row;
+}
+
+test("detailed B-Connect invoice 11102 links purchased quantities and 126 EGP return to the correct products", () => {
+  const rows = [
+    ["الفرعية الشامي", "موردين"], ["آجل"],
+    makeDetailedHeader({ serial: 11102, amount: 222 }),
+    detailedReturnItem({ name: "Zinctron  30 capsules", code: "66807", purchased: 1, returned: 1, unitCost: 126, returnUnitPrice: 126, returnTotal: 126 }),
+    detailedReturnItem({ name: "OSMOPEEL CREAM", code: "80458", purchased: 1, returned: 0, unitCost: 96, returnUnitPrice: 96, returnTotal: 0 }),
+    makeDetailedSubtotal(11102, 2, 222),
+  ];
+  const result = parseBConnectRows(rows);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  const invoice = result.invoices[0];
+  assert.equal(invoice.serial, "11102");
+  assert.equal(invoice.items.length, 2);
+  assert.deepEqual(invoice.items.map((item) => item.code), ["66807", "80458"]);
+  assert.deepEqual(invoice.items.map((item) => item.purchased_quantity), [1, 1]);
+  assert.deepEqual(invoice.items.map((item) => item.returned_quantity), [1, 0]);
+  assert.deepEqual(invoice.items.map((item) => item.net_quantity), [0, 1]);
+  assert.equal(invoice.items[0].purchase_total, 126);
+  assert.equal(invoice.items[0].return_total, 126);
+  assert.equal(invoice.return_value, 126);
+  assert.equal(invoice.returned_items_count, 1);
+  assert.equal(result.meta.item_line_count, 2);
+  assert.equal(result.meta.returned_item_line_count, 1);
+  assert.equal(result.meta.return_value_total, 126);
+});
+
+test("invoice 11515 preserves fractional net quantity when 14 of 15 purchased units were returned", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11515, amount: 1912.5 }),
+    detailedReturnItem({ name: "GINCOSTAZEN 30 CAP", code: "54602", purchased: 15, returned: 14, unitCost: 127.5, returnUnitPrice: 127.5, returnTotal: 1785 }),
+    makeDetailedSubtotal(11515, 1, 1912.5),
+  ]);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices[0].return_value, 1785);
+  assert.equal(result.invoices[0].items[0].net_quantity, 1);
+});
+
+test("non-integer pack quantities remain precise (0.4 pack is not a whole pack)", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11101, amount: 24 }),
+    detailedReturnItem({ name: "INDERAL 10 MG 50TAB", code: "47723", purchased: 0.4, returned: 0, unitCost: 60, returnUnitPrice: 60, returnTotal: 0 }),
+    makeDetailedSubtotal(11101, 1, 24),
+  ]);
+  assert.equal(result.valid, true, result.warnings.join(" "));
+  assert.equal(result.invoices[0].items[0].purchased_quantity, 0.4);
+  assert.equal(result.invoices[0].items[0].net_quantity, 0.4);
+  assert.equal(result.invoices[0].return_value, 0);
+});
+
+test("return quantities without financial return evidence must be rejected rather than silently treated as zero", () => {
+  const result = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 11222, amount: 126 }),
+    detailedReturnItem({ name: "Zinctron", code: "66807", purchased: 1, returned: 1, unitCost: 126, returnUnitPrice: 126, returnTotal: null }),
+    makeDetailedSubtotal(11222, 1, 126),
+  ]);
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.meta.invalid_invoice_rows, [3]);
+});
+
+test("flat B-Connect invoices remain compatible and do not invent item details", () => {
+  const result = parseBConnectRows([
+    ["الادارة فرع شكري", "آجل"],
+    ["المستخدم", "الصافى", "ض.إضافة", "مصاريف", "خصم %", "خصم قيمة", "ق.المرتجع", "ق.الفاتورة", "العدد", "مسلسل", "التاريخ"],
+    ["د عمر", 100, 0, 0, 0, 0, 0, 100, 1, 19526, "2026-10-06 01:23:40"],
+  ]);
+  assert.equal(result.valid, true);
+  assert.equal(result.invoices.length, 1);
+  assert.equal(result.invoices[0].items, undefined);
+});
+
+
+test("Excel invoice timestamp retains a real time fractional value but not a date-only midnight guess", () => {
+  const dateOnly = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 12201, date: 46305 }),
+    makeDetailedItem(), makeDetailedSubtotal(12201),
+  ]);
+  const withClock = parseBConnectRows([
+    ["الفرعية الشامي", "موردين"],
+    makeDetailedHeader({ serial: 12202, date: 46305.6111574074 }),
+    makeDetailedItem(), makeDetailedSubtotal(12202),
+  ]);
+  assert.equal(dateOnly.valid, true, dateOnly.warnings.join(" "));
+  assert.equal(withClock.valid, true, withClock.warnings.join(" "));
+  assert.equal(dateOnly.invoices[0].date, "2026-10-10");
+  assert.match(withClock.invoices[0].date, /^2026-10-10 14:40:\d{2}$/);
+});

@@ -13,6 +13,7 @@ export function classifyBConnectReviewRow(row = {}) {
   const checks = row.checks || {};
   const differences = [];
   if (row.financial?.difference != null && row.financial.difference !== 0) differences.push('قيمة الفاتورة');
+  if (row.financial?.return_issue === true || checks.returned_value === 'mismatch') differences.push('المرتجع');
   if (checks.supplier === 'mismatch') differences.push('المورد');
   if (checks.invoice_date === 'mismatch') differences.push('التاريخ');
   if (!differences.length) return { code: 'investigate', label: 'مراجعة الأدلة', selectable: false, priority: 2 };

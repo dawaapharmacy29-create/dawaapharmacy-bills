@@ -124,3 +124,103 @@ test('counts decision lanes for manager summary', () => {
   const counts = countBConnectDecisionLanes(rows);
   assert.deepEqual({ approve: counts.approve, explain: counts.explain, register: counts.register }, { approve: 1, explain: 1, register: 1 });
 });
+
+
+test("a small confirmed amount drift is green and has no bulk approval action", () => {
+  const row = baseRow({
+    status: "clean",
+    financial: { comparable: true, match: false, within_tolerance: true, tolerance_amount: 5, difference: 5 },
+    bconnect: { branch: "دواء شكري", supplier: "مورد التطبيق", invoice_value: 305, return_value: 0, date: "2026-10-11" },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, "clean");
+  assert.equal(view.label, "فرق مقبول");
+  assert.equal(view.toleranceAccepted, true);
+  assert.equal(view.financialDifference, 5);
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+});
+
+test("a tolerated value never auto-approves a different supplier or date", () => {
+  const row = baseRow({
+    financial: { comparable: true, match: false, within_tolerance: true, tolerance_amount: 5, difference: -4.203 },
+    checks: { system_invoice_number: "match", branch: "match", supplier: "mismatch", invoice_date: "match" },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, "correct");
+  assert.equal(view.toleranceAccepted, true);
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+  assert.match(view.instruction, /مقبول/);
+});
+
+test("small differences involving a return, note or ambiguous identity remain investigated", () => {
+  const financial = { comparable: true, match: false, within_tolerance: true, tolerance_amount: 5, difference: 3 };
+  const returned = buildBConnectPurchaseDecision(baseRow({
+    financial,
+    app: { id: "a1", branch: "دواء شكري", returned_value: 3, notes: "" },
+  }));
+  assert.equal(returned.lane, "explain");
+  assert.equal(returned.toleranceAccepted, false);
+
+  const noted = buildBConnectPurchaseDecision(baseRow({
+    financial,
+    app: { id: "a1", branch: "دواء شكري", returned_value: 0, notes: "تم تجميع فاتورتين" },
+  }));
+  assert.equal(noted.lane, "explain");
+  assert.equal(noted.fastAccept, false);
+
+  const unverified = buildBConnectPurchaseDecision(baseRow({
+    financial,
+    identity: "unverified",
+    status: "problem",
+  }));
+  assert.equal(unverified.lane, "investigate");
+  assert.equal(unverified.toleranceAccepted, false);
+});
+
+test("5.01 EGP remains a financial explanation and never enters safe bulk", () => {
+  const row = baseRow({
+    financial: { comparable: true, match: false, within_tolerance: false, tolerance_amount: 5, difference: 5.01 },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.lane, "explain");
+  assert.equal(view.toleranceAccepted, false);
+  assert.equal(view.bulkEligible, false);
+});
+
+
+test("a returned item blocks fast and bulk acceptance even if totals match", () => {
+  const row = baseRow({
+    checks: { system_invoice_number: 'match', branch: 'match', supplier: 'mismatch', invoice_date: 'match' },
+    bconnect: {
+      branch: 'دواء شكري', supplier: 'مورد بي كونكت',
+      invoice_value: 300, return_value: 126, date: '2026-10-11',
+      returned_items_count: 1,
+      items: [{ code: '66807', purchased_quantity: 1, returned_quantity: 1, return_total: 126 }],
+    },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.hasReturn, true);
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+  assert.equal(view.lane, 'correct');
+});
+
+
+test("equal invoice totals with different returned values still demand immediate review", () => {
+  const row = baseRow({
+    financial: { comparable: true, match: true, within_tolerance: true, difference: 0, return_issue: true, return_difference: 126 },
+    checks: { system_invoice_number: 'match', branch: 'match', supplier: 'match', invoice_date: 'match', returned_value: 'mismatch' },
+    app: { id: 'a1', branch: 'دواء شكري', supplier_name: 'مورد بي كونكت', returned_value: 0, total_value: 300 },
+    bconnect: { branch: 'دواء شكري', supplier: 'مورد بي كونكت', invoice_value: 300, return_value: 126, date: '2026-10-11' },
+  });
+  const view = buildBConnectPurchaseDecision(row);
+  assert.equal(view.returnIssue, true);
+  assert.equal(view.returnDifference, 126);
+  assert.equal(view.lane, 'explain');
+  assert.equal(view.label, 'راجع المرتجع');
+  assert.equal(view.fastAccept, false);
+  assert.equal(view.bulkEligible, false);
+  assert.match(view.instruction, /126/);
+});

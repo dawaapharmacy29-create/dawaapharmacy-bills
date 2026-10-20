@@ -3,12 +3,12 @@ import * as XLSX from "xlsx";
 export const BCONNECT_PARSER_VERSION = "v3";
 
 const HEADER_ALIASES = {
-  user: ["المستخدم"],
-  net: ["الصافى", "الصافي"],
+  user: ["المستخدم", "مستخدم"],
+  net: ["الصافى", "الصافي", "صافى الفاتورة", "صافي الفاتورة"],
   tax: ["ض.إضافة", "ض.اضافة"],
   expenses: ["مصاريف"],
-  discount_percent: ["خصم %"],
-  discount_value: ["خصم قيمة"],
+  discount_percent: ["خصم %", "ن.خصم"],
+  discount_value: ["خصم قيمة", "ق.الخصم"],
   return_value: ["ق.المرتجع"],
   invoice_value: ["ق.الفاتورة"],
   count: ["العدد"],
@@ -89,7 +89,11 @@ function parseExcelDate(value) {
     const parsed = (XLSX.SSF ?? XLSX.default?.SSF)?.parse_date_code?.(value);
     if (parsed) {
       const pad = (n) => String(n).padStart(2, "0");
-      return `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)} ${pad(parsed.H)}:${pad(parsed.M)}:${pad(parsed.S)}`;
+      const day = `${parsed.y}-${pad(parsed.m)}-${pad(parsed.d)}`;
+      // Whole-day Excel serials do not prove a recorded clock time.
+      // Do not turn an absent time into an invented 12:00 AM.
+      if (Math.abs(value - Math.round(value)) < 1e-9) return day;
+      return `${day} ${pad(parsed.H)}:${pad(parsed.M)}:${pad(parsed.S)}`;
     }
   }
   const raw = text(value);
@@ -124,7 +128,175 @@ function looksLikeInvoice(row, map) {
   return text(serial) !== "" && number(serial) !== null && number(value) !== null && parseExcelDate(row[map.date]) !== null;
 }
 
+
+// Detailed exports put invoice values 12 columns to the right of repeated
+// label headers, followed by item details and a closing invoice subtotal.
+function isDetailedInvoiceHeader(row) {
+  const map = detectHeader(row);
+  return !!map && text(row[0]) === "ملاحظات" &&
+    ["إسم المورد", "اسم المورد"].includes(text(row[8])) &&
+    ["ك.المورد", "كود المورد"].includes(text(row[9])) &&
+    text(row[37]) === "الإسم" && text(row[38]) === "الكود";
+}
+
+function isDetailedInvoiceSubtotal(row) {
+  return /^ال[اإ]جمال[يى]$/u.test(text(row[6])) &&
+    text(row[8]) === "عدد الأصناف" && text(row[10]) === "رقم فاتورة المورد";
+}
+
+// The item block is positional in B-Connect's detailed export. The labels
+// at X:Y on its repeated header describe the *item* values in columns A:P,
+// not extra invoice header fields. Retain each source row as read-only proof.
+function readDetailedInvoiceItem(row, rowNumber) {
+  const purchasedQuantity = number(row[11]);
+  const returnedQuantity = number(row[9]);
+  const returnTotal = number(row[16]);
+  return {
+    row_number: rowNumber,
+    name: text(row[14]) || null,
+    code: text(row[15]) || null,
+    purchased_quantity: purchasedQuantity,
+    bonus_quantity: number(row[10]),
+    returned_quantity: returnedQuantity,
+    net_quantity: purchasedQuantity === null || returnedQuantity === null
+      ? null : Number((purchasedQuantity - returnedQuantity).toPrecision(12)),
+    purchase_unit_price: number(row[5]),
+    purchase_total: number(row[4]),
+    return_unit_price: number(row[8]),
+    return_total: returnTotal,
+    source_item_reference: text(row[13]) || null,
+    expiration: row[12] == null || row[12] === '' ? null : parseExcelDate(row[12]),
+  };
+}
+
+function parseDetailedBConnectRows(rows) {
+  const invoices = [];
+  const invalidInvoiceRows = [];
+  const unrecognizedRows = [];
+  let branch = null;
+  let payment_type = null;
+  let active = null;
+  let headerCount = 0;
+
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = Array.isArray(rows[i]) ? rows[i] : [];
+    const cells = row.map(text).filter(Boolean);
+    if (!cells.length) continue;
+    // Read branch/payment ONLY from report section rows. Supplier names and
+    // medicine names can contain a branch caption and must not mutate scope.
+    const isHeader = isDetailedInvoiceHeader(row);
+    const structuralRow = !active && !isHeader && !isDetailedInvoiceSubtotal(row);
+    const inferredBranch = structuralRow ? cells.map(inferBranchFromBConnectLocation).find(Boolean) : null;
+    if (inferredBranch) branch = inferredBranch;
+    const payment = structuralRow ? cells.find(isPaymentLabel) : null;
+    if (payment) payment_type = normalizePayment(payment);
+
+    if (isHeader) {
+      headerCount += 1;
+      if (active) invalidInvoiceRows.push(active.row_number);
+      const labels = detectHeader(row);
+      const field = (key) => Number.isInteger(labels[key]) ? row[labels[key] + 12] : null;
+      const supplier = text(row[20]) || null;
+      const rawSerial = text(field("serial"));
+      const invoiceValue = number(field("invoice_value"));
+      const invoiceDate = parseExcelDate(field("date"));
+      const valid = /^[0-9]+$/u.test(rawSerial) && Number.isSafeInteger(Number(rawSerial)) &&
+        Number(rawSerial) > 0 && invoiceValue !== null && invoiceDate !== null && !!supplier && !!branch;
+      if (!valid) invalidInvoiceRows.push(i + 1);
+      const invoice = valid ? {
+        row_number: i + 1, supplier, branch, payment_type,
+        user: text(field("user")) || null,
+        net: number(field("net")), tax: number(field("tax")),
+        expenses: number(field("expenses")),
+        discount_percent: number(field("discount_percent")),
+        discount_value: number(field("discount_value")),
+        return_value: null,
+        invoice_value: invoiceValue, count: null,
+        serial: rawSerial, date: invoiceDate,
+      } : null;
+      active = { row_number: i + 1, serial: rawSerial, invoice, itemLines: 0, items: [] };
+      continue;
+    }
+
+    if (isDetailedInvoiceSubtotal(row)) {
+      if (!active) {
+        unrecognizedRows.push(i + 1);
+        continue;
+      }
+      // Column J is the SUPPLIER'S invoice number; the program serial lives
+      // in column X of the preceding header. They must not be compared.
+      const supplierInvoiceNumber = text(row[9]) || null;
+      const itemCount = number(row[7]);
+      if (itemCount === null || !Number.isSafeInteger(itemCount) ||
+          itemCount < 0 || itemCount !== active.itemLines) {
+        invalidInvoiceRows.push(i + 1);
+      } else if (active.invoice) {
+        active.invoice.supplier_invoice_number = supplierInvoiceNumber;
+        active.invoice.count = itemCount;
+        active.invoice.items = active.items;
+        active.invoice.returned_items_count = active.items.filter((item) => (item.returned_quantity || 0) > 0).length;
+        // Keep the source's financial columns, not a reconstructed estimate.
+        // The returned total is the sum of explicit per-item return totals.
+        active.invoice.return_value = Number(active.items.reduce(
+          (sum, item) => sum + (item.return_total || 0), 0
+        ).toPrecision(12));
+        const detailTotal = number(row[3]);
+        active.invoice.detail_total = detailTotal;
+        active.invoice.detail_total_difference = detailTotal === null ? null :
+          Number((detailTotal - active.invoice.invoice_value).toFixed(3));
+        invoices.push(active.invoice);
+      }
+      active = null;
+      continue;
+    }
+
+    if (active) {
+      if (!text(row[14]) || !text(row[15])) {
+        unrecognizedRows.push(i + 1);
+      } else {
+        const item = readDetailedInvoiceItem(row, i + 1);
+        active.itemLines += 1;
+        active.items.push(item);
+        // A nonzero returned quantity without a returned monetary value is
+        // incomplete financial evidence: don't silently count it as zero.
+        if (((item.returned_quantity || 0) > 0 &&
+              (item.return_total === null || item.return_total < 0 ||
+               item.purchased_quantity === null)) ||
+            ((item.return_total || 0) > 0 && !(item.returned_quantity > 0))) {
+          invalidInvoiceRows.push(i + 1);
+        }
+      }
+      continue;
+    }
+
+    if (inferredBranch || payment ||
+        cells.some((cell) => /^(?:تم ال[اإ]سترجاع حسب:|Page -|Copyright|وقت الطباعة)/u.test(cell)) ||
+        cells.some((cell) => /^(?:صافى الفواتير|صافي الفواتير|قيمة الفواتير|قيمة الربح|الإجم|الاجم)/u.test(cell))) continue;
+    unrecognizedRows.push(i + 1);
+  }
+
+  if (active) invalidInvoiceRows.push(active.row_number);
+  const invalid = [...new Set(invalidInvoiceRows)];
+  const warnings = [];
+  if (invalid.length) warnings.push("صفوف فواتير تفصيلية غير صالحة أو غير مكتملة: " + invalid.join("، ") + ". يجب مراجعتها قبل المطابقة.");
+  if (unrecognizedRows.length) warnings.push("صفوف غير معروفة في تقرير الفواتير التفصيلي: " + unrecognizedRows.join("، ") + ".");
+  if (!invoices.length) warnings.push("لم يتم العثور على فواتير تفصيلية مكتملة.");
+  return {
+    valid: headerCount > 0 && invoices.length === headerCount && !invalid.length && !unrecognizedRows.length,
+    invoices, warnings,
+    meta: {
+      parser_version: "v4-detailed", report_format: "invoice-with-item-details",
+      header_sections: headerCount, invoice_count: invoices.length,
+      item_line_count: invoices.reduce((sum, invoice) => sum + (invoice.items?.length || 0), 0),
+      returned_item_line_count: invoices.reduce((sum, invoice) => sum + (invoice.returned_items_count || 0), 0),
+      return_value_total: Number(invoices.reduce((sum, invoice) => sum + (invoice.return_value || 0), 0).toPrecision(12)),
+      invalid_invoice_rows: invalid, unrecognized_rows: unrecognizedRows,
+    },
+  };
+}
+
 export function parseBConnectRows(rows) {
+  if (rows.some((row) => Array.isArray(row) && isDetailedInvoiceHeader(row))) return parseDetailedBConnectRows(rows);
   const invoices = [];
   const warnings = [];
   const invalidInvoiceRows = [];

@@ -3,7 +3,10 @@ import {
   invoiceIdentityEvidence,
 } from "./purchaseInvoiceTruth.js";
 
-export const RECONCILIATION_ENGINE_VERSION = "v7";
+export const RECONCILIATION_ENGINE_VERSION = "v9";
+// Business acceptance window, in Egyptian pounds. Exact amount matching
+// remains distinct from an accepted small entry discrepancy.
+export const BCONNECT_ACCEPTABLE_DIFFERENCE_EGP = 5;
 
 function known(value) { return value !== null && value !== undefined && value !== ""; }
 function same(a,b) { return known(a) && known(b) && a === b; }
@@ -36,28 +39,56 @@ export function reconcilePurchaseInvoice(appInput,bconnectInput) {
   else if(identitySufficient) identity="confirmed";
   else if(checks.system_invoice_number==="match") identity="candidate";
 
+  const returnDifference=moneyDelta(bconnect.returned_value,app.returned_value);
+  const returnEvidenceMissing=(bconnect.returned_value !== null && bconnect.returned_value > 0 && app.returned_value === null);
+  const returnMismatch=returnDifference !== null && returnDifference !== 0;
+  const returnIssue=returnMismatch || returnEvidenceMissing;
+  checks.returned_value = returnDifference === null ? 'unknown' : returnMismatch ? 'mismatch' : 'match';
   const totalDifference=moneyDelta(bconnect.total_value,app.total_value);
   const financialComparable=totalDifference!==null;
   const financialMatch=financialComparable&&totalDifference===0;
+  const withinTolerance=financialComparable&&Math.abs(totalDifference)<=BCONNECT_ACCEPTABLE_DIFFERENCE_EGP;
+  const hasReturn=(app.returned_value !== null && app.returned_value !== 0)
+    || (bconnect.returned_value !== null && bconnect.returned_value !== 0);
+  // Never quietly waive a difference linked to returns or an existing review
+  // note. These still need a human explanation, even inside the ±5 EGP band.
+  const toleranceNeedsReview=withinTolerance && !financialMatch && (hasReturn || !!appNote);
   let status="review"; const reasons=[];
   if(identity==="conflict"){status="problem";reasons.push("رقم البرنامج متعارض؛ لا يجوز ربط السجلين تلقائيًا.");}
   else if(checks.branch==="mismatch"){status="problem";reasons.push("رقم البرنامج موجود لكن الفرع مختلف؛ لا يجوز اعتماد المطابقة تلقائيًا.");}
   else if(!identitySufficient){reasons.push("الأدلة المتاحة غير كافية لإصدار حكم سليم تلقائيًا.");}
   else if(!financialComparable){reasons.push("الهوية مؤكدة لكن القيمة المالية غير متاحة في أحد المصدرين.");}
-  else if(!financialMatch){reasons.push(`الهوية مؤكدة لكن يوجد فرق مالي غير مفسر قدره ${Math.abs(totalDifference).toString()} ج.`);}
-  else if(checks.supplier==="mismatch" || checks.invoice_date==="mismatch") {
+  else if(returnIssue){
+    reasons.push(returnMismatch
+      ? `قيمة المرتجع في B-Connect تختلف عن التطبيق بمقدار ${Math.abs(returnDifference)} ج، وتحتاج مراجعة مستقلة عن إجمالي الفاتورة.`
+      : 'B-Connect يثبت وجود مرتجع، لكن قيمة المرتجع غير متاحة في التطبيق؛ يلزم التحقق.');
+    if (!withinTolerance) reasons.push(`يوجد أيضًا فرق في إجمالي الفاتورة ${Math.abs(totalDifference)} ج.`);
+    if (checks.supplier === 'mismatch') reasons.push('اسم المورد مختلف بين B-Connect والتطبيق.');
+    if (checks.invoice_date === 'mismatch') reasons.push('تاريخ الفاتورة مختلف بين B-Connect والتطبيق.');
+  }
+  else if(!withinTolerance){
+    reasons.push(`الهوية مؤكدة لكن يوجد فرق مالي غير مفسر قدره ${Math.abs(totalDifference).toString()} ج (يتجاوز سماحية ±${BCONNECT_ACCEPTABLE_DIFFERENCE_EGP} ج).`);
+  } else if(toleranceNeedsReview){
+    reasons.push(`الفرق المالي ${Math.abs(totalDifference).toString()} ج داخل سماحية ±${BCONNECT_ACCEPTABLE_DIFFERENCE_EGP} ج، لكن توجد ملاحظات أو مرتجعات تستوجب مراجعة مستقلة.`);
+  } else if(checks.supplier==="mismatch" || checks.invoice_date==="mismatch") {
     status="review";
-    reasons.push("رقم الفاتورة والفرع والقيمة متطابقة، لكن توجد اختلافات في بيانات المصدر تحتاج مراجعة.");
+    reasons.push(financialMatch
+      ? "رقم الفاتورة والفرع والقيمة متطابقة، لكن توجد اختلافات في بيانات المصدر تحتاج مراجعة."
+      : `الفرق المالي ${Math.abs(totalDifference).toString()} ج مقبول ضمن ±${BCONNECT_ACCEPTABLE_DIFFERENCE_EGP} ج، لكن اختلاف المورد أو التاريخ يحتاج مراجعة.`);
     if(checks.supplier==="mismatch") reasons.push("اسم المورد مختلف بين B-Connect والتطبيق.");
     if(checks.invoice_date==="mismatch") reasons.push("تاريخ الفاتورة مختلف بين B-Connect والتطبيق.");
-  } else {status="clean";reasons.push("رقم الفاتورة والفرع والقيمة المالية متطابقة، ولا توجد اختلافات مؤكدة في المورد أو التاريخ.");
+  } else {
+    status="clean";
+    reasons.push(financialMatch
+      ? "رقم الفاتورة والفرع والقيمة المالية متطابقة، ولا توجد اختلافات مؤكدة في المورد أو التاريخ."
+      : `فرق مالي مقبول ${Math.abs(totalDifference).toString()} ج ضمن سماحية ±${BCONNECT_ACCEPTABLE_DIFFERENCE_EGP} ج؛ القيم الأصلية محفوظة دون تعديل.`);
     if(checks.supplier==="unknown") reasons.push("لم يتم التحقق من اسم المورد في المصدرين.");
     if(checks.invoice_date==="unknown") reasons.push("لم يتم التحقق من التاريخ في المصدرين.");
   }
   if(appNote) reasons.push(`ملاحظة التطبيق: ${appNote}`);
   return {engine_version:RECONCILIATION_ENGINE_VERSION,status,identity,
     evidence_sufficiency:{sufficient_for_clean:identitySufficient&&financialComparable,identity_sufficient:identitySufficient},
-    checks,financial:{comparable:financialComparable,match:financialMatch,difference:totalDifference,explained_difference:0,unexplained_difference:totalDifference},
+    checks,financial:{comparable:financialComparable,match:financialMatch,within_tolerance:withinTolerance,tolerance_amount:BCONNECT_ACCEPTABLE_DIFFERENCE_EGP,needs_manual_review:toleranceNeedsReview||returnIssue,return_issue:returnIssue,return_difference:returnDifference,difference:totalDifference,explained_difference:0,unexplained_difference:totalDifference},
     reasons,app_note:appNote||null,evidence:{app:invoiceIdentityEvidence(app),bconnect:invoiceIdentityEvidence(bconnect)}};
 }
 
