@@ -7,6 +7,14 @@ export function mayRetryAppDataAction(action) {
   return RETRYABLE_APP_DATA_ACTIONS.has(String(action || '').trim());
 }
 
+export function appDataWriteUncertaintyMessage(error) {
+  const message = String(error?.message || error || '');
+  if (/انتهت مهلة الاتصال|failed to fetch|networkerror|network request failed|fetch failed|load failed|timeout/i.test(message)) {
+    return 'تعذر تأكيد نتيجة الحفظ بسبب الاتصال. قد تكون الفاتورة اتسجلت بالفعل. افتح قائمة الفواتير وابحث برقمها قبل أي محاولة جديدة.';
+  }
+  return message;
+}
+
 export function validatePurchaseInvoiceCreateEvidence(invoices, checks) {
   const batch = Array.isArray(invoices) ? invoices : [invoices];
   if (!batch.length) throw new Error('قائمة الفواتير فارغة.');
