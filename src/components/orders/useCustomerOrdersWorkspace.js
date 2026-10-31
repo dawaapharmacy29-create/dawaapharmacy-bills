@@ -12,7 +12,8 @@ export default function useCustomerOrdersWorkspace({ isManager, user }) {
   const [mainTab, setMainTab] = useState("dashboard");
   const [orderTab, setOrderTab] = useState("action");
   const [filters, setFilters] = useState(initialFilters);
-  const { data: orders = [], isLoading } = useQuery({ queryKey: ["customer-orders"], queryFn: () => base44.entities.CustomerOrder.list("-created_date", 500) });
+  // The warehouse workbook must not silently omit older orders because of a UI limit.
+  const { data: orders = [], isLoading } = useQuery({ queryKey: ["customer-orders"], queryFn: () => base44.entities.CustomerOrder.list("-created_date", 5000) });
   const { data: teamMembers = [] } = useQuery({ queryKey: ["team-members"], queryFn: () => base44.entities.TeamMember.list() });
   const visibleOrders = useMemo(() => orders.filter((o) => isManager || !user?.branch || o.branch === user.branch), [orders, isManager, user?.branch]);
   const filteredOrders = useMemo(() => {
