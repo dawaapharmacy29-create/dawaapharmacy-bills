@@ -111,10 +111,12 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange, teamMember
     if (!form.branch) return [];
     const normalize = value => String(value || "").replace(/^دواء\s*/, "").replace(/\s+/g, "").trim();
     return teamMembers.filter(person => {
-      if (normalize(person.branch) !== normalize(form.branch)) return false;
-      if (person.is_active === false || person.active === false || person.status === "غير نشط") return false;
-      const job = String(person.role || person.job_title || person.position || "");
-      return /صيدل|دكتور|دكتورة|pharmacist/i.test(job);
+      const branches = Array.isArray(person.branches) ? person.branches : [];
+      const belongsToBranch = [person.primary_branch, person.branch, ...branches].some(value => normalize(value) === normalize(form.branch));
+      if (!belongsToBranch) return false;
+      if (person.is_active === false || person.active === false || person.status === "غير نشط" || person.employment_status === "منتهي") return false;
+      const job = String(person.role || person.job_title || person.position || "").trim();
+      return /^(صيدلي|طبيب|دكتور|دكتورة|pharmacist)$/i.test(job);
     }).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"ar"));
   }, [teamMembers, form.branch]);
   const [error, setError] = useState("");
