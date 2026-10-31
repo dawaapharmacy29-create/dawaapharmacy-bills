@@ -9,6 +9,7 @@ import OrderWorkspaceDashboard from "./OrderWorkspaceDashboard";
 import OrderWorkspaceOrders from "./OrderWorkspaceOrders";
 import OrderFormDialog from "./OrderFormDialog";
 import OrderBatchPreviewDialog from "./OrderBatchPreviewDialog";
+import WarehouseOrdersExport from "./WarehouseOrdersExport";
 import OrderDetailDialog from "./OrderDetailDialog";
 import OrderAnalyticsPerformance from "./OrderAnalyticsPerformance";
 import OrderAnalyticsBranches from "./OrderAnalyticsBranches";
@@ -59,6 +60,7 @@ export default function CustomerOrdersWorkspace() {
     </div>
 
     <OrderWorkspaceTabs value={w.mainTab} onChange={w.setMainTab} />
+    {w.mainTab === "orders" && <WarehouseOrdersExport orders={w.orders} />}
     {w.mainTab === "dashboard" && <OrderWorkspaceDashboard orders={w.orders} onOpen={openOrder} />}
     {w.mainTab === "orders" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} />}
     {w.mainTab === "followup" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} mode="followup" />}
