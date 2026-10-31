@@ -71,7 +71,7 @@ export default function CustomerOrdersWorkspace() {
     {w.mainTab === "archive" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} mode="archive" />}
 
     {showForm && <OrderFormDialog open={showForm} onOpenChange={setShowForm} teamMembers={w.teamMembers} onSaved={refresh} />}
-    {showBatchPreview && <OrderBatchPreviewDialog open={showBatchPreview} onOpenChange={setShowBatchPreview} />}
+    {showBatchPreview && <OrderBatchPreviewDialog open={showBatchPreview} onOpenChange={setShowBatchPreview} teamMembers={w.teamMembers} />}
     {selectedOrder && <OrderDetailDialog open={!!selectedOrder} onOpenChange={(v) => !v && closeOrder()} order={selectedOrder} teamMembers={w.teamMembers} isManager={isManager} onUpdated={(updated) => { setSelectedOrder(updated); refresh(); }} />}
   </div>;
 }
