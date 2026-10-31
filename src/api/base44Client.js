@@ -351,6 +351,17 @@ export const systemHealthApi = {
   sync: () => callSecureRpc('app_system_sync_health'),
 };
 
+export const customerOrderBatchApi = {
+  create: ({ requestId, order, lines }) => callSecureRpc('app_customer_order_batch_create_v1', {
+    p_request_id: requestId,
+    p_order: order,
+    p_lines: lines,
+  }),
+  workflow: (action, id, payload = {}) => callSecureRpc('app_customer_order_workflow_v1', {
+    p_action: action, p_id: id || null, p_payload: payload,
+  }),
+};
+
 export const base44ReviewApi = {
   pendingList: (params = {}) => callSecureRpc('app_base44_pending_reviews_list', { p_status: params.status || 'pending', p_limit: params.limit || 200 }),
   mark: (reviewId, decision, notes = '') => callSecureRpc('app_base44_review_mark', { p_review_id: reviewId, p_decision: decision, p_notes: notes || null }),

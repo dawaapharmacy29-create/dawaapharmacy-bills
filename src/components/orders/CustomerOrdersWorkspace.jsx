@@ -8,6 +8,9 @@ import OrderWorkspaceTabs from "./OrderWorkspaceTabs";
 import OrderWorkspaceDashboard from "./OrderWorkspaceDashboard";
 import OrderWorkspaceOrders from "./OrderWorkspaceOrders";
 import OrderFormDialog from "./OrderFormDialog";
+import OrderBatchPreviewDialog from "./OrderBatchPreviewDialog";
+import CustomerOrderDrafts from "./CustomerOrderDrafts";
+import WarehouseOrdersExport from "./WarehouseOrdersExport";
 import OrderDetailDialog from "./OrderDetailDialog";
 import OrderAnalyticsPerformance from "./OrderAnalyticsPerformance";
 import OrderAnalyticsBranches from "./OrderAnalyticsBranches";
@@ -23,7 +26,9 @@ export default function CustomerOrdersWorkspace() {
   const [searchParams, setSearchParams] = useSearchParams();
   const w = useCustomerOrdersWorkspace({ isManager, user });
   const [showForm, setShowForm] = useState(false);
+  const [showBatchPreview, setShowBatchPreview] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [editingDraft, setEditingDraft] = useState(null);
   const [analyticsTab, setAnalyticsTab] = useState("performance");
   const refresh = () => qc.invalidateQueries({ queryKey: ["customer-orders"] });
 
@@ -53,10 +58,11 @@ export default function CustomerOrdersWorkspace() {
   return <div dir="rtl" className="p-3 md:p-5 space-y-4 max-w-[1500px] mx-auto">
     <div className="flex items-center justify-between flex-wrap gap-3">
       <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center"><ShoppingBag className="w-5 h-5 text-white" /></div><div><h1 className="text-lg md:text-xl font-bold text-gray-900">طلبات العملاء</h1><p className="text-xs text-gray-500">كل مجموعة بيانات في تبويب مستقل وواضح</p></div></div>
-      <div className="flex gap-2 w-full sm:w-auto"><OrderAlerts orders={w.orders} onOpen={openOrder} /><Button size="sm" onClick={() => setShowForm(true)} className="bg-teal-600 hover:bg-teal-700 gap-2 flex-1 sm:flex-none"><Plus className="w-4 h-4" /> طلب جديد</Button></div>
+      <div className="flex gap-2 w-full sm:w-auto flex-wrap"><OrderAlerts orders={w.orders} onOpen={openOrder} /><Button size="sm" variant="outline" onClick={() => setShowBatchPreview(true)} className="gap-2 border-teal-400 text-teal-800"><Plus className="w-4 h-4" /> تجربة الطلبية متعددة الأصناف</Button><Button size="sm" onClick={() => setShowForm(true)} className="bg-teal-600 hover:bg-teal-700 gap-2 flex-1 sm:flex-none"><Plus className="w-4 h-4" /> طلب جديد</Button></div>
     </div>
 
     <OrderWorkspaceTabs value={w.mainTab} onChange={w.setMainTab} />
+    {w.mainTab === "orders" && <><CustomerOrderDrafts onEdit={d => { setEditingDraft(d); setShowBatchPreview(true); }} /><WarehouseOrdersExport orders={w.orders} /></>}
     {w.mainTab === "dashboard" && <OrderWorkspaceDashboard orders={w.orders} onOpen={openOrder} />}
     {w.mainTab === "orders" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} />}
     {w.mainTab === "followup" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} mode="followup" />}
@@ -69,6 +75,7 @@ export default function CustomerOrdersWorkspace() {
     {w.mainTab === "archive" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} mode="archive" />}
 
     {showForm && <OrderFormDialog open={showForm} onOpenChange={setShowForm} teamMembers={w.teamMembers} onSaved={refresh} />}
+    {showBatchPreview && <OrderBatchPreviewDialog key={editingDraft?.id || 'new'} initialDraft={editingDraft} open={showBatchPreview} onOpenChange={v => {setShowBatchPreview(v);if (!v) setEditingDraft(null);}} teamMembers={w.teamMembers} onSaved={() => {refresh();qc.invalidateQueries({queryKey:['customer-order-drafts']});}} />}
     {selectedOrder && <OrderDetailDialog open={!!selectedOrder} onOpenChange={(v) => !v && closeOrder()} order={selectedOrder} teamMembers={w.teamMembers} isManager={isManager} onUpdated={(updated) => { setSelectedOrder(updated); refresh(); }} />}
   </div>;
 }

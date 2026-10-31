@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { base44 } from "@/api/base44Client";
+import { base44, customerOrderBatchApi } from "@/api/base44Client";
 import {
   Loader2, Edit2, Ban, RotateCcw, AlertTriangle, User, Phone,
   MapPin, Calendar, CheckCircle2, Package, Truck, Search, ShoppingCart, ZoomIn, ArrowLeftRight
@@ -43,6 +43,13 @@ function getProgressIndex(status) {
 export default function OrderDetailDialog({ open, onOpenChange, order, teamMembers = [], isManager, onUpdated }) {
   const [saving, setSaving] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [batchError, setBatchError] = useState('');
+  const [batchQty, setBatchQty] = useState(String(order.quantity || ''));
+  const [batchName, setBatchName] = useState(order.product_name || '');
+  const [batchUnit, setBatchUnit] = useState(order.unit || 'علبة');
+  const [batchProductCode, setBatchProductCode] = useState(order.product_code || '');
+  const [fulfillDelta, setFulfillDelta] = useState('');
+  const [batchReason, setBatchReason] = useState('');
   const [lightbox, setLightbox] = useState(null);
 
   // Stage 2: جاري البحث
@@ -65,8 +72,21 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
   const isCancelled = order.status === "تم الإلغاء";
   const isDelivered  = order.status === "تم التوصيل";
   const progressIdx  = getProgressIndex(order.status);
+  const managedBatch = Boolean(order.order_group_id);
+  const remaining = Math.max(0, Number(order.quantity || 0) - Number(order.fulfilled_quantity || 0));
+  const manageLine = async (action, payload = {}) => {
+    if (saving) return;
+    setSaving(true); setBatchError('');
+    try {
+      const updated = await customerOrderBatchApi.workflow(action, order.id, { ...payload, expected_updated_at: order.updated_at });
+      onUpdated?.({ ...order, ...updated });
+      setBatchReason(''); setFulfillDelta('');
+    } catch(e) { setBatchError(e.message || 'تعذر تعديل الصنف'); }
+    finally { setSaving(false); }
+  };
 
   const updateOrder = async (updates, newStatus, timelineNote) => {
+    if (managedBatch) { setBatchError('استخدم قسم إدارة الصنف بالأعلى لتوثيق التعديلات على الطلبية متعددة الأصناف.'); return; }
     setSaving(true);
     const user = await base44.auth.me();
     const userName = user?.full_name || user?.email || "مجهول";
@@ -137,12 +157,12 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
               </DialogTitle>
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg}`}>{order.status}</span>
-                {isManager && !isCancelled && !isDelivered && (
+                {isManager && !managedBatch && !isCancelled && !isDelivered && (
                   <Button size="sm" variant="outline" onClick={() => setShowEdit(true)} className="gap-1 h-7 text-xs">
                     <Edit2 className="w-3 h-3" /> تعديل
                   </Button>
                 )}
-                {isManager && (
+                {isManager && !managedBatch && (
                   <Button size="sm" variant="outline" onClick={handleMoveToPharmacy} disabled={saving}
                     className="gap-1 h-7 text-xs border-violet-300 text-violet-700 hover:bg-violet-50">
                     {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowLeftRight className="w-3 h-3" />}
@@ -154,6 +174,24 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
           </DialogHeader>
 
           <div className="space-y-4">
+            {managedBatch && <section className="rounded-xl border border-teal-200 bg-teal-50/40 p-3 space-y-3">
+              <h3 className="font-bold text-teal-800">إدارة صنف الطلبية متعددة الأصناف</h3>
+              <p className="text-sm">المطلوب: {order.quantity} {order.unit} · تم توفيره: {order.fulfilled_quantity || 0} · المتبقي: {remaining}</p>
+              {!isCancelled && !isDelivered && <>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                  <label className="text-xs">اسم الصنف<Input value={batchName} onChange={e=>setBatchName(e.target.value)}/></label>
+                  <label className="text-xs">كود الصنف<Input value={batchProductCode} onChange={e=>setBatchProductCode(e.target.value)}/></label>
+                  <label className="text-xs">الكمية المطلوبة<Input type="number" min={Math.max(1,Number(order.fulfilled_quantity||0))} value={batchQty} onChange={e=>setBatchQty(e.target.value)}/></label>
+                  <label className="text-xs">الوحدة<select className="w-full h-9 border rounded-md" value={batchUnit} onChange={e=>setBatchUnit(e.target.value)}>{['علبة','شريط','زجاجة','أمبول','فيال','كيس','قطعة'].map(u=><option key={u}>{u}</option>)}</select></label>
+                </div>
+                <Button size="sm" variant="outline" disabled={saving} onClick={()=>manageLine('edit_line',{product_name:batchName,product_code:batchProductCode,quantity:Number(batchQty),unit:batchUnit})}>حفظ تعديل الصنف والكمية</Button>
+                {remaining>0 && <div className="flex gap-2 items-end"><label className="text-xs">كمية تم توفيرها الآن<Input type="number" min="1" max={remaining} value={fulfillDelta} onChange={e=>setFulfillDelta(e.target.value)}/></label><Button size="sm" disabled={saving||!Number.isInteger(Number(fulfillDelta))||Number(fulfillDelta)<1||Number(fulfillDelta)>remaining} onClick={()=>manageLine('fulfill_line',{delta:Number(fulfillDelta),expected_fulfilled:Number(order.fulfilled_quantity||0)})}>تسجيل التوفير الجزئي</Button></div>}
+              </>}
+              {!isDelivered && <div className="flex flex-wrap gap-2 items-end"><label className="text-xs flex-1 min-w-48">سبب الإلغاء أو إعادة الفتح<Input value={batchReason} onChange={e=>setBatchReason(e.target.value)} placeholder="سبب واضح (إجباري)"/></label><Button size="sm" variant="outline" disabled={saving||batchReason.trim().length<3} onClick={()=>manageLine(isCancelled?'reopen_line':'cancel_line',{reason:batchReason})}>{isCancelled?'إعادة فتح الصنف':'إلغاء الصنف'}</Button></div>}
+              {!isDelivered && <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={saving||batchReason.trim().length<3} onClick={()=>{if(window.confirm(isCancelled?'إعادة فتح كل الأصناف الملغاة في الطلبية؟':'إلغاء كل الأصناف غير المسلّمة في الطلبية؟'))manageLine(isCancelled?'reopen_group':'cancel_group',{reason:batchReason});}}>{isCancelled?'إعادة فتح الطلبية كاملة':'إلغاء الطلبية كاملة'}</Button></div>}
+              {batchError&&<p role="alert" className="text-sm text-red-700">{batchError}</p>}
+              <p className="text-xs text-slate-500">كل تعديل محفوظ في سجل الطلب. الأصناف الأخرى في نفس الطلبية لا تتأثر.</p>
+            </section>}
 
             {/* ── Progress Bar ── */}
             {!isCancelled && (
@@ -163,7 +201,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
                   <div className="absolute top-4 right-4 left-4 h-0.5 bg-gray-200 z-0" />
                   <div
                     className="absolute top-4 right-4 h-0.5 bg-teal-500 z-0 transition-all duration-500"
-                    style={{ width: `${(progressIdx / (PROGRESS_STAGES.length - 1)) * calc100}%` }}
+                    style={{ width: `${(progressIdx / (PROGRESS_STAGES.length - 1)) * 100}%` }}
                   />
                   {PROGRESS_STAGES.map((s, i) => {
                     const done = i < progressIdx || isDelivered;
@@ -187,7 +225,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
             )}
 
             {/* ── Cancel button ── */}
-            {isManager && !isCancelled && !isDelivered && (
+            {isManager && !managedBatch && !isCancelled && !isDelivered && (
               <div className="flex justify-end">
                 <Button size="sm" variant="outline"
                   className="gap-1.5 border-red-300 text-red-600 hover:bg-red-50 text-xs h-8"
@@ -198,7 +236,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
             )}
 
             {/* Cancel Panel */}
-            {showCancelPanel && isManager && (
+            {showCancelPanel && isManager && !managedBatch && (
               <div className="border border-red-200 bg-red-50 rounded-xl p-3 space-y-2">
                 <p className="text-sm font-semibold text-red-700 flex items-center gap-1"><Ban className="w-4 h-4" /> إلغاء الطلب</p>
                 <Select value={cancelReason} onValueChange={setCancelReason}>
@@ -254,7 +292,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
               active={!isCancelled && !isDelivered}
               done={progressIdx > 1 || isDelivered}
               color="yellow">
-              {isManager && !isCancelled && !isDelivered ? (
+              {isManager && !managedBatch && !isCancelled && !isDelivered ? (
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="space-y-1">
@@ -318,7 +356,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
               active={!isCancelled && !isDelivered && progressIdx >= 1}
               done={progressIdx >= 3 || isDelivered}
               color="indigo">
-              {isManager && !isCancelled && !isDelivered ? (
+              {isManager && !managedBatch && !isCancelled && !isDelivered ? (
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <label className="text-xs text-gray-500">اسم المورد الذي تم الطلب منه *</label>
@@ -374,7 +412,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
               active={!isCancelled && !isDelivered && progressIdx >= 2}
               done={progressIdx >= 4 || isDelivered}
               color="teal">
-              {isManager && !isCancelled && !isDelivered ? (
+              {isManager && !managedBatch && !isCancelled && !isDelivered ? (
                 <div className="space-y-3">
                   <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                     <input type="checkbox" checked={customerContacted}
@@ -432,7 +470,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
               active={!isCancelled && (progressIdx >= 4 || order.status === "تم توفير الصنف" || order.status === "تم توفير بديل")}
               done={isDelivered}
               color={order.status === "تم توفير بديل" && !isDelivered ? "amber" : isDelivered && order.timeline?.slice().reverse().find(t => t.status === "تم توفير بديل") ? "amber" : "green"}>
-              {isManager && !isCancelled && !isDelivered ? (
+              {isManager && !managedBatch && !isCancelled && !isDelivered ? (
                 <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white gap-1.5 text-xs h-8"
                   onClick={handleDeliver} disabled={saving || (order.status !== "تم توفير الصنف" && order.status !== "تم توفير بديل")}>
                   {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Truck className="w-3.5 h-3.5" />}
@@ -452,7 +490,7 @@ export default function OrderDetailDialog({ open, onOpenChange, order, teamMembe
               <div className="border border-red-200 bg-red-50 rounded-xl p-3 space-y-2">
                 <p className="text-sm font-semibold text-red-700 flex items-center gap-1.5"><Ban className="w-4 h-4" /> تم إلغاء الطلب</p>
                 {order.cancellation_reason && <p className="text-xs text-red-600">السبب: {order.cancellation_reason}</p>}
-                {isManager && (
+                {isManager && !managedBatch && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     <p className="text-xs text-gray-500 w-full flex items-center gap-1"><RotateCcw className="w-3 h-3" /> استعادة إلى:</p>
                     <Button size="sm" variant="outline" className="text-xs h-7 border-blue-300 text-blue-600" onClick={() => handleRestore("طلب جديد")} disabled={saving}>طلب جديد</Button>
