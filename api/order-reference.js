@@ -7,6 +7,13 @@ const MANAGEMENT_URL = process.env.MANAGEMENT_SUPABASE_URL || 'https://jkjqeqksh
 // Set this only in Vercel server-side environment variables (never VITE_*).
 const MANAGEMENT_SECRET = process.env.MANAGEMENT_SUPABASE_SECRET_KEY;
 
+// PostgREST supports * as the ILIKE wildcard. Keep operators out of user input.
+export function searchPattern(input) {
+  const cleaned = input.trim().replace(/[%,.()\\]/g, ' ').replace(/\s+/g, ' ');
+  if (!cleaned.replace(/[*\s]/g, '')) return null;
+  return cleaned.includes('*') ? cleaned : `*${cleaned}*`;
+}
+
 const json = (res, code, payload) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -23,7 +30,8 @@ export default async function handler(req, res) {
   if (!token || token.length > 500 || !['customer', 'product'].includes(mode) || query.length > 120) {
     return json(res, 400, { ok: false, error: 'invalid_request' });
   }
-  if ((mode === 'customer' && !/^[a-zA-Z0-9_-]{1,40}$/.test(query)) || (mode === 'product' && query.length < 2)) {
+  const pattern = searchPattern(query);
+  if (!pattern || query.replace(/\*/g, '').trim().length < 2) {
     return json(res, 400, { ok: false, error: 'query_too_short' });
   }
 
@@ -43,12 +51,12 @@ export default async function handler(req, res) {
     const url = new URL(mode === 'customer' ? '/rest/v1/customers' : '/rest/v1/products', MANAGEMENT_URL);
     if (mode === 'customer') {
       url.searchParams.set('select', 'customer_code,code,name,phone');
-      url.searchParams.set('or', `(customer_code.eq.${query},code.eq.${query})`);
-      url.searchParams.set('limit', '2');
+      url.searchParams.set('or', `(customer_code.ilike.${pattern},code.ilike.${pattern},name.ilike.${pattern},phone.ilike.${pattern})`);
+      url.searchParams.set('limit', '12');
     } else {
       url.searchParams.set('select', 'product_code,name');
-      url.searchParams.set('name', `ilike.*${query.replace(/[,*()]/g, ' ').trim()}*`);
-      url.searchParams.set('limit', '10');
+      url.searchParams.set('or', `(name.ilike.${pattern},product_code.ilike.${pattern})`);
+      url.searchParams.set('limit', '12');
     }
     const managementHeaders = { apikey: MANAGEMENT_SECRET };
     if (MANAGEMENT_SECRET.startsWith('eyJ')) managementHeaders.Authorization = `Bearer ${MANAGEMENT_SECRET}`;
@@ -61,9 +69,7 @@ export default async function handler(req, res) {
     if (!Array.isArray(results)) return json(res, 502, { ok: false, error: 'invalid_management_response' });
 
     if (mode === 'customer') {
-      if (results.length > 1) return json(res, 409, { ok: false, error: 'ambiguous_customer_code' });
-      const c = results[0];
-      return json(res, 200, { ok: true, data: c ? { customer_code: c.customer_code || c.code, customer_name: c.name, phone: c.phone || '' } : null });
+      return json(res, 200, { ok: true, data: results.map(c => ({ customer_code: c.customer_code || c.code, customer_name: c.name, phone: c.phone || '' })) });
     }
     return json(res, 200, { ok: true, data: results.map(p => ({ product_code: p.product_code, product_name: p.name })) });
   } catch {
