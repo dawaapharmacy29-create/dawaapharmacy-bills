@@ -65,6 +65,38 @@ function ProductNameAutocomplete({ line, updateLine }) {
   </div>;
 }
 
+function CustomerSearch({ onSelect }) {
+  const [term, setTerm] = useState("");
+  const [choices, setChoices] = useState([]);
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (term.replace(/\*/g, "").trim().length < 2) { setChoices([]); setNotice(""); return; }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setLoading(true);
+      lookupManagementReference("customer", term, controller.signal)
+        .then(data => { if (!controller.signal.aborted) { setChoices(data || []); setNotice(data?.length ? "" : "لا توجد نتائج مطابقة"); } })
+        .catch(e => { if (!controller.signal.aborted) { setChoices([]); setNotice(e.message); } })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [term]);
+  return <div className="md:col-span-3 relative">
+    <label className="text-xs font-semibold text-slate-600">بحث العميل (اسم / كود / تليفون)
+      <input className={`${inputStyle} mt-1`} value={term} onChange={e => setTerm(e.target.value)} placeholder="مثال: محم* أو 010* أو م*حم*" />
+    </label>
+    {loading && <p className="text-xs text-slate-500 mt-1">جاري البحث...</p>}
+    {choices.length > 0 && <div role="listbox" className="absolute z-30 mt-1 w-full max-h-52 overflow-y-auto bg-white border shadow-lg rounded-lg">
+      {choices.map((c, i) => <button key={`${c.customer_code}-${i}`} type="button" className="block w-full text-right px-3 py-2 text-sm hover:bg-teal-50 border-b"
+        onClick={() => { onSelect(c); setTerm(c.customer_name || c.customer_code); setChoices([]); }}>
+        <b>{c.customer_name || "بدون اسم"}</b><span className="block text-xs text-slate-500" dir="ltr">{c.customer_code} · {c.phone}</span>
+      </button>)}
+    </div>}
+    {notice && <p className="text-xs text-amber-700 mt-1">{notice}</p>}
+  </div>;
+}
+
 export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
   const [form, setForm] = useState({ customer_code: "", phone: "", customer_name: "", branch: "", request_source: "واتساب", fulfillment_mode: "partial", expected_availability_date: "", promised_at: "" });
   const [lines, setLines] = useState([nextLine()]);
@@ -72,9 +104,8 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
   const [showReview, setShowReview] = useState(false);
   const [copied, setCopied] = useState(false);
   const [customerResolved, setCustomerResolved] = useState(false);
-  const [lookingUpCustomer, setLookingUpCustomer] = useState(false);
   const updateForm = (key, value) => { setForm(p => ({ ...p, [key]: value })); if (key === "customer_code") setCustomerResolved(false); setError(""); setShowReview(false); };
-  const findCustomer = async () => { setLookingUpCustomer(true); setError(""); try { const c = await lookupManagementReference("customer", form.customer_code); if (!c) throw new Error("كود العميل غير موجود في الإدارة."); setForm(p => ({ ...p, customer_code: c.customer_code, customer_name: c.customer_name || "", phone: c.phone || p.phone })); setCustomerResolved(true); } catch (e) { setCustomerResolved(false); setError(e.message); } finally { setLookingUpCustomer(false); } };
+  const selectCustomer = c => { setForm(p => ({ ...p, customer_code: c.customer_code || "", customer_name: c.customer_name || "", phone: c.phone || "" })); setCustomerResolved(true); setError(""); };
   const updateLine = (id, patch) => { setLines(p => p.map(l => l.id === id ? { ...l, ...patch } : l)); setError(""); setShowReview(false); };
   const confirmation = useMemo(() => buildOrderConfirmationPreview(form, lines), [form, lines]);
   const preview = () => { const message = validateOrderBatchPreview(form, lines); setError(message); setShowReview(!message); setCopied(false); };
@@ -84,8 +115,9 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
     <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-900 flex gap-2 items-start"><ShieldCheck className="w-4 h-4 shrink-0"/><span><b>معاينة فقط:</b> لا تُنشئ سجلات CustomerOrder ولا ترسل واتساب. البحث من الإدارة تجريبي ويتطلب تفعيل مفتاح الخادم؛ اسم الصنف اليدوي مسموح بدون كود.</span></div>
     <section className="rounded-2xl border bg-slate-50/70 p-4 space-y-3"><h3 className="font-bold text-slate-800">بيانات العميل والطلبية</h3><div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <CustomerSearch onSelect={selectCustomer} />
       <label className="text-xs font-semibold text-slate-600">كود العميل<input className={`${inputStyle} mt-1`} value={form.customer_code} onChange={e=>updateForm("customer_code", e.target.value)} placeholder="اختياري مع وجود هاتف"/></label>
-      <div className="flex items-end gap-2"><button type="button" onClick={findCustomer} disabled={!form.customer_code.trim() || lookingUpCustomer} className="h-10 px-3 rounded-lg bg-teal-700 text-white disabled:opacity-50 text-xs whitespace-nowrap">{lookingUpCustomer ? "جاري البحث" : "بحث بالإدارة"}</button><span className="text-xs text-emerald-700">{customerResolved ? "✓ تم التحقق" : ""}</span></div><label className="text-xs font-semibold text-slate-600">رقم الموبايل<input className={`${inputStyle} mt-1`} dir="ltr" value={form.phone} onChange={e=>updateForm("phone", e.target.value)} placeholder="01xxxxxxxxx" maxLength={11}/></label>
+      <label className="text-xs font-semibold text-slate-600">رقم الموبايل<input className={`${inputStyle} mt-1`} dir="ltr" value={form.phone} onChange={e=>updateForm("phone", e.target.value)} placeholder="01xxxxxxxxx" maxLength={11}/></label>
       <label className="text-xs font-semibold text-slate-600">اسم العميل<input className={`${inputStyle} mt-1`} value={form.customer_name} onChange={e=>updateForm("customer_name", e.target.value)} placeholder="اختياري في المعاينة"/></label>
       <label className="text-xs font-semibold text-slate-600">الفرع<select className={`${selectStyle} mt-1`} value={form.branch} onChange={e=>updateForm("branch",e.target.value)}><option value="">اختر الفرع</option><option>دواء شكري</option><option>دواء الشامي</option></select></label>
       <label className="text-xs font-semibold text-slate-600">مصدر الطلب<select className={`${selectStyle} mt-1`} value={form.request_source} onChange={e=>updateForm("request_source",e.target.value)}>{SOURCES.map(x=><option key={x}>{x}</option>)}</select></label>
