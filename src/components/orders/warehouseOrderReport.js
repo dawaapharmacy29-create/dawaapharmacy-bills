@@ -1,4 +1,4 @@
-const excludedStatuses = new Set(['تم الإلغاء', 'تم التوصيل', 'تم توفير بديل']);
+const excludedStatuses = new Set(['تم الإلغاء', 'تم التوصيل', 'تم توفير بديل', 'تم توفير الصنف']);
 
 export function buildWarehouseOrderReport(orders, { from = '', to = '', branch = 'all' } = {}) {
   const seen = new Set();
