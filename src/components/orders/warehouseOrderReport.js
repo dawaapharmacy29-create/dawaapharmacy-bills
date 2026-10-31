@@ -10,7 +10,7 @@ export function buildWarehouseOrderReport(orders, { from = '', to = '', branch =
     const date = String(order.needed_by_date || order.request_date || order.created_at || '').slice(0, 10);
     if ((from && date < from) || (to && date > to)) continue;
     if (branch !== 'all' && order.branch !== branch) continue;
-    if (excludedStatuses.has(order.status) || order.alternative_accepted === true) continue;
+    if (excludedStatuses.has(order.status) || order.status === 'مسودة' || order.alternative_accepted === true) continue;
     const id = String(order.id || `${order.order_group_id}:${order.line_no}`);
     if (seen.has(id)) continue;
     seen.add(id);
