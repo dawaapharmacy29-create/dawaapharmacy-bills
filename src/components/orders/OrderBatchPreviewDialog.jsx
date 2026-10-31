@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { lookupManagementReference } from "@/api/orderManagementReferenceApi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,13 +34,47 @@ export function buildOrderConfirmationPreview(form, lines, orderNumber = "(بع�
   return ["✅ تم تسجيل طلبك", ...lines.map((l, i) => `${i + 1}) ${l.product_name.trim()} — ${l.quantity} ${l.unit}`), `التنفيذ: ${form.fulfillment_mode === "together" ? "كله مع بعض" : "اللي يتوفر يتبعت"}`, `هنبلغك خلال: ${formatted}`, `رقم الطلب: ${orderNumber}`].join("\n");
 }
 
+function ProductNameAutocomplete({ line, updateLine }) {
+  const [choices, setChoices] = useState([]);
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const term = line.product_name.trim();
+    if (term.length < 2 || line.product_code) { setChoices([]); setNotice(""); return; }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      lookupManagementReference("product", term, controller.signal)
+        .then(setChoices)
+        .catch(e => { if (!controller.signal.aborted) { setChoices([]); setNotice(e.message); } });
+    }, 350);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [line.product_name, line.product_code]);
+  return <div className="col-span-2 md:col-span-5 relative">
+    <label className="text-xs font-semibold text-slate-600">اسم الصنف
+      <input className={`${inputStyle} mt-1`} value={line.product_name}
+        onChange={e => updateLine(line.id, { product_name: e.target.value, product_code: "", product_not_in_catalog: false })}
+        placeholder="اكتب أي صنف؛ الاقتراحات اختيارية" />
+    </label>
+    {choices.length > 0 && <div role="listbox" className="absolute z-20 mt-1 w-full max-h-44 overflow-y-auto bg-white border shadow-lg rounded-lg">
+      {choices.map((p, i) => <button key={p.product_code || i} type="button"
+        className="w-full text-right px-3 py-2 text-sm hover:bg-teal-50 border-b"
+        onClick={() => { updateLine(line.id, { product_name: p.product_name, product_code: p.product_code || "", product_not_in_catalog: false }); setChoices([]); }}>
+        {p.product_name} <span className="text-xs text-slate-500">{p.product_code || ""}</span>
+      </button>)}
+    </div>}
+    {notice && <p className="mt-1 text-[11px] text-amber-700">{notice} — يمكنك تسجيل الاسم يدويًا.</p>}
+  </div>;
+}
+
 export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
   const [form, setForm] = useState({ customer_code: "", phone: "", customer_name: "", branch: "", request_source: "واتساب", fulfillment_mode: "partial", expected_availability_date: "", promised_at: "" });
   const [lines, setLines] = useState([nextLine()]);
   const [error, setError] = useState("");
   const [showReview, setShowReview] = useState(false);
   const [copied, setCopied] = useState(false);
-  const updateForm = (key, value) => { setForm(p => ({ ...p, [key]: value })); setError(""); setShowReview(false); };
+  const [customerResolved, setCustomerResolved] = useState(false);
+  const [lookingUpCustomer, setLookingUpCustomer] = useState(false);
+  const updateForm = (key, value) => { setForm(p => ({ ...p, [key]: value })); if (key === "customer_code") setCustomerResolved(false); setError(""); setShowReview(false); };
+  const findCustomer = async () => { setLookingUpCustomer(true); setError(""); try { const c = await lookupManagementReference("customer", form.customer_code); if (!c) throw new Error("كود العميل غير موجود في الإدارة."); setForm(p => ({ ...p, customer_code: c.customer_code, customer_name: c.customer_name || "", phone: c.phone || p.phone })); setCustomerResolved(true); } catch (e) { setCustomerResolved(false); setError(e.message); } finally { setLookingUpCustomer(false); } };
   const updateLine = (id, patch) => { setLines(p => p.map(l => l.id === id ? { ...l, ...patch } : l)); setError(""); setShowReview(false); };
   const confirmation = useMemo(() => buildOrderConfirmationPreview(form, lines), [form, lines]);
   const preview = () => { const message = validateOrderBatchPreview(form, lines); setError(message); setShowReview(!message); setCopied(false); };
@@ -47,10 +82,10 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent dir="rtl" className="max-w-5xl max-h-[94dvh] flex flex-col gap-0 overflow-hidden p-0">
     <div className="shrink-0 border-b bg-white px-4 py-3 sm:px-6"><DialogHeader><DialogTitle className="flex items-center gap-2 text-lg sm:text-xl font-black text-teal-800"><PackageCheck className="h-5 w-5"/> تجربة واجهة «طلبية جديدة»</DialogTitle></DialogHeader><p className="mt-1 text-xs text-slate-500">بيانات عميل واحدة، وعدة أصناف في طلبية واحدة</p></div>
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-900 flex gap-2 items-start"><ShieldCheck className="w-4 h-4 shrink-0"/><span><b>معاينة فقط:</b> لا تُنشئ سجلات CustomerOrder ولا ترسل واتساب. تسجيل الاسم يدويًا مسموح بدون كود. اقتراحات الكتالوج وربط العميل بالهاتف سيُفعّلان بعد التحقق من صلاحيات مصادر البيانات.</span></div>
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-900 flex gap-2 items-start"><ShieldCheck className="w-4 h-4 shrink-0"/><span><b>معاينة فقط:</b> لا تُنشئ سجلات CustomerOrder ولا ترسل واتساب. البحث من الإدارة تجريبي ويتطلب تفعيل مفتاح الخادم؛ اسم الصنف اليدوي مسموح بدون كود.</span></div>
     <section className="rounded-2xl border bg-slate-50/70 p-4 space-y-3"><h3 className="font-bold text-slate-800">بيانات العميل والطلبية</h3><div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       <label className="text-xs font-semibold text-slate-600">كود العميل<input className={`${inputStyle} mt-1`} value={form.customer_code} onChange={e=>updateForm("customer_code", e.target.value)} placeholder="اختياري مع وجود هاتف"/></label>
-      <label className="text-xs font-semibold text-slate-600">رقم الموبايل<input className={`${inputStyle} mt-1`} dir="ltr" value={form.phone} onChange={e=>updateForm("phone", e.target.value)} placeholder="01xxxxxxxxx" maxLength={11}/></label>
+      <div className="flex items-end gap-2"><button type="button" onClick={findCustomer} disabled={!form.customer_code.trim() || lookingUpCustomer} className="h-10 px-3 rounded-lg bg-teal-700 text-white disabled:opacity-50 text-xs whitespace-nowrap">{lookingUpCustomer ? "جاري البحث" : "بحث بالإدارة"}</button><span className="text-xs text-emerald-700">{customerResolved ? "✓ تم التحقق" : ""}</span></div><label className="text-xs font-semibold text-slate-600">رقم الموبايل<input className={`${inputStyle} mt-1`} dir="ltr" value={form.phone} onChange={e=>updateForm("phone", e.target.value)} placeholder="01xxxxxxxxx" maxLength={11}/></label>
       <label className="text-xs font-semibold text-slate-600">اسم العميل<input className={`${inputStyle} mt-1`} value={form.customer_name} onChange={e=>updateForm("customer_name", e.target.value)} placeholder="اختياري في المعاينة"/></label>
       <label className="text-xs font-semibold text-slate-600">الفرع<select className={`${selectStyle} mt-1`} value={form.branch} onChange={e=>updateForm("branch",e.target.value)}><option value="">اختر الفرع</option><option>دواء شكري</option><option>دواء الشامي</option></select></label>
       <label className="text-xs font-semibold text-slate-600">مصدر الطلب<select className={`${selectStyle} mt-1`} value={form.request_source} onChange={e=>updateForm("request_source",e.target.value)}>{SOURCES.map(x=><option key={x}>{x}</option>)}</select></label>
@@ -60,7 +95,7 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
     <section className="space-y-3"><div className="flex justify-between items-center gap-2"><h3 className="font-bold text-slate-800">أصناف الطلبية <span className="text-sm font-normal text-slate-500">({lines.length})</span></h3><Button type="button" variant="outline" onClick={()=>{setLines(p=>[...p,nextLine()]);setShowReview(false);setError("");}} className="gap-2"><Plus className="w-4 h-4"/> إضافة صنف</Button></div>
       {lines.map((line,index)=><div key={line.id} className="rounded-2xl border border-teal-100 bg-white shadow-sm p-3 sm:p-4 space-y-3"><div className="flex justify-between items-center"><span className="rounded-lg bg-teal-50 text-teal-800 font-bold px-3 py-1 text-sm">صنف {index+1}</span><button type="button" aria-label={`حذف الصنف ${index+1}`} disabled={lines.length===1} onClick={()=>setLines(p=>p.filter(l=>l.id!==line.id))} className="disabled:opacity-30 text-red-600 hover:bg-red-50 rounded p-2"><Trash2 className="w-4 h-4"/></button></div>
       <div className="grid grid-cols-2 md:grid-cols-12 gap-3">
-        <label className="text-xs font-semibold text-slate-600 col-span-2 md:col-span-5">اسم الصنف<input className={`${inputStyle} mt-1`} value={line.product_name} onChange={e=>updateLine(line.id,{product_name:e.target.value})} placeholder="اكتب اسم الصنف بحرية"/></label>
+        <ProductNameAutocomplete line={line} updateLine={updateLine} />
         <label className="text-xs font-semibold text-slate-600 col-span-2 md:col-span-3">كود الصنف (اختياري)<input className={`${inputStyle} mt-1`} value={line.product_code} disabled={line.product_not_in_catalog} onChange={e=>updateLine(line.id,{product_code:e.target.value})} placeholder="المشتريات تقدر تضيفه لاحقًا"/></label>
         <label className="text-xs font-semibold text-slate-600 md:col-span-2">الكمية<input className={`${inputStyle} mt-1`} type="number" min="1" step="1" value={line.quantity} onChange={e=>updateLine(line.id,{quantity:e.target.value})}/></label>
         <label className="text-xs font-semibold text-slate-600 md:col-span-2">الوحدة<select className={`${selectStyle} mt-1`} value={line.unit} onChange={e=>updateLine(line.id,{unit:e.target.value})}>{UNITS.map(x=><option key={x}>{x}</option>)}</select></label>
