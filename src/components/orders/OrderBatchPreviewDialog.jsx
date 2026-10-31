@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { lookupManagementReference } from "@/api/orderManagementReferenceApi";
+import { customerOrderBatchApi } from "@/api/base44Client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ export function validateOrderBatchPreview(form, lines) {
   if (form.phone.trim() && !/^01[0125]\d{8}$/.test(form.phone.trim())) return "رقم الموبايل لازم يكون 11 رقمًا ويبدأ بـ 010 أو 011 أو 012 أو 015.";
   if (!form.branch) return "اختر الفرع.";
   if (!SOURCES.includes(form.request_source)) return "اختر مصدر الطلب.";
-  if (!form.recorded_by?.trim()) return "اختر اسم الدكتور من قائمة الفرع."; 
+  if (!form.recorded_by_id?.trim()) return "اختر اسم الدكتور من قائمة الفرع.";
   if (!form.expected_availability_date) return "حدد موعد احتياج العميل."; 
   if (!lines.length) return "أضف صنفًا واحدًا على الأقل.";
   for (let i = 0; i < lines.length; i++) {
@@ -104,8 +105,8 @@ function CustomerSearch({ onSelect }) {
   </div>;
 }
 
-export default function OrderBatchPreviewDialog({ open, onOpenChange, teamMembers = [] }) {
-  const [form, setForm] = useState({ customer_code: "", phone: "", customer_name: "", branch: "", request_source: "واتساب", fulfillment_mode: "partial", expected_availability_date: "", needed_time: "", urgent: false, important_customer: false, recorded_by: "", general_notes: "", promised_at: "" });
+export default function OrderBatchPreviewDialog({ open, onOpenChange, teamMembers = [], onSaved }) {
+  const [form, setForm] = useState({ customer_code: "", phone: "", customer_name: "", branch: "", request_source: "واتساب", fulfillment_mode: "partial", expected_availability_date: "", needed_time: "", urgent: false, important_customer: false, recorded_by_id: "", recorded_by: "", general_notes: "", promised_at: "" });
   const [lines, setLines] = useState([nextLine()]);
   const doctorsForBranch = useMemo(() => {
     if (!form.branch) return [];
@@ -123,7 +124,10 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange, teamMember
   const [showReview, setShowReview] = useState(false);
   const [copied, setCopied] = useState(false);
   const [customerResolved, setCustomerResolved] = useState(false);
-  const updateForm = (key, value) => { setForm(p => ({ ...p, [key]: value, ...(key === "branch" ? { recorded_by: "" } : {}) })); if (key === "customer_code") setCustomerResolved(false); setError(""); setShowReview(false); };
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(null);
+  const [requestId] = useState(() => crypto.randomUUID());
+  const updateForm = (key, value) => { setForm(p => ({ ...p, [key]: value, ...(key === "branch" ? { recorded_by: "", recorded_by_id: "" } : {}) })); if (key === "customer_code") setCustomerResolved(false); setError(""); setShowReview(false); };
   const selectCustomer = c => { setForm(p => ({ ...p, customer_code: c.customer_code || "", customer_name: c.customer_name || "", phone: c.phone || "" })); setCustomerResolved(true); setError(""); };
   const updateLine = (id, patch) => { setLines(p => p.map(l => l.id === id ? { ...l, ...patch } : l)); setError(""); setShowReview(false); };
   const addLine = afterId => {
@@ -136,13 +140,32 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange, teamMember
     setError(""); setShowReview(false);
     requestAnimationFrame(()=>document.getElementById("product-"+item.id)?.focus());
   };
-  const confirmation = useMemo(() => buildOrderConfirmationPreview(form, lines), [form, lines]);
-  const preview = () => { const message = validateOrderBatchPreview(form, lines); setError(message); setShowReview(!message); setCopied(false); };
+  const confirmation = useMemo(() => buildOrderConfirmationPreview(form, lines, saved?.order_number), [form, lines, saved]);
+  const preview = () => { const message = validateOrderBatchPreview(form, lines) || (!customerResolved ? "لازم تختار العميل من نتائج البحث قبل الحفظ." : "") || (!form.customer_code || !form.customer_name || !form.phone ? "بيانات العميل غير مكتملة." : ""); setError(message); setShowReview(!message); setCopied(false); };
+  const saveBatch = async () => {
+    if (saving || saved) return;
+    const message = validateOrderBatchPreview(form, lines) || (!customerResolved ? "اختر العميل من البحث." : "");
+    if (message) { setError(message); return; }
+    setSaving(true); setError("");
+    try {
+      const result = await customerOrderBatchApi.create({
+        requestId,
+        order: { customer_code: form.customer_code, customer_name: form.customer_name, phone: form.phone, branch: form.branch,
+          request_source: form.request_source, needed_by_date: form.expected_availability_date, needed_time: form.needed_time,
+          urgent: form.urgent, important_customer: form.important_customer, recorded_by_id: form.recorded_by_id, general_notes: form.general_notes },
+        lines: lines.map(l => ({ product_name: l.product_name, product_code: l.product_code, quantity: Number(l.quantity), unit: l.unit,
+          notes: l.notes, alternative_accepted: l.alternativeAccepted })),
+      });
+      if (!result?.order_number || result.group_size !== lines.length) throw new Error("تعذر تأكيد حفظ كل الأصناف؛ راجع الطلب قبل إعادة تسجيله.");
+      setSaved(result); onSaved?.();
+    } catch (e) { setError(e?.message || "تعذر الحفظ؛ لا تعِد إنشاء الطلب قبل التأكد من حالته."); }
+    finally { setSaving(false); }
+  };
   const copyMessage = async () => { try { await navigator.clipboard.writeText(confirmation); setCopied(true); } catch { setError("تعذر النسخ؛ تأكد من صلاحية الحافظة في المتصفح."); } };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent dir="rtl" className="max-w-5xl max-h-[94dvh] flex flex-col gap-0 overflow-hidden p-0">
     <div className="shrink-0 border-b bg-white px-4 py-3 sm:px-6"><DialogHeader><DialogTitle className="flex items-center gap-2 text-lg sm:text-xl font-black text-teal-800"><PackageCheck className="h-5 w-5"/> تجربة واجهة «طلبية جديدة»</DialogTitle></DialogHeader><p className="mt-1 text-xs text-slate-500">بيانات عميل واحدة، وعدة أصناف برقم طلبية واحد بسيط بعد الحفظ</p></div>
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-900 flex gap-2 items-start"><ShieldCheck className="w-4 h-4 shrink-0"/><span><b>معاينة فقط:</b> لا تُنشئ سجلات CustomerOrder ولا ترسل واتساب. البحث من الإدارة للموظف صاحب الجلسة الصالحة فقط؛ اسم الصنف اليدوي مسموح بدون كود.</span></div>
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-900 flex gap-2 items-start"><ShieldCheck className="w-4 h-4 shrink-0"/><span>راجع بيانات العميل والفرع والأصناف قبل الحفظ. المسلسل يصدر من الخادم بعد الحفظ فقط، ولا يتم إرسال واتساب تلقائيًا.</span></div>
     <section className="rounded-2xl border bg-slate-50/70 p-4 space-y-3"><h3 className="font-bold text-slate-800">بيانات العميل والطلبية</h3><div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       <CustomerSearch onSelect={selectCustomer} />
       <label className="text-xs font-semibold text-slate-600">كود العميل<input className={`${inputStyle} mt-1`} value={form.customer_code} onChange={e=>updateForm("customer_code", e.target.value)} placeholder="اختياري مع وجود هاتف"/></label>
@@ -152,9 +175,9 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange, teamMember
       <label className="text-xs font-semibold text-slate-600">مصدر الطلب<select className={`${selectStyle} mt-1`} value={form.request_source} onChange={e=>updateForm("request_source",e.target.value)}>{SOURCES.map(x=><option key={x}>{x}</option>)}</select></label>
       <label className="text-xs font-semibold text-slate-600">طريقة التنفيذ<select className={`${selectStyle} mt-1`} value={form.fulfillment_mode} onChange={e=>updateForm("fulfillment_mode",e.target.value)}><option value="partial">اللي يتوفر يتبعت</option><option value="together">كله مع بعض</option></select></label>
       <label className="text-xs font-semibold text-slate-600">الدكتور اللي سجل الطلب *
-        <select className={`${selectStyle} mt-1`} value={form.recorded_by} disabled={!form.branch} onChange={e=>updateForm("recorded_by",e.target.value)}>
+        <select className={`${selectStyle} mt-1`} value={form.recorded_by_id} disabled={!form.branch || !!saved} onChange={e=>{const doctor=doctorsForBranch.find(x=>String(x.id)===e.target.value);setForm(p=>({...p, recorded_by_id: String(doctor?.id||""), recorded_by: doctor?.name||""}));setShowReview(false);}}>
           <option value="">{form.branch ? "اختر الدكتور من الفرع" : "اختر الفرع الأول"}</option>
-          {doctorsForBranch.map(p=><option key={p.id || p.name} value={p.name}>{p.name}</option>)}
+          {doctorsForBranch.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
         </select>
         {form.branch && doctorsForBranch.length === 0 && <span className="block mt-1 text-[11px] text-amber-700">لا توجد أسماء دكاترة مطابقة للفرع في قائمة الموظفين؛ يلزم مراجعة مسميات الأدوار قبل تفعيل الحفظ.</span>}
       </label>
@@ -184,8 +207,8 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange, teamMember
       </div>)}
     </section>
     {error&&<p role="alert" className="rounded-lg bg-red-50 text-red-700 text-sm p-3">{error}</p>}
-    {showReview&&<section className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><h3 className="font-bold text-emerald-800">معاينة سجلات الطلبية ({lines.length}) — غير محفوظة</h3><p className="text-xs">مسجل الطلب: {form.recorded_by} · الموعد: {form.expected_availability_date} {form.needed_time} {form.urgent?"· عاجل":""} {form.important_customer?"· عميل مهم":""}</p>{form.general_notes&&<p className="text-xs">ملاحظة عامة: {form.general_notes}</p>}<div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]"><thead><tr className="text-slate-600 border-b"><th className="p-2 text-right">السطر</th><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">الكود</th><th className="p-2 text-right">الكمية</th><th className="p-2 text-right">الحالة</th></tr></thead><tbody>{lines.map((l,i)=><tr key={l.id} className="border-b border-emerald-100"><td className="p-2">{i+1}/{lines.length}</td><td className="p-2">{l.product_name}</td><td className="p-2">{l.product_code||"بانتظار ربط المشتريات"}</td><td className="p-2">{l.quantity} {l.unit}</td><td className="p-2">{l.alternativeAccepted?"replaced_by_alternative":"طلب جديد"}</td></tr>)}</tbody></table></div><p className="text-xs text-emerald-900">التصميم المقترح للحفظ: رقم طلبية ظاهر واحد (مسلسل يصدره الخادم بعد الحفظ)، ومعرّف مجموعة داخلي، ورقم سطر لكل صنف. الرقم لا يتم توليده في المتصفح لتجنب التكرار.</p><div dir="rtl" className="whitespace-pre-line rounded-xl bg-white border p-4 font-sans text-right text-sm leading-8 text-slate-800">{confirmation}</div><div className="flex flex-wrap gap-2"><Button type="button" onClick={copyMessage} className="bg-teal-600 gap-2"><Copy className="w-4 h-4"/>{copied?"تم نسخ النص التجريبي":"نسخ رسالة المعاينة"}</Button><Button type="button" disabled variant="outline" className="gap-2"><MessageCircle className="w-4 h-4"/> إرسال واتساب (بعد تفعيل الحفظ)</Button></div></section>}
+    {showReview&&<section className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><h3 className="font-bold text-emerald-800">{saved?`تم حفظ الطلبية رقم ${saved.order_number}`:`معاينة سجلات الطلبية (${lines.length}) — غير محفوظة`}</h3><p className="text-xs">مسجل الطلب: {form.recorded_by} · الموعد: {form.expected_availability_date} {form.needed_time} {form.urgent?"· عاجل":""} {form.important_customer?"· عميل مهم":""}</p>{form.general_notes&&<p className="text-xs">ملاحظة عامة: {form.general_notes}</p>}<div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]"><thead><tr className="text-slate-600 border-b"><th className="p-2 text-right">السطر</th><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">الكود</th><th className="p-2 text-right">الكمية</th><th className="p-2 text-right">الحالة</th></tr></thead><tbody>{lines.map((l,i)=><tr key={l.id} className="border-b border-emerald-100"><td className="p-2">{i+1}/{lines.length}</td><td className="p-2">{l.product_name}</td><td className="p-2">{l.product_code||"بانتظار ربط المشتريات"}</td><td className="p-2">{l.quantity} {l.unit}</td><td className="p-2">{l.alternativeAccepted?"replaced_by_alternative":"طلب جديد"}</td></tr>)}</tbody></table></div><p className="text-xs text-emerald-900">{saved?"تم حفظ كل الأصناف وربطها بنفس رقم الطلبية.":"لن يصدر المسلسل إلا بعد الحفظ على الخادم؛ لا ترسل تأكيد الطلب للعميل قبل نجاح الحفظ."}</p><div dir="rtl" className="whitespace-pre-line rounded-xl bg-white border p-4 font-sans text-right text-sm leading-8 text-slate-800">{confirmation}</div><div className="flex flex-wrap gap-2"><Button type="button" disabled={!saved} onClick={copyMessage} className="bg-teal-600 gap-2"><Copy className="w-4 h-4"/>{copied?"تم نسخ رسالة التأكيد":"نسخ رسالة تأكيد الحفظ"}</Button><Button type="button" disabled variant="outline" className="gap-2"><MessageCircle className="w-4 h-4"/> إرسال واتساب (بعد تفعيل الحفظ)</Button></div></section>}
     </div>
-    <div className="shrink-0 flex items-center justify-between gap-2 border-t bg-white px-4 py-3 sm:px-6"><div className="text-xs sm:text-sm text-slate-600"><b className="text-teal-800">{lines.length}</b> {lines.length===1?"صنف":"أصناف"}<span className="hidden sm:inline"> · {form.fulfillment_mode==="together"?"كله مع بعض":"حسب التوفر"}</span></div><div className="flex gap-2"><Button variant="outline" onClick={()=>onOpenChange(false)}>إغلاق</Button><Button onClick={preview} className="bg-teal-600 hover:bg-teal-700 text-xs sm:text-sm">مراجعة الطلبية</Button></div></div>
+    <div className="shrink-0 flex items-center justify-between gap-2 border-t bg-white px-4 py-3 sm:px-6"><div className="text-xs sm:text-sm text-slate-600">{saved?<b className="text-emerald-700">تم الحفظ · {saved.order_number}</b>:<><b className="text-teal-800">{lines.length}</b> {lines.length===1?"صنف":"أصناف"}</>}</div><div className="flex gap-2 flex-wrap"><Button variant="outline" onClick={()=>onOpenChange(false)}>إغلاق</Button>{!saved&&<Button onClick={preview} disabled={saving} variant="outline">مراجعة الطلبية</Button>}{showReview&&!saved&&<Button onClick={saveBatch} disabled={saving || lines.some(l=>l.alternativeAccepted)} className="bg-teal-600 hover:bg-teal-700 text-xs sm:text-sm">{saving?"جاري حفظ الأصناف...":"تأكيد وحفظ الطلبية"}</Button>}</div></div>
   </DialogContent></Dialog>;
 }
