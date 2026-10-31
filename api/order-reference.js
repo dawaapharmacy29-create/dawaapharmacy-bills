@@ -3,6 +3,8 @@
 const PURCHASES_URL = process.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
 const PURCHASES_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.PURCHASES_SUPABASE_PUBLISHABLE_KEY;
 const MANAGEMENT_URL = process.env.MANAGEMENT_SUPABASE_URL || 'https://jkjqeqkshllustwlzzbf.supabase.co';
+// Supports a new Supabase sb_secret_* key or a legacy service_role JWT.
+// Set this only in Vercel server-side environment variables (never VITE_*).
 const MANAGEMENT_SECRET = process.env.MANAGEMENT_SUPABASE_SECRET_KEY;
 
 const json = (res, code, payload) => {
@@ -21,7 +23,7 @@ export default async function handler(req, res) {
   if (!token || token.length > 500 || !['customer', 'product'].includes(mode) || query.length > 120) {
     return json(res, 400, { ok: false, error: 'invalid_request' });
   }
-  if ((mode === 'customer' && !query) || (mode === 'product' && query.length < 2)) {
+  if ((mode === 'customer' && !/^[a-zA-Z0-9_-]{1,40}$/.test(query)) || (mode === 'product' && query.length < 2)) {
     return json(res, 400, { ok: false, error: 'query_too_short' });
   }
 
@@ -41,15 +43,17 @@ export default async function handler(req, res) {
     const url = new URL(mode === 'customer' ? '/rest/v1/customers' : '/rest/v1/products', MANAGEMENT_URL);
     if (mode === 'customer') {
       url.searchParams.set('select', 'customer_code,code,name,phone');
-      url.searchParams.set('or', `(customer_code.eq.${query.replace(/[^\w-]/g, '')},code.eq.${query.replace(/[^\w-]/g, '')})`);
+      url.searchParams.set('or', `(customer_code.eq.${query},code.eq.${query})`);
       url.searchParams.set('limit', '2');
     } else {
       url.searchParams.set('select', 'product_code,name');
       url.searchParams.set('name', `ilike.*${query.replace(/[,*()]/g, ' ').trim()}*`);
       url.searchParams.set('limit', '10');
     }
+    const managementHeaders = { apikey: MANAGEMENT_SECRET };
+    if (MANAGEMENT_SECRET.startsWith('eyJ')) managementHeaders.Authorization = `Bearer ${MANAGEMENT_SECRET}`;
     const response = await fetch(url, {
-      headers: { apikey: MANAGEMENT_SECRET, Authorization: `Bearer ${MANAGEMENT_SECRET}` },
+      headers: managementHeaders,
       signal: AbortSignal.timeout(6000),
     });
     if (!response.ok) return json(res, 502, { ok: false, error: 'management_lookup_unavailable' });
