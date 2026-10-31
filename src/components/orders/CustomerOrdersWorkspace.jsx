@@ -9,6 +9,7 @@ import OrderWorkspaceDashboard from "./OrderWorkspaceDashboard";
 import OrderWorkspaceOrders from "./OrderWorkspaceOrders";
 import OrderFormDialog from "./OrderFormDialog";
 import OrderBatchPreviewDialog from "./OrderBatchPreviewDialog";
+import CustomerOrderDrafts from "./CustomerOrderDrafts";
 import WarehouseOrdersExport from "./WarehouseOrdersExport";
 import OrderDetailDialog from "./OrderDetailDialog";
 import OrderAnalyticsPerformance from "./OrderAnalyticsPerformance";
@@ -27,6 +28,7 @@ export default function CustomerOrdersWorkspace() {
   const [showForm, setShowForm] = useState(false);
   const [showBatchPreview, setShowBatchPreview] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [editingDraft, setEditingDraft] = useState(null);
   const [analyticsTab, setAnalyticsTab] = useState("performance");
   const refresh = () => qc.invalidateQueries({ queryKey: ["customer-orders"] });
 
@@ -60,7 +62,7 @@ export default function CustomerOrdersWorkspace() {
     </div>
 
     <OrderWorkspaceTabs value={w.mainTab} onChange={w.setMainTab} />
-    {w.mainTab === "orders" && <WarehouseOrdersExport orders={w.orders} />}
+    {w.mainTab === "orders" && <><CustomerOrderDrafts onEdit={d => { setEditingDraft(d); setShowBatchPreview(true); }} /><WarehouseOrdersExport orders={w.orders} /></>}
     {w.mainTab === "dashboard" && <OrderWorkspaceDashboard orders={w.orders} onOpen={openOrder} />}
     {w.mainTab === "orders" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} />}
     {w.mainTab === "followup" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} mode="followup" />}
@@ -73,7 +75,7 @@ export default function CustomerOrdersWorkspace() {
     {w.mainTab === "archive" && <OrderWorkspaceOrders workspace={w} isManager={isManager} onSelect={openOrder} mode="archive" />}
 
     {showForm && <OrderFormDialog open={showForm} onOpenChange={setShowForm} teamMembers={w.teamMembers} onSaved={refresh} />}
-    {showBatchPreview && <OrderBatchPreviewDialog open={showBatchPreview} onOpenChange={setShowBatchPreview} teamMembers={w.teamMembers} onSaved={refresh} />}
+    {showBatchPreview && <OrderBatchPreviewDialog key={editingDraft?.id || 'new'} initialDraft={editingDraft} open={showBatchPreview} onOpenChange={v => {setShowBatchPreview(v);if (!v) setEditingDraft(null);}} teamMembers={w.teamMembers} onSaved={() => {refresh();qc.invalidateQueries({queryKey:['customer-order-drafts']});}} />}
     {selectedOrder && <OrderDetailDialog open={!!selectedOrder} onOpenChange={(v) => !v && closeOrder()} order={selectedOrder} teamMembers={w.teamMembers} isManager={isManager} onUpdated={(updated) => { setSelectedOrder(updated); refresh(); }} />}
   </div>;
 }
