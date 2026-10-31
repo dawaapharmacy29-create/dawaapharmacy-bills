@@ -1,11 +1,7 @@
-// Read-only bridge from the purchasing app to the management catalog.
-// This is a server-side Vercel Function: never put admin credentials in VITE_* variables.
-const PURCHASES_URL = process.env.VITE_SUPABASE_URL || 'https://zqfsakrxazznkqnjlgzv.supabase.co';
-const PURCHASES_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.PURCHASES_SUPABASE_PUBLISHABLE_KEY;
-const MANAGEMENT_URL = process.env.MANAGEMENT_SUPABASE_URL || 'https://jkjqeqkshllustwlzzbf.supabase.co';
-// Supports a new Supabase sb_secret_* key or a legacy service_role JWT.
-// Set this only in Vercel server-side environment variables (never VITE_*).
-const MANAGEMENT_SECRET = process.env.MANAGEMENT_SUPABASE_SECRET_KEY;
+// Server-side proxy for the management-owned, read-only catalog endpoint.
+// The management function independently validates purchasing staff sessions.
+// No database admin credential is shared across projects.
+const REFERENCE_URL = 'https://jkjqeqkshllustwlzzbf.supabase.co/functions/v1/purchases-reference-lookup';
 
 // PostgREST supports * as the ILIKE wildcard. Keep operators out of user input.
 export function searchPattern(input) {
@@ -22,7 +18,6 @@ const json = (res, code, payload) => {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { ok: false, error: 'method_not_allowed' });
-  if (!PURCHASES_KEY || !MANAGEMENT_SECRET) return json(res, 503, { ok: false, error: 'reference_service_unconfigured' });
 
   const token = String(req.body?.session_token || '');
   const mode = String(req.body?.mode || '');
@@ -36,42 +31,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    // The purchasing database is authoritative for staff sessions. This RPC
-    // checks token hash, expiry, revocation, and the account's active status.
-    const sessionResponse = await fetch(`${PURCHASES_URL}/rest/v1/rpc/validate_staff_session`, {
+    const response = await fetch(REFERENCE_URL, {
       method: 'POST',
-      headers: { apikey: PURCHASES_KEY, Authorization: `Bearer ${PURCHASES_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_session_token: token }),
-      signal: AbortSignal.timeout(5000),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_token: token, mode, query }),
+      signal: AbortSignal.timeout(9000),
     });
-    if (!sessionResponse.ok) return json(res, 502, { ok: false, error: 'session_check_unavailable' });
-    const session = await sessionResponse.json();
-    if (!session?.ok || !session.account?.id) return json(res, 401, { ok: false, error: 'invalid_session' });
-
-    const url = new URL(mode === 'customer' ? '/rest/v1/customers' : '/rest/v1/products', MANAGEMENT_URL);
-    if (mode === 'customer') {
-      url.searchParams.set('select', 'customer_code,code,name,phone');
-      url.searchParams.set('or', `(customer_code.ilike.${pattern},code.ilike.${pattern},name.ilike.${pattern},phone.ilike.${pattern})`);
-      url.searchParams.set('limit', '12');
-    } else {
-      url.searchParams.set('select', 'product_code,name');
-      url.searchParams.set('or', `(name.ilike.${pattern},product_code.ilike.${pattern})`);
-      url.searchParams.set('limit', '12');
-    }
-    const managementHeaders = { apikey: MANAGEMENT_SECRET };
-    if (MANAGEMENT_SECRET.startsWith('eyJ')) managementHeaders.Authorization = `Bearer ${MANAGEMENT_SECRET}`;
-    const response = await fetch(url, {
-      headers: managementHeaders,
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!response.ok) return json(res, 502, { ok: false, error: 'management_lookup_unavailable' });
-    const results = await response.json();
-    if (!Array.isArray(results)) return json(res, 502, { ok: false, error: 'invalid_management_response' });
-
-    if (mode === 'customer') {
-      return json(res, 200, { ok: true, data: results.map(c => ({ customer_code: c.customer_code || c.code, customer_name: c.name, phone: c.phone || '' })) });
-    }
-    return json(res, 200, { ok: true, data: results.map(p => ({ product_code: p.product_code, product_name: p.name })) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) return json(res, [400, 401, 403, 429].includes(response.status) ? response.status : 502, { ok: false, error: payload.error || 'management_lookup_unavailable' });
+    return json(res, 200, { ok: true, data: payload.data });
   } catch {
     return json(res, 502, { ok: false, error: 'reference_lookup_unavailable' });
   }
