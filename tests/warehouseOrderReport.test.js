@@ -22,6 +22,23 @@ test('does not pretend legacy orders with unknown quantity equal one box', () =>
   const report = buildWarehouseOrderReport([{ id:'legacy', product_name:'دواء', status:'طلب جديد', request_date:'2026-10-31' }]);
   assert.equal(report.summary.length, 0);
   assert.equal(report.missingQuantity.length, 1);
+  assert.equal(report.review[0]['سبب المراجعة'], 'الكمية غير موثقة أو غير صحيحة');
+  assert.equal(report.review[0]['اسم الصنف'], 'دواء');
+});
+
+test('splits valid shortages and incomplete rows without inventing quantities', () => {
+  const report = buildWarehouseOrderReport([
+    { id: 'valid', order_number:'D-1001', product_name:'دواء', quantity:3, fulfilled_quantity:1, unit:'علبة', status:'طلب جديد' },
+    { id: 'legacy', order_number:'old', customer_name:'عميل', product_name:'دواء', status:'طلب جديد' },
+    { id: 'missing-unit', product_name:'آخر', quantity:2, status:'طلب جديد' },
+    { id: 'supplied', product_name:'مكتمل', quantity:2, fulfilled_quantity:2, unit:'علبة', status:'طلب جديد' },
+  ]);
+  assert.equal(report.summary.length, 1);
+  assert.equal(report.summary[0]['الكمية المطلوبة'], 2);
+  assert.equal(report.detail.length, 1);
+  assert.equal(report.review.length, 2);
+  assert.equal(report.review[0]['العميل'], 'عميل');
+  assert.equal(report.review[1]['سبب المراجعة'], 'الوحدة غير موثقة');
 });
 
 test('filters by required date and branch', () => {
