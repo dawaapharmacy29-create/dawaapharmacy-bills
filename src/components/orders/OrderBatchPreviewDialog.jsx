@@ -8,6 +8,11 @@ import { Plus, Trash2, Copy, MessageCircle, ShieldCheck, PackageCheck } from "lu
 // UI-only prototype: no calls to Base44, no production writes or outbound WhatsApp actions.
 const UNITS = ["علبة", "شريط", "زجاجة", "أمبول", "فيال", "كيس", "قطعة"];
 const SOURCES = ["واتساب", "داخل الصيدلية", "مكالمة هاتفية"];
+const cairoDay = (offset = 0) => {
+  const parts = new Intl.DateTimeFormat("en-GB", {timeZone:"Africa/Cairo",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(Date.now()+offset*86400000);
+  const v = Object.fromEntries(parts.filter(x=>x.type!=="literal").map(x=>[x.type,x.value]));
+  return v.year+"-"+v.month+"-"+v.day;
+};
 const nextLine = () => ({ id: crypto.randomUUID(), product_name: "", product_code: "", quantity: 1, unit: "علبة", product_not_in_catalog: false, notes: "", alternativeAccepted: false, alternative_product_name: "", alternative_product_code: "" });
 const inputStyle = "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100";
 const selectStyle = inputStyle;
@@ -17,6 +22,8 @@ export function validateOrderBatchPreview(form, lines) {
   if (form.phone.trim() && !/^01[0125]\d{8}$/.test(form.phone.trim())) return "رقم الموبايل لازم يكون 11 رقمًا ويبدأ بـ 010 أو 011 أو 012 أو 015.";
   if (!form.branch) return "اختر الفرع.";
   if (!SOURCES.includes(form.request_source)) return "اختر مصدر الطلب.";
+  if (!form.recorded_by?.trim()) return "أضف اسم الدكتور أو الموظف المسجل."; 
+  if (!form.expected_availability_date) return "حدد موعد احتياج العميل."; 
   if (!lines.length) return "أضف صنفًا واحدًا على الأقل.";
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -50,7 +57,7 @@ function ProductNameAutocomplete({ line, updateLine }) {
   }, [line.product_name, line.product_code]);
   return <div className="col-span-2 md:col-span-5 relative">
     <label className="text-xs font-semibold text-slate-600">اسم الصنف
-      <input className={`${inputStyle} mt-1`} value={line.product_name}
+      <input id={`product-${line.id}`} className={`${inputStyle} mt-1`} value={line.product_name}
         onChange={e => updateLine(line.id, { product_name: e.target.value, product_code: "", product_not_in_catalog: false })}
         placeholder="اكتب أي صنف؛ الاقتراحات اختيارية" />
     </label>
@@ -98,7 +105,7 @@ function CustomerSearch({ onSelect }) {
 }
 
 export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
-  const [form, setForm] = useState({ customer_code: "", phone: "", customer_name: "", branch: "", request_source: "واتساب", fulfillment_mode: "partial", expected_availability_date: "", promised_at: "" });
+  const [form, setForm] = useState({ customer_code: "", phone: "", customer_name: "", branch: "", request_source: "واتساب", fulfillment_mode: "partial", expected_availability_date: "", needed_time: "", urgent: false, important_customer: false, recorded_by: "", general_notes: "", promised_at: "" });
   const [lines, setLines] = useState([nextLine()]);
   const [error, setError] = useState("");
   const [showReview, setShowReview] = useState(false);
@@ -107,6 +114,16 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
   const updateForm = (key, value) => { setForm(p => ({ ...p, [key]: value })); if (key === "customer_code") setCustomerResolved(false); setError(""); setShowReview(false); };
   const selectCustomer = c => { setForm(p => ({ ...p, customer_code: c.customer_code || "", customer_name: c.customer_name || "", phone: c.phone || "" })); setCustomerResolved(true); setError(""); };
   const updateLine = (id, patch) => { setLines(p => p.map(l => l.id === id ? { ...l, ...patch } : l)); setError(""); setShowReview(false); };
+  const addLine = afterId => {
+    const item = nextLine();
+    setLines(prev => {
+      const i = prev.findIndex(x=>x.id===afterId);
+      const at = i<0?prev.length:i+1;
+      return [...prev.slice(0,at),item,...prev.slice(at)];
+    });
+    setError(""); setShowReview(false);
+    requestAnimationFrame(()=>document.getElementById("product-"+item.id)?.focus());
+  };
   const confirmation = useMemo(() => buildOrderConfirmationPreview(form, lines), [form, lines]);
   const preview = () => { const message = validateOrderBatchPreview(form, lines); setError(message); setShowReview(!message); setCopied(false); };
   const copyMessage = async () => { try { await navigator.clipboard.writeText(confirmation); setCopied(true); } catch { setError("تعذر النسخ؛ تأكد من صلاحية الحافظة في المتصفح."); } };
@@ -122,9 +139,19 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
       <label className="text-xs font-semibold text-slate-600">الفرع<select className={`${selectStyle} mt-1`} value={form.branch} onChange={e=>updateForm("branch",e.target.value)}><option value="">اختر الفرع</option><option>دواء شكري</option><option>دواء الشامي</option></select></label>
       <label className="text-xs font-semibold text-slate-600">مصدر الطلب<select className={`${selectStyle} mt-1`} value={form.request_source} onChange={e=>updateForm("request_source",e.target.value)}>{SOURCES.map(x=><option key={x}>{x}</option>)}</select></label>
       <label className="text-xs font-semibold text-slate-600">طريقة التنفيذ<select className={`${selectStyle} mt-1`} value={form.fulfillment_mode} onChange={e=>updateForm("fulfillment_mode",e.target.value)}><option value="partial">اللي يتوفر يتبعت</option><option value="together">كله مع بعض</option></select></label>
-      <label className="text-xs font-semibold text-slate-600">التوفر المتوقع<input type="date" className={`${inputStyle} mt-1`} value={form.expected_availability_date} onChange={e=>updateForm("expected_availability_date",e.target.value)}/></label>
+      <label className="text-xs font-semibold text-slate-600">اسم الدكتور / مسجل الطلب *<input className={`${inputStyle} mt-1`} value={form.recorded_by} onChange={e=>updateForm("recorded_by",e.target.value)} placeholder="اسم الدكتور الذي سجّل الطلب"/></label>
+      <div className="md:col-span-3 rounded-xl border bg-white p-3 space-y-2">
+        <p className="text-xs font-bold">العميل محتاج الصنف إمتى؟ *</p>
+        <div className="flex flex-wrap gap-2">{[["النهارده",0,""],["بكرا",1,""],["بكرا الصبح",1,"صباحًا"]].map(([label,day,time])=><button key={label} type="button" onClick={()=>{setForm(p=>({...p,expected_availability_date:cairoDay(day),needed_time:time}));setShowReview(false);}} className={`rounded-full border px-3 py-1.5 text-xs font-bold ${form.expected_availability_date===cairoDay(day)&&form.needed_time===time?"bg-teal-50 border-teal-500":"border-slate-200"}`}>{label}</button>)}</div>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <label className="text-xs">اختار يوم محدد<input type="date" className={`${inputStyle} mt-1`} value={form.expected_availability_date} onChange={e=>updateForm("expected_availability_date",e.target.value)}/></label>
+          <label className="text-xs">الوقت<select className={`${selectStyle} mt-1`} value={form.needed_time} onChange={e=>updateForm("needed_time",e.target.value)}><option value="">أي وقت</option><option value="صباحًا">الصبح</option><option value="مساءً">المساء</option></select></label>
+        </div>
+        <div className="flex flex-wrap gap-4 text-sm"><label className="flex gap-2"><input type="checkbox" checked={form.urgent} onChange={e=>updateForm("urgent",e.target.checked)}/>عاجل</label><label className="flex gap-2"><input type="checkbox" checked={form.important_customer} onChange={e=>updateForm("important_customer",e.target.checked)}/>عميل مهم</label></div>
+      </div>
+      <label className="text-xs font-semibold text-slate-600 md:col-span-3">ملاحظة عامة للطلبية<textarea className={`${inputStyle} mt-1 min-h-16 py-2`} value={form.general_notes} onChange={e=>updateForm("general_notes",e.target.value)} placeholder="ملاحظات الدكتور أو تعليمات المخزن"/></label>
     </div></section>
-    <section className="space-y-3"><div className="flex justify-between items-center gap-2"><h3 className="font-bold text-slate-800">أصناف الطلبية <span className="text-sm font-normal text-slate-500">({lines.length})</span></h3><Button type="button" variant="outline" onClick={()=>{setLines(p=>[...p,nextLine()]);setShowReview(false);setError("");}} className="gap-2"><Plus className="w-4 h-4"/> إضافة صنف</Button></div>
+    <section className="space-y-3"><div className="flex justify-between items-center gap-2"><h3 className="font-bold text-slate-800">أصناف الطلبية <span className="text-sm font-normal text-slate-500">({lines.length})</span></h3><Button type="button" variant="outline" onClick={()=>addLine()} className="gap-2"><Plus className="w-4 h-4"/> إضافة صنف</Button></div>
       {lines.map((line,index)=><div key={line.id} className="rounded-2xl border border-teal-100 bg-white shadow-sm p-3 sm:p-4 space-y-3"><div className="flex justify-between items-center"><span className="rounded-lg bg-teal-50 text-teal-800 font-bold px-3 py-1 text-sm">صنف {index+1}</span><button type="button" aria-label={`حذف الصنف ${index+1}`} disabled={lines.length===1} onClick={()=>setLines(p=>p.filter(l=>l.id!==line.id))} className="disabled:opacity-30 text-red-600 hover:bg-red-50 rounded p-2"><Trash2 className="w-4 h-4"/></button></div>
       <div className="grid grid-cols-2 md:grid-cols-12 gap-3">
         <ProductNameAutocomplete line={line} updateLine={updateLine} />
@@ -135,10 +162,11 @@ export default function OrderBatchPreviewDialog({ open, onOpenChange }) {
       <label className="block text-xs font-semibold text-slate-600">ملاحظات الصنف<textarea className={`${inputStyle} mt-1 min-h-16 py-2`} value={line.notes} onChange={e=>updateLine(line.id,{notes:e.target.value})} placeholder="تفاصيل أو أسعار أو موردين، بعيدًا عن اسم الصنف"/></label>
       <label className="flex gap-2 items-center text-sm text-slate-700"><input type="checkbox" checked={line.alternativeAccepted} onChange={e=>updateLine(line.id,{alternativeAccepted:e.target.checked})}/> العميل قبل بديل — لا يظهر في قائمة التوفير</label>
       {line.alternativeAccepted&&<div className="grid sm:grid-cols-2 gap-3 bg-emerald-50 rounded-xl p-3"><label className="text-xs font-semibold">اسم البديل<input className={`${inputStyle} mt-1`} value={line.alternative_product_name} onChange={e=>updateLine(line.id,{alternative_product_name:e.target.value})}/></label><label className="text-xs font-semibold">كود البديل<input className={`${inputStyle} mt-1`} value={line.alternative_product_code} onChange={e=>updateLine(line.id,{alternative_product_code:e.target.value})}/></label></div>}
+      <div className="flex justify-end border-t pt-3"><Button type="button" variant="outline" onClick={()=>addLine(line.id)} className="gap-2 border-teal-300 text-teal-800"><Plus className="w-4 h-4"/> إضافة صنف تاني هنا</Button></div>
       </div>)}
     </section>
     {error&&<p role="alert" className="rounded-lg bg-red-50 text-red-700 text-sm p-3">{error}</p>}
-    {showReview&&<section className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><h3 className="font-bold text-emerald-800">معاينة سجلات الطلبية ({lines.length}) — غير محفوظة</h3><div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]"><thead><tr className="text-slate-600 border-b"><th className="p-2 text-right">السطر</th><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">الكود</th><th className="p-2 text-right">الكمية</th><th className="p-2 text-right">الحالة</th></tr></thead><tbody>{lines.map((l,i)=><tr key={l.id} className="border-b border-emerald-100"><td className="p-2">{i+1}/{lines.length}</td><td className="p-2">{l.product_name}</td><td className="p-2">{l.product_code||"بانتظار ربط المشتريات"}</td><td className="p-2">{l.quantity} {l.unit}</td><td className="p-2">{l.alternativeAccepted?"replaced_by_alternative":"طلب جديد"}</td></tr>)}</tbody></table></div><p className="text-xs text-emerald-900">وقت الحفظ الفعلي: معرّف مجموعة واحد (UUID)، وعدد الأصناف (group_size)، ورقم السطر (line_no)، ورقم طلب منفصل لكل صنف (order_number).</p><div dir="rtl" className="whitespace-pre-line rounded-xl bg-white border p-4 font-sans text-right text-sm leading-8 text-slate-800">{confirmation}</div><div className="flex flex-wrap gap-2"><Button type="button" onClick={copyMessage} className="bg-teal-600 gap-2"><Copy className="w-4 h-4"/>{copied?"تم نسخ النص التجريبي":"نسخ رسالة المعاينة"}</Button><Button type="button" disabled variant="outline" className="gap-2"><MessageCircle className="w-4 h-4"/> إرسال واتساب (بعد تفعيل الحفظ)</Button></div></section>}
+    {showReview&&<section className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><h3 className="font-bold text-emerald-800">معاينة سجلات الطلبية ({lines.length}) — غير محفوظة</h3><p className="text-xs">مسجل الطلب: {form.recorded_by} · الموعد: {form.expected_availability_date} {form.needed_time} {form.urgent?"· عاجل":""} {form.important_customer?"· عميل مهم":""}</p>{form.general_notes&&<p className="text-xs">ملاحظة عامة: {form.general_notes}</p>}<div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]"><thead><tr className="text-slate-600 border-b"><th className="p-2 text-right">السطر</th><th className="p-2 text-right">الصنف</th><th className="p-2 text-right">الكود</th><th className="p-2 text-right">الكمية</th><th className="p-2 text-right">الحالة</th></tr></thead><tbody>{lines.map((l,i)=><tr key={l.id} className="border-b border-emerald-100"><td className="p-2">{i+1}/{lines.length}</td><td className="p-2">{l.product_name}</td><td className="p-2">{l.product_code||"بانتظار ربط المشتريات"}</td><td className="p-2">{l.quantity} {l.unit}</td><td className="p-2">{l.alternativeAccepted?"replaced_by_alternative":"طلب جديد"}</td></tr>)}</tbody></table></div><p className="text-xs text-emerald-900">وقت الحفظ الفعلي: معرّف مجموعة واحد (UUID)، وعدد الأصناف (group_size)، ورقم السطر (line_no)، ورقم طلب منفصل لكل صنف (order_number).</p><div dir="rtl" className="whitespace-pre-line rounded-xl bg-white border p-4 font-sans text-right text-sm leading-8 text-slate-800">{confirmation}</div><div className="flex flex-wrap gap-2"><Button type="button" onClick={copyMessage} className="bg-teal-600 gap-2"><Copy className="w-4 h-4"/>{copied?"تم نسخ النص التجريبي":"نسخ رسالة المعاينة"}</Button><Button type="button" disabled variant="outline" className="gap-2"><MessageCircle className="w-4 h-4"/> إرسال واتساب (بعد تفعيل الحفظ)</Button></div></section>}
     </div>
     <div className="shrink-0 flex items-center justify-between gap-2 border-t bg-white px-4 py-3 sm:px-6"><div className="text-xs sm:text-sm text-slate-600"><b className="text-teal-800">{lines.length}</b> {lines.length===1?"صنف":"أصناف"}<span className="hidden sm:inline"> · {form.fulfillment_mode==="together"?"كله مع بعض":"حسب التوفر"}</span></div><div className="flex gap-2"><Button variant="outline" onClick={()=>onOpenChange(false)}>إغلاق</Button><Button onClick={preview} className="bg-teal-600 hover:bg-teal-700 text-xs sm:text-sm">مراجعة الطلبية</Button></div></div>
   </DialogContent></Dialog>;
