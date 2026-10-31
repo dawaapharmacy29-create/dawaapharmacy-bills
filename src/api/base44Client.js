@@ -357,6 +357,9 @@ export const customerOrderBatchApi = {
     p_order: order,
     p_lines: lines,
   }),
+  workflow: (action, id, payload = {}) => callSecureRpc('app_customer_order_workflow_v1', {
+    p_action: action, p_id: id || null, p_payload: payload,
+  }),
 };
 
 export const base44ReviewApi = {
